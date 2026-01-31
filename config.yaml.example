@@ -1,0 +1,15 @@
+# Text2X CLI Configuration Example
+# Copy this file to ~/.text2dsl/config.yaml and customize as needed
+
+# API connection settings
+api_url: http://localhost:8000
+timeout: 300  # Request timeout in seconds
+
+# Query processing defaults
+trace_level: none  # Options: none, summary, full
+max_iterations: 3  # Maximum refinement iterations
+confidence_threshold: 0.8  # Minimum confidence score (0.0-1.0)
+enable_execution: false  # Whether to execute generated queries by default
+
+# Debug settings
+debug: false  # Show detailed error traces

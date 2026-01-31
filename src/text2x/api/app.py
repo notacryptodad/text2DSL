@@ -3,10 +3,11 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from text2x.api.models import ErrorResponse, HealthCheckResponse
 from text2x.config import settings
@@ -276,6 +277,104 @@ async def root() -> dict[str, str]:
         "version": settings.app_version,
         "docs": "/docs" if settings.debug else "unavailable",
     }
+
+
+# Include API routers
+from text2x.api.routes import conversations, providers, query, review
+
+app.include_router(query.router, prefix=settings.api_prefix)
+app.include_router(providers.router, prefix=settings.api_prefix)
+app.include_router(conversations.router, prefix=settings.api_prefix)
+app.include_router(review.router, prefix=settings.api_prefix)
+
+
+# WebSocket endpoint for streaming query processing
+@app.websocket("/ws/query")
+async def query_websocket(websocket: WebSocket) -> None:
+    """
+    WebSocket endpoint for streaming query processing.
+
+    This endpoint accepts WebSocket connections and streams query processing
+    events in real-time, including:
+    - Progress updates as agents work
+    - Clarification requests if needed
+    - Final query results
+    - Error notifications
+
+    The client should send a JSON message with the query request:
+    {
+        "provider_id": "postgres-main",
+        "query": "Show me all users",
+        "conversation_id": "optional-uuid",
+        "options": {
+            "trace_level": "none" | "summary" | "full",
+            "max_iterations": 3,
+            "confidence_threshold": 0.8,
+            "enable_execution": false
+        }
+    }
+
+    The server will respond with a stream of events:
+    {
+        "type": "progress" | "clarification" | "result" | "error",
+        "data": {...},
+        "trace": {...}  // if trace_level != "none"
+    }
+    """
+    await websocket.accept()
+    logger.info(f"WebSocket connection accepted from {websocket.client}")
+
+    try:
+        # Wait for query request from client
+        async for message in websocket.iter_json():
+            try:
+                # Import here to avoid circular dependency
+                from text2x.api.websocket import (
+                    WebSocketQueryRequest,
+                    handle_websocket_query,
+                )
+
+                # Parse and validate request
+                request = WebSocketQueryRequest(**message)
+
+                # Process query and stream events
+                await handle_websocket_query(websocket, request)
+
+            except ValidationError as e:
+                logger.warning(f"Invalid WebSocket message: {e}")
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "data": {
+                            "error": "validation_error",
+                            "message": "Invalid request format",
+                            "details": {"errors": e.errors()},
+                        },
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error processing WebSocket message: {e}", exc_info=True)
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "data": {
+                            "error": "processing_error",
+                            "message": "Failed to process query",
+                            "details": {"error": str(e)} if settings.debug else {},
+                        },
+                    }
+                )
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected from {websocket.client}")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}", exc_info=True)
+    finally:
+        # Ensure connection is closed
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 def get_app() -> FastAPI:

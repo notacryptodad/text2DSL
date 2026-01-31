@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import (
     Boolean,
     Column,
+    DateTime,
     Enum,
     ForeignKey,
     String,

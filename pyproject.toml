@@ -17,7 +17,14 @@ dependencies = [
     "litellm>=1.0.0",
     "pydantic>=2.5.0",
     "httpx>=0.26.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0.0",
+    "websockets>=12.0",
 ]
+
+[project.scripts]
+text2x = "text2x.cli:cli"
 
 [project.optional-dependencies]
 dev = [
