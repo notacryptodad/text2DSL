@@ -1,5 +1,6 @@
 """FastAPI application setup and configuration."""
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -11,14 +12,17 @@ from pydantic import ValidationError
 
 from text2x.api.models import ErrorResponse, HealthCheckResponse
 from text2x.config import settings
+from text2x.utils.observability import setup_json_logging, get_correlation_id
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    if settings.log_format == "text"
-    else "%(message)s",
-)
+# Configure logging based on settings
+if settings.log_format == "json":
+    setup_json_logging(settings.log_level)
+else:
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper()),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +34,7 @@ class AppState:
         self.db_engine = None
         self.redis_client = None
         self.opensearch_client = None
+        self.start_time = time.time()
 
 
 app_state = AppState()
@@ -173,6 +178,12 @@ app.add_middleware(
     allow_headers=settings.cors_allow_headers,
 )
 
+# Add observability middleware
+if settings.enable_metrics:
+    from text2x.api.middleware import RequestTracingMiddleware
+
+    app.add_middleware(RequestTracingMiddleware)
+
 
 # Exception handlers
 @app.exception_handler(RequestValidationError)
@@ -180,7 +191,11 @@ async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Handle validation errors."""
-    logger.warning(f"Validation error for {request.url.path}: {exc.errors()}")
+    correlation_id = get_correlation_id()
+    logger.warning(
+        f"Validation error for {request.url.path}: {exc.errors()}",
+        extra={"correlation_id": correlation_id} if correlation_id else {},
+    )
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -195,9 +210,11 @@ async def validation_exception_handler(
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle general exceptions."""
+    correlation_id = get_correlation_id()
     logger.error(
         f"Unhandled exception for {request.url.path}: {exc}",
         exc_info=True,
+        extra={"correlation_id": correlation_id} if correlation_id else {},
     )
 
     return JSONResponse(
@@ -209,63 +226,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     )
 
 
-# Health check endpoint
-@app.get(
-    "/health",
-    response_model=HealthCheckResponse,
-    tags=["health"],
-    summary="Health check",
-)
-async def health_check() -> HealthCheckResponse:
-    """Check the health status of the API and its dependencies."""
-    services = {}
-
-    # Check database
-    try:
-        if app_state.db_engine:
-            async with app_state.db_engine.connect() as conn:
-                await conn.execute("SELECT 1")
-            services["database"] = {"status": "healthy"}
-        else:
-            services["database"] = {"status": "not_initialized"}
-    except Exception as e:
-        services["database"] = {"status": "unhealthy", "error": str(e)}
-
-    # Check Redis
-    try:
-        if app_state.redis_client:
-            await app_state.redis_client.ping()
-            services["redis"] = {"status": "healthy"}
-        else:
-            services["redis"] = {"status": "not_initialized"}
-    except Exception as e:
-        services["redis"] = {"status": "unhealthy", "error": str(e)}
-
-    # Check OpenSearch
-    try:
-        if app_state.opensearch_client:
-            await app_state.opensearch_client.ping()
-            services["opensearch"] = {"status": "healthy"}
-        else:
-            services["opensearch"] = {"status": "not_initialized"}
-    except Exception as e:
-        services["opensearch"] = {"status": "unhealthy", "error": str(e)}
-
-    # Determine overall status
-    overall_status = "healthy"
-    for service in services.values():
-        if service["status"] == "unhealthy":
-            overall_status = "unhealthy"
-            break
-        elif service["status"] == "not_initialized":
-            overall_status = "degraded"
-
-    return HealthCheckResponse(
-        status=overall_status,
-        version=settings.app_version,
-        environment=settings.environment,
-        services=services,
-    )
+# Note: Health check endpoints are now in health.py router
 
 
 # Root endpoint
@@ -280,12 +241,14 @@ async def root() -> dict[str, str]:
 
 
 # Include API routers
-from text2x.api.routes import conversations, providers, query, review
+from text2x.api.routes import conversations, providers, query, review, health, metrics
 
 app.include_router(query.router, prefix=settings.api_prefix)
 app.include_router(providers.router, prefix=settings.api_prefix)
 app.include_router(conversations.router, prefix=settings.api_prefix)
 app.include_router(review.router, prefix=settings.api_prefix)
+app.include_router(health.router)  # No prefix for health checks
+app.include_router(metrics.router)  # No prefix for metrics
 
 
 # WebSocket endpoint for streaming query processing

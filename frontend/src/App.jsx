@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Moon, Sun, Zap, Database, History, X } from 'lucide-react'
+import { Moon, Sun, Zap, Database, History, X, MessageSquare, ClipboardCheck } from 'lucide-react'
 import ChatMessage from './components/ChatMessage'
 import ProviderSelect from './components/ProviderSelect'
 import QueryInput from './components/QueryInput'
@@ -7,6 +7,7 @@ import ConversationHistory from './components/ConversationHistory'
 import ProgressIndicator from './components/ProgressIndicator'
 import SettingsPanel from './components/SettingsPanel'
 import WelcomeScreen from './components/WelcomeScreen'
+import Review from './pages/Review'
 import useWebSocket from './hooks/useWebSocket'
 
 const PROVIDERS = [
@@ -17,6 +18,7 @@ const PROVIDERS = [
 ]
 
 function App() {
+  const [currentView, setCurrentView] = useState('chat') // 'chat' or 'review'
   const [darkMode, setDarkMode] = useState(() => {
     // Check system preference or localStorage
     const saved = localStorage.getItem('darkMode')
@@ -231,18 +233,46 @@ function App() {
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="bg-primary-500 p-2 rounded-lg">
-                <Zap className="w-6 h-6 text-white" />
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-3">
+                <div className="bg-primary-500 p-2 rounded-lg">
+                  <Zap className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Text2DSL
+                  </h1>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Natural Language to Query Converter
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Text2DSL
-                </h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Natural Language to Query Converter
-                </p>
-              </div>
+
+              {/* Navigation Tabs */}
+              <nav className="hidden md:flex items-center space-x-1 border-l border-gray-200 dark:border-gray-700 pl-6">
+                <button
+                  onClick={() => setCurrentView('chat')}
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+                    currentView === 'chat'
+                      ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="font-medium">Chat</span>
+                </button>
+                <button
+                  onClick={() => setCurrentView('review')}
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+                    currentView === 'review'
+                      ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  <span className="font-medium">Review</span>
+                </button>
+              </nav>
             </div>
 
             <div className="flex items-center space-x-4">
@@ -294,7 +324,10 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {currentView === 'review' ? (
+        <Review />
+      ) : (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sidebar */}
           <aside className="lg:col-span-1 space-y-6">
@@ -372,7 +405,8 @@ function App() {
             </div>
           </div>
         </div>
-      </main>
+        </main>
+      )}
 
       {/* Conversation History Sidebar */}
       {showHistory && (

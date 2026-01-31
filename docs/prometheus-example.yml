@@ -1,0 +1,75 @@
+# Example Prometheus configuration for Text2DSL API
+# Place this file in your Prometheus configuration directory
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'text2dsl-production'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "text2dsl_alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Text2DSL API metrics
+  - job_name: 'text2dsl-api'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - 'text2dsl-api:8000'
+        labels:
+          service: 'text2dsl-api'
+          environment: 'production'
+
+  # If running multiple instances
+  - job_name: 'text2dsl-api-instances'
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - 'text2dsl-api-1:8000'
+          - 'text2dsl-api-2:8000'
+          - 'text2dsl-api-3:8000'
+        labels:
+          service: 'text2dsl-api'
+          environment: 'production'
+
+  # Kubernetes service discovery (if using Kubernetes)
+  - job_name: 'text2dsl-k8s'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - text2dsl
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name

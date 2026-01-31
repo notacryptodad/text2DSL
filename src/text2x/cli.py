@@ -45,6 +45,7 @@ DEFAULT_CONFIG = {
     "max_iterations": 3,
     "confidence_threshold": 0.8,
     "enable_execution": False,
+    "debug": False,
 }
 
 CONFIG_PATH = Path.home() / ".text2dsl" / "config.yaml"
@@ -264,6 +265,40 @@ def display_query_response(response: Dict[str, Any], show_trace: bool = False) -
             console.print(f"[bold green]Execution Successful[/bold green]")
             console.print(f"  Rows returned: {exec_result.get('row_count', 0)}")
             console.print(f"  Execution time: {exec_result.get('execution_time_ms', 0)}ms")
+
+            # Display result data if available
+            result_data = exec_result.get("data")
+            if result_data:
+                console.print()
+                console.print("[bold]Result Data:[/bold]")
+
+                # If it's a list of dicts, display as table
+                if isinstance(result_data, list) and result_data:
+                    if isinstance(result_data[0], dict):
+                        # Create table from data
+                        result_table = Table(box=box.ROUNDED)
+
+                        # Add columns from first row
+                        for column in result_data[0].keys():
+                            result_table.add_column(column, style="cyan")
+
+                        # Add rows (limit to first 10)
+                        for row in result_data[:10]:
+                            result_table.add_row(*[str(v) for v in row.values()])
+
+                        console.print(result_table)
+
+                        if len(result_data) > 10:
+                            console.print(f"[dim]... showing 10 of {len(result_data)} rows[/dim]")
+                    else:
+                        # Simple list
+                        for item in result_data[:10]:
+                            console.print(f"  {item}")
+                        if len(result_data) > 10:
+                            console.print(f"[dim]... showing 10 of {len(result_data)} items[/dim]")
+                else:
+                    console.print(f"  {result_data}")
+
             console.print()
         else:
             console.print(f"[bold red]Execution Failed[/bold red]")
@@ -471,8 +506,13 @@ def display_provider_detail(provider: Dict[str, Any]) -> None:
     envvar="TEXT2X_API_URL",
     help="API base URL (default: http://localhost:8000)",
 )
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Enable debug mode with detailed error traces",
+)
 @click.pass_context
-def cli(ctx: click.Context, api_url: Optional[str]) -> None:
+def cli(ctx: click.Context, api_url: Optional[str], debug: bool) -> None:
     """
     Text2X - Natural Language to Database Query Converter
 
@@ -490,6 +530,8 @@ def cli(ctx: click.Context, api_url: Optional[str]) -> None:
     # Override with command line if provided
     if api_url:
         config["api_url"] = api_url
+    if debug:
+        config["debug"] = True
 
     ctx.obj["config"] = config
 
@@ -507,12 +549,12 @@ def cli(ctx: click.Context, api_url: Optional[str]) -> None:
 )
 @click.option(
     "--max-iterations",
-    type=int,
+    type=click.IntRange(1, 10),
     help="Maximum refinement iterations (default: 3)",
 )
 @click.option(
     "--confidence-threshold",
-    type=float,
+    type=click.FloatRange(0.0, 1.0),
     help="Minimum confidence score (0.0-1.0, default: 0.8)",
 )
 @click.option(
@@ -855,16 +897,39 @@ def config_set(key: str, value: str) -> None:
       text2x config set api_url http://localhost:8000
 
       text2x config set trace_level summary
+
+      text2x config set debug true
     """
     config_data = load_config()
 
+    # Validate key
+    if key not in DEFAULT_CONFIG:
+        console.print(f"[yellow]Warning: '{key}' is not a standard configuration key[/yellow]")
+        console.print(f"[dim]Valid keys: {', '.join(DEFAULT_CONFIG.keys())}[/dim]")
+        if not click.confirm("Continue anyway?"):
+            return
+
     # Type conversion for known keys
-    if key in ["timeout", "max_iterations"]:
-        value = int(value)
-    elif key in ["confidence_threshold"]:
-        value = float(value)
-    elif key in ["enable_execution"]:
-        value = value.lower() in ["true", "yes", "1"]
+    original_value = value
+    try:
+        if key in ["timeout", "max_iterations"]:
+            value = int(value)
+        elif key in ["confidence_threshold"]:
+            value = float(value)
+            # Validate range
+            if not 0.0 <= value <= 1.0:
+                console.print(f"[red]Error: confidence_threshold must be between 0.0 and 1.0[/red]", err=True)
+                sys.exit(1)
+        elif key in ["enable_execution", "debug"]:
+            value = value.lower() in ["true", "yes", "1", "on"]
+        elif key == "trace_level":
+            # Validate trace level
+            if value not in ["none", "summary", "full"]:
+                console.print(f"[red]Error: trace_level must be one of: none, summary, full[/red]", err=True)
+                sys.exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error: Invalid value for {key}: {e}[/red]", err=True)
+        sys.exit(1)
 
     config_data[key] = value
     save_config(config_data)

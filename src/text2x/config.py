@@ -103,9 +103,15 @@ class Settings(BaseSettings):
         default="json", validation_alias="LOG_FORMAT"
     )  # json or text
 
-    # Metrics
+    # Observability - Metrics
     enable_metrics: bool = Field(default=True, validation_alias="ENABLE_METRICS")
     metrics_port: int = Field(default=9090, validation_alias="METRICS_PORT")
+
+    # Observability - Tracing
+    enable_tracing: bool = Field(default=True, validation_alias="ENABLE_TRACING")
+    correlation_id_header: str = Field(
+        default="X-Correlation-ID", validation_alias="CORRELATION_ID_HEADER"
+    )
 
     # Expert Review
     review_queue_enabled: bool = Field(default=True, validation_alias="REVIEW_QUEUE_ENABLED")

@@ -1,5 +1,6 @@
 """Query processing endpoints."""
 import logging
+import time
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -15,6 +16,20 @@ from text2x.api.models import (
     ValidationStatus,
 )
 from text2x.config import settings
+from text2x.utils.observability import (
+    async_log_context,
+    record_query_success,
+    record_query_failure,
+    record_validation_result,
+    record_user_satisfaction,
+    record_query_latency,
+    record_iterations,
+    record_agent_latency,
+    record_tokens_used,
+    record_tokens_by_agent,
+    record_cost,
+    record_rag_retrieval,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,26 +63,36 @@ async def process_query(request: QueryRequest) -> QueryResponse:
     Raises:
         HTTPException: For various error conditions
     """
+    # Track request start time for metrics
+    start_time = time.time()
+    provider_type = "unknown"  # Will be determined from provider_id lookup
+
     try:
-        logger.info(
-            f"Processing query for provider {request.provider_id}, "
-            f"conversation_id={request.conversation_id}"
-        )
-
-        # Merge request options with defaults
-        max_iterations = request.options.max_iterations or settings.max_iterations
-        confidence_threshold = (
-            request.options.confidence_threshold or settings.confidence_threshold
-        )
-        enable_execution = (
-            request.options.enable_execution
-            if request.options.enable_execution is not None
-            else settings.enable_execution
-        )
-
-        # Generate IDs
+        # Generate IDs first for logging context
         conversation_id = request.conversation_id or uuid4()
         turn_id = uuid4()
+
+        # Use async log context to enrich all logs in this request
+        async with async_log_context(
+            conversation_id=str(conversation_id),
+            turn_id=str(turn_id),
+            provider_id=request.provider_id,
+        ):
+            logger.info(
+                f"Processing query for provider {request.provider_id}, "
+                f"conversation_id={conversation_id}"
+            )
+
+            # Merge request options with defaults
+            max_iterations = request.options.max_iterations or settings.max_iterations
+            confidence_threshold = (
+                request.options.confidence_threshold or settings.confidence_threshold
+            )
+            enable_execution = (
+                request.options.enable_execution
+                if request.options.enable_execution is not None
+                else settings.enable_execution
+            )
 
         # TODO: Integrate with actual orchestrator
         # from text2x.agents.orchestrator import QueryOrchestrator
@@ -156,24 +181,83 @@ async def process_query(request: QueryRequest) -> QueryResponse:
             iterations=1,
         )
 
-        logger.info(
-            f"Query processed successfully: turn_id={turn_id}, "
-            f"confidence={mock_response.confidence_score}"
-        )
+            logger.info(
+                f"Query processed successfully: turn_id={turn_id}, "
+                f"confidence={mock_response.confidence_score}"
+            )
 
-        # Queue for expert review if confidence is low
-        if (
-            settings.auto_queue_low_confidence
-            and mock_response.confidence_score < settings.low_confidence_threshold
-        ):
-            logger.info(f"Queuing turn {turn_id} for expert review (low confidence)")
-            # TODO: Add to review queue
-            # await add_to_review_queue(turn_id, "low_confidence")
+            # Record metrics
+            query_duration = time.time() - start_time
+            provider_type = "postgresql"  # Extract from provider_id in real implementation
 
-        return mock_response
+            # Success metrics
+            record_query_success(provider_type)
+            record_query_latency(provider_type, query_duration)
+            record_iterations(provider_type, mock_response.iterations)
+
+            # Validation metrics
+            is_valid = mock_response.validation_status == ValidationStatus.VALID
+            record_validation_result(provider_type, is_valid)
+
+            # Cost metrics (from trace if available)
+            if mock_response.reasoning_trace:
+                trace = mock_response.reasoning_trace
+                record_tokens_used("input", trace.total_tokens_input, provider_type)
+                record_tokens_used("output", trace.total_tokens_output, provider_type)
+                record_cost(provider_type, trace.total_cost_usd)
+
+                # Agent-specific metrics
+                if trace.schema_agent:
+                    record_agent_latency("schema", trace.schema_agent.latency_ms / 1000)
+                    record_tokens_by_agent(
+                        "schema", "input", trace.schema_agent.tokens_input
+                    )
+                    record_tokens_by_agent(
+                        "schema", "output", trace.schema_agent.tokens_output
+                    )
+
+                if trace.rag_agent:
+                    record_agent_latency("rag", trace.rag_agent.latency_ms / 1000)
+                    record_tokens_by_agent("rag", "input", trace.rag_agent.tokens_input)
+                    record_tokens_by_agent("rag", "output", trace.rag_agent.tokens_output)
+                    record_rag_retrieval(provider_type)
+
+                if trace.query_builder_agent:
+                    record_agent_latency(
+                        "query_builder", trace.query_builder_agent.latency_ms / 1000
+                    )
+                    record_tokens_by_agent(
+                        "query_builder", "input", trace.query_builder_agent.tokens_input
+                    )
+                    record_tokens_by_agent(
+                        "query_builder", "output", trace.query_builder_agent.tokens_output
+                    )
+
+                if trace.validator_agent:
+                    record_agent_latency(
+                        "validator", trace.validator_agent.latency_ms / 1000
+                    )
+                    record_tokens_by_agent(
+                        "validator", "input", trace.validator_agent.tokens_input
+                    )
+                    record_tokens_by_agent(
+                        "validator", "output", trace.validator_agent.tokens_output
+                    )
+
+            # Queue for expert review if confidence is low
+            if (
+                settings.auto_queue_low_confidence
+                and mock_response.confidence_score < settings.low_confidence_threshold
+            ):
+                logger.info(f"Queuing turn {turn_id} for expert review (low confidence)")
+                # TODO: Add to review queue
+                # await add_to_review_queue(turn_id, "low_confidence")
+
+            return mock_response
 
     except ValueError as e:
         logger.warning(f"Invalid request: {e}")
+        record_query_failure(provider_type, "invalid_request")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
@@ -183,6 +267,7 @@ async def process_query(request: QueryRequest) -> QueryResponse:
         )
     except Exception as e:
         logger.error(f"Error processing query: {e}", exc_info=True)
+        record_query_failure(provider_type, "processing_error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
@@ -336,20 +421,26 @@ async def submit_feedback(
         HTTPException: If conversation not found or feedback submission fails
     """
     try:
-        logger.info(f"Submitting feedback for conversation {conversation_id}")
+        async with async_log_context(conversation_id=str(conversation_id)):
+            logger.info(f"Submitting feedback for conversation {conversation_id}")
 
-        # TODO: Store feedback in database
-        # If corrected query provided and is_query_correct=False, add to RAG as negative example
-        if not feedback.is_query_correct and feedback.corrected_query:
-            logger.info("Adding corrected query to RAG store as learning example")
-            # TODO: Add to RAG store
-            # await rag_service.add_example(
-            #     conversation_id=conversation_id,
-            #     corrected_query=feedback.corrected_query,
-            #     is_good_example=True,
-            # )
+            # Record user satisfaction metrics
+            record_user_satisfaction(feedback.rating, feedback.is_query_correct)
 
-        logger.info(f"Feedback submitted successfully for conversation {conversation_id}")
+            # TODO: Store feedback in database
+            # If corrected query provided and is_query_correct=False, add to RAG as negative example
+            if not feedback.is_query_correct and feedback.corrected_query:
+                logger.info("Adding corrected query to RAG store as learning example")
+                # TODO: Add to RAG store
+                # await rag_service.add_example(
+                #     conversation_id=conversation_id,
+                #     corrected_query=feedback.corrected_query,
+                #     is_good_example=True,
+                # )
+
+            logger.info(
+                f"Feedback submitted successfully for conversation {conversation_id}"
+            )
 
     except Exception as e:
         logger.error(f"Error submitting feedback: {e}", exc_info=True)

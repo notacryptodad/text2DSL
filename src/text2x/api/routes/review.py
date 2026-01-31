@@ -1,5 +1,6 @@
 """Expert review queue endpoints."""
 import logging
+import time
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -20,6 +21,10 @@ from text2x.api.models import (
 )
 from text2x.models.conversation import Conversation, ConversationTurn
 from text2x.models.rag import RAGExample
+from text2x.utils.observability import (
+    set_review_queue_size,
+    record_review_completion_time,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +206,17 @@ async def get_review_queue(
                 f"Retrieved {len(review_items)} items from review queue "
                 f"(page {page})"
             )
+
+            # Update review queue size metrics
+            # Count items by reason
+            reason_counts = {}
+            for item in review_items:
+                reason = item.reason_for_review
+                reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+            for reason, count in reason_counts.items():
+                set_review_queue_size(reason, count)
+
             return review_items
 
     except Exception as e:
@@ -350,12 +366,22 @@ async def update_review_item(
                     ).model_dump(),
                 )
 
+            # Calculate review duration for metrics
+            review_duration_seconds = 0.0
+            if example.created_at:
+                review_duration_seconds = (
+                    datetime.utcnow() - example.created_at
+                ).total_seconds()
+
             # Update the example
             example.reviewed_by = "expert"  # TODO: Get from auth context
             example.reviewed_at = datetime.utcnow()
             example.status = (
                 ExampleStatus.APPROVED if update.approved else ExampleStatus.REJECTED
             )
+
+            # Record review metrics
+            record_review_completion_time(update.approved, review_duration_seconds)
 
             if update.corrected_query:
                 example.expert_corrected_query = update.corrected_query

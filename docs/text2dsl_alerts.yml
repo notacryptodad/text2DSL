@@ -1,0 +1,224 @@
+# Prometheus alerting rules for Text2DSL API
+# Place this file in your Prometheus rules directory
+
+groups:
+  - name: text2dsl_accuracy
+    interval: 30s
+    rules:
+      - alert: LowQuerySuccessRate
+        expr: |
+          sum(rate(text2dsl_query_success_total[5m])) /
+          (sum(rate(text2dsl_query_success_total[5m])) + sum(rate(text2dsl_query_failure_total[5m]))) < 0.95
+        for: 5m
+        labels:
+          severity: warning
+          component: query_generation
+        annotations:
+          summary: "Low query success rate"
+          description: "Query success rate is {{ $value | humanizePercentage }} (below 95% threshold)"
+
+      - alert: CriticalQuerySuccessRate
+        expr: |
+          sum(rate(text2dsl_query_success_total[5m])) /
+          (sum(rate(text2dsl_query_success_total[5m])) + sum(rate(text2dsl_query_failure_total[5m]))) < 0.80
+        for: 3m
+        labels:
+          severity: critical
+          component: query_generation
+        annotations:
+          summary: "Critical query success rate"
+          description: "Query success rate is {{ $value | humanizePercentage }} (below 80% threshold)"
+
+      - alert: HighValidationFailureRate
+        expr: |
+          sum(rate(text2dsl_validation_fail_total[5m])) /
+          (sum(rate(text2dsl_validation_pass_total[5m])) + sum(rate(text2dsl_validation_fail_total[5m]))) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: validation
+        annotations:
+          summary: "High validation failure rate"
+          description: "Validation failure rate is {{ $value | humanizePercentage }} (above 10% threshold)"
+
+  - name: text2dsl_performance
+    interval: 30s
+    rules:
+      - alert: HighQueryLatency
+        expr: |
+          histogram_quantile(0.95, rate(text2dsl_query_latency_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High query latency (P95)"
+          description: "P95 query latency is {{ $value }}s (above 5s threshold)"
+
+      - alert: CriticalQueryLatency
+        expr: |
+          histogram_quantile(0.95, rate(text2dsl_query_latency_seconds_bucket[5m])) > 10
+        for: 3m
+        labels:
+          severity: critical
+          component: performance
+        annotations:
+          summary: "Critical query latency (P95)"
+          description: "P95 query latency is {{ $value }}s (above 10s threshold)"
+
+      - alert: HighAgentLatency
+        expr: |
+          histogram_quantile(0.95, rate(text2dsl_agent_latency_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: agents
+        annotations:
+          summary: "High agent latency for {{ $labels.agent_type }}"
+          description: "P95 latency for {{ $labels.agent_type }} agent is {{ $value }}s (above 2s threshold)"
+
+  - name: text2dsl_cost
+    interval: 60s
+    rules:
+      - alert: HighHourlyCost
+        expr: |
+          sum(rate(text2dsl_cost_usd_total[1h])) * 3600 > 50
+        for: 5m
+        labels:
+          severity: warning
+          component: cost
+        annotations:
+          summary: "High hourly LLM cost"
+          description: "Hourly LLM cost is ${{ $value | humanize }} (above $50/hour threshold)"
+
+      - alert: CriticalHourlyCost
+        expr: |
+          sum(rate(text2dsl_cost_usd_total[1h])) * 3600 > 100
+        for: 3m
+        labels:
+          severity: critical
+          component: cost
+        annotations:
+          summary: "Critical hourly LLM cost"
+          description: "Hourly LLM cost is ${{ $value | humanize }} (above $100/hour threshold)"
+
+      - alert: HighTokenUsage
+        expr: |
+          sum(rate(text2dsl_tokens_used_total[5m])) > 10000
+        for: 10m
+        labels:
+          severity: info
+          component: cost
+        annotations:
+          summary: "High token usage rate"
+          description: "Token usage rate is {{ $value }} tokens/second (above 10k threshold)"
+
+  - name: text2dsl_rag
+    interval: 60s
+    rules:
+      - alert: LowRAGExampleCount
+        expr: |
+          sum(text2dsl_rag_examples_total{status="approved"}) < 10
+        for: 5m
+        labels:
+          severity: warning
+          component: rag
+        annotations:
+          summary: "Low number of approved RAG examples"
+          description: "Only {{ $value }} approved RAG examples available (minimum 10 recommended)"
+
+      - alert: LowRAGUsageRate
+        expr: |
+          avg(text2dsl_rag_example_usage_rate) < 0.5
+        for: 10m
+        labels:
+          severity: info
+          component: rag
+        annotations:
+          summary: "Low RAG example usage rate"
+          description: "RAG examples used in only {{ $value | humanizePercentage }} of queries"
+
+  - name: text2dsl_review_queue
+    interval: 60s
+    rules:
+      - alert: LargeReviewQueue
+        expr: |
+          sum(text2dsl_review_queue_size) > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: review_queue
+        annotations:
+          summary: "Large review queue backlog"
+          description: "Review queue has {{ $value }} items (above 100 threshold)"
+
+      - alert: CriticalReviewQueue
+        expr: |
+          sum(text2dsl_review_queue_size) > 500
+        for: 5m
+        labels:
+          severity: critical
+          component: review_queue
+        annotations:
+          summary: "Critical review queue backlog"
+          description: "Review queue has {{ $value }} items (above 500 threshold)"
+
+      - alert: SlowReviewCompletionTime
+        expr: |
+          histogram_quantile(0.95, rate(text2dsl_review_completion_time_seconds_bucket[1h])) > 7200
+        for: 30m
+        labels:
+          severity: info
+          component: review_queue
+        annotations:
+          summary: "Slow review completion time"
+          description: "P95 review completion time is {{ $value | humanizeDuration }} (above 2 hours)"
+
+  - name: text2dsl_api_health
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(text2dsl_http_requests_total{status_code=~"5.."}[5m])) /
+          sum(rate(text2dsl_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API error rate"
+          description: "API error rate is {{ $value | humanizePercentage }} (above 5% threshold)"
+
+      - alert: CriticalErrorRate
+        expr: |
+          sum(rate(text2dsl_http_requests_total{status_code=~"5.."}[5m])) /
+          sum(rate(text2dsl_http_requests_total[5m])) > 0.10
+        for: 3m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "Critical API error rate"
+          description: "API error rate is {{ $value | humanizePercentage }} (above 10% threshold)"
+
+      - alert: HighHTTPLatency
+        expr: |
+          histogram_quantile(0.95, rate(text2dsl_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High HTTP request latency"
+          description: "P95 HTTP latency is {{ $value }}s (above 2s threshold)"
+
+      - alert: NoTrafficReceived
+        expr: |
+          sum(rate(text2dsl_http_requests_total[5m])) == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "No API traffic received"
+          description: "No HTTP requests received in the last 5 minutes"
