@@ -99,15 +99,15 @@ class Text2XClient:
             follow_redirects=True,
         )
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Text2XClient":
         """Async context manager entry."""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
         await self.close()
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()
 
@@ -142,7 +142,8 @@ class Text2XClient:
             if response.status_code >= 400:
                 self._handle_error_response(response)
 
-            return response.json()
+            result: dict[str, Any] = response.json()
+            return result
 
         except httpx.ConnectError as e:
             raise Text2XConnectionError(f"Failed to connect to API: {e}") from e
@@ -156,7 +157,7 @@ class Text2XClient:
         provider_id: str,
         query: str,
         conversation_id: Optional[UUID] = None,
-        **options,
+        **options: Any,
     ) -> QueryResponse:
         """Generate a database query from natural language.
 
@@ -185,11 +186,12 @@ class Text2XClient:
             ```
         """
         try:
+            from .models import QueryOptions
             request = QueryRequest(
                 provider_id=provider_id,
                 query=query,
                 conversation_id=conversation_id,
-                options=options,
+                options=QueryOptions(**options) if options else QueryOptions(),
             )
         except ValidationError as e:
             raise Text2XValidationError(f"Invalid request: {e}") from e
@@ -308,7 +310,7 @@ class Text2XClient:
         data = await self._request("GET", f"/api/v1/providers/{provider_id}/schema")
 
         try:
-            return ProviderSchema(**data)
+            return ProviderSchema(**data)  # type: ignore[arg-type]
         except ValidationError as e:
             raise Text2XValidationError(f"Invalid response: {e}") from e
 
@@ -348,7 +350,7 @@ class Text2XClient:
         data = await self._request("GET", "/api/v1/review/queue", params={"limit": limit})
 
         try:
-            return [ReviewQueueItem(**item) for item in data]
+            return [ReviewQueueItem(**item) for item in data]  # type: ignore[arg-type]
         except ValidationError as e:
             raise Text2XValidationError(f"Invalid response: {e}") from e
 
@@ -398,7 +400,7 @@ class Text2XClient:
         self,
         provider_id: Optional[str] = None,
         status: Optional[str] = None,
-        limit: int = 50,
+        limit: Optional[int] = 50,
     ) -> list[RAGExampleResponse]:
         """List RAG examples.
 
@@ -419,16 +421,18 @@ class Text2XClient:
             )
             ```
         """
-        params = {"limit": limit}
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
         if provider_id:
             params["provider_id"] = provider_id
         if status:
             params["status"] = status
 
-        data = await self._request("GET", "/api/v1/examples", params=params)
+        data = await self._request("GET", "/api/v1/examples", params=params if params else None)
 
         try:
-            return [RAGExampleResponse(**item) for item in data]
+            return [RAGExampleResponse(**item) for item in data]  # type: ignore[arg-type]
         except ValidationError as e:
             raise Text2XValidationError(f"Invalid response: {e}") from e
 
@@ -442,6 +446,7 @@ class Text2XClient:
         query_intent: Optional[str] = None,
         complexity_level: Optional[str] = None,
     ) -> RAGExampleResponse:
+        from .models import QueryIntent, ComplexityLevel
         """Add a new RAG example.
 
         Args:
@@ -468,14 +473,18 @@ class Text2XClient:
             ```
         """
         try:
+            # Convert string to enum if provided
+            intent_enum = QueryIntent(query_intent) if query_intent else None
+            complexity_enum = ComplexityLevel(complexity_level) if complexity_level else None
+
             request = ExampleRequest(
                 provider_id=provider_id,
                 natural_language_query=natural_language_query,
                 generated_query=generated_query,
                 is_good_example=is_good_example,
                 involved_tables=involved_tables or [],
-                query_intent=query_intent,
-                complexity_level=complexity_level,
+                query_intent=intent_enum,
+                complexity_level=complexity_enum,
             )
         except ValidationError as e:
             raise Text2XValidationError(f"Invalid request: {e}") from e

@@ -1,5 +1,6 @@
 """Tests for SQL Provider"""
 import pytest
+import pytest_asyncio
 import asyncio
 from sqlalchemy import create_engine, text
 
@@ -22,7 +23,7 @@ TEST_CONFIG = SQLConnectionConfig(
 )
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def sql_provider():
     """Create SQL provider for testing"""
     provider = SQLProvider(TEST_CONFIG)
@@ -30,7 +31,7 @@ async def sql_provider():
     await provider.close()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def setup_test_database():
     """Setup test database with sample tables"""
     engine = create_engine(TEST_CONFIG.get_connection_string())

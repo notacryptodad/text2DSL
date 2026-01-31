@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from enum import Enum
 
 import splunklib.client as client
-import splunklib.results as results
+from splunklib.results import JSONResultsReader
 
 from .base import (
     QueryProvider,
@@ -198,7 +198,7 @@ class SplunkProvider(QueryProvider):
                 job = service.jobs.create(search_query, exec_mode="blocking", max_time=10)
 
                 sourcetypes = []
-                for result in results.ResultsReader(job.results()):
+                for result in JSONResultsReader(job.results(output_mode='json')):
                     if isinstance(result, dict) and 'sourcetype' in result:
                         sourcetype = result['sourcetype']
                         sourcetypes.append(sourcetype)
@@ -271,7 +271,7 @@ class SplunkProvider(QueryProvider):
             search_query = 'search * | head 1000 | fieldsummary | fields field'
             job = service.jobs.create(search_query, exec_mode="blocking", max_time=15)
 
-            for result in results.ResultsReader(job.results()):
+            for result in JSONResultsReader(job.results(output_mode='json')):
                 if isinstance(result, dict) and 'field' in result:
                     field_name = result['field']
                     # Skip internal fields and already included fields
@@ -429,7 +429,7 @@ class SplunkProvider(QueryProvider):
             result_rows = []
             columns = set()
 
-            for result in results.ResultsReader(job.results(output_mode='json')):
+            for result in JSONResultsReader(job.results(output_mode='json')):
                 if isinstance(result, dict):
                     # Track all columns
                     columns.update(result.keys())

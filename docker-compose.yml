@@ -30,7 +30,17 @@ services:
     volumes:
       - opensearch_data:/usr/share/opensearch/data
 
+  mongodb:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=text2x_test
+
 volumes:
   postgres_data:
   redis_data:
   opensearch_data:
+  mongodb_data:

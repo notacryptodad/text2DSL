@@ -1,7 +1,7 @@
 """Tests for Pydantic models."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from text2x_client.models import (
@@ -95,7 +95,7 @@ def test_query_response():
         needs_clarification=False,
         clarification_questions=[],
         iterations=2,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
 
     assert response.generated_query == "SELECT * FROM orders;"

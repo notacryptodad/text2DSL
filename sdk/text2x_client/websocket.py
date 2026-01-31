@@ -2,12 +2,17 @@
 
 import asyncio
 import json
-from typing import Any, AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional, Callable
 from uuid import UUID
 
 import websockets
 from pydantic import ValidationError
-from websockets.client import WebSocketClientProtocol
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from websockets.asyncio.client import ClientConnection
+else:
+    ClientConnection = object
 
 from .models import QueryOptions, QueryRequest
 
@@ -96,15 +101,15 @@ class WebSocketClient:
 
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
-        self._ws: Optional[WebSocketClientProtocol] = None
+        self._ws: Optional[ClientConnection] = None
         self._connected = False
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "WebSocketClient":
         """Async context manager entry."""
         await self.connect()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
         await self.close()
 
@@ -114,15 +119,15 @@ class WebSocketClient:
             return
 
         ws_url = f"{self.base_url}/ws/query"
-        extra_headers = {}
+        additional_headers = {}
 
         if self.api_key:
-            extra_headers["Authorization"] = f"Bearer {self.api_key}"
+            additional_headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
             self._ws = await websockets.connect(
                 ws_url,
-                extra_headers=extra_headers,
+                additional_headers=additional_headers,
                 ping_interval=20,
                 ping_timeout=10,
             )
@@ -154,7 +159,8 @@ class WebSocketClient:
 
         try:
             message = await self._ws.recv()
-            return json.loads(message)
+            result: dict[str, Any] = json.loads(message)
+            return result
         except websockets.exceptions.ConnectionClosed as e:
             self._connected = False
             raise WebSocketConnectionError(f"WebSocket connection closed: {e}") from e
@@ -168,7 +174,7 @@ class WebSocketClient:
         provider_id: str,
         query: str,
         conversation_id: Optional[UUID] = None,
-        **options,
+        **options: Any,
     ) -> AsyncIterator[StreamEvent]:
         """Stream query processing events.
 
@@ -254,8 +260,8 @@ class WebSocketClient:
         provider_id: str,
         query: str,
         conversation_id: Optional[UUID] = None,
-        clarification_callback: Optional[callable] = None,
-        **options,
+        clarification_callback: Optional[Callable[[list[str]], Any]] = None,
+        **options: Any,
     ) -> StreamEvent:
         """Stream query processing with automatic clarification handling.
 
@@ -352,7 +358,7 @@ class WebSocketManager:
         self.base_url = base_url
         self.api_key = api_key
         self.pool_size = pool_size
-        self._pool: asyncio.Queue[WebSocketClient] = asyncio.Queue(maxsize=pool_size)
+        self._pool: "asyncio.Queue[WebSocketClient]" = asyncio.Queue(maxsize=pool_size)
         self._initialized = False
 
     async def _initialize_pool(self) -> None:
@@ -366,7 +372,7 @@ class WebSocketManager:
 
         self._initialized = True
 
-    async def get_client(self) -> WebSocketClient:
+    async def get_client(self) -> "_PooledWebSocketClient":
         """Get a client from the pool.
 
         Returns:
@@ -398,14 +404,14 @@ class WebSocketManager:
 class _PooledWebSocketClient:
     """Wrapper for pooled WebSocket client that returns to pool on close."""
 
-    def __init__(self, client: WebSocketClient, pool: asyncio.Queue):
+    def __init__(self, client: WebSocketClient, pool: "asyncio.Queue[WebSocketClient]"):
         self._client = client
         self._pool = pool
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> WebSocketClient:
         await self._client.connect()
         return self._client
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         # Return to pool instead of closing
         await self._pool.put(self._client)

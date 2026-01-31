@@ -267,7 +267,7 @@ class TableInfo(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     name: str
-    schema: Optional[str] = None
+    schema_name: Optional[str] = Field(default=None, alias="schema")
     columns: list[dict[str, Any]] = Field(default_factory=list)
     primary_keys: list[str] = Field(default_factory=list)
     foreign_keys: list[dict[str, Any]] = Field(default_factory=list)

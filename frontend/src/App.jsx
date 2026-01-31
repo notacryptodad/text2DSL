@@ -1,8 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { Moon, Sun, Zap, Database } from 'lucide-react'
+import { Moon, Sun, Zap, Database, History, X } from 'lucide-react'
 import ChatMessage from './components/ChatMessage'
 import ProviderSelect from './components/ProviderSelect'
 import QueryInput from './components/QueryInput'
+import ConversationHistory from './components/ConversationHistory'
+import ProgressIndicator from './components/ProgressIndicator'
+import SettingsPanel from './components/SettingsPanel'
+import WelcomeScreen from './components/WelcomeScreen'
 import useWebSocket from './hooks/useWebSocket'
 
 const PROVIDERS = [
@@ -23,6 +27,20 @@ function App() {
   const [selectedProvider, setSelectedProvider] = useState(PROVIDERS[0])
   const [messages, setMessages] = useState([])
   const [conversationId, setConversationId] = useState(null)
+  const [conversations, setConversations] = useState(() => {
+    const saved = localStorage.getItem('conversations')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [showHistory, setShowHistory] = useState(false)
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('querySettings')
+    return saved ? JSON.parse(saved) : {
+      trace_level: 'summary',
+      enable_execution: false,
+      max_iterations: 5,
+      confidence_threshold: 0.85,
+    }
+  })
   const messagesEndRef = useRef(null)
 
   const { sendQuery, connectionState, progress } = useWebSocket({
@@ -54,11 +72,43 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    // Save conversations to localStorage
+    localStorage.setItem('conversations', JSON.stringify(conversations))
+  }, [conversations])
+
+  useEffect(() => {
+    // Save settings to localStorage
+    localStorage.setItem('querySettings', JSON.stringify(settings))
+  }, [settings])
+
+  useEffect(() => {
+    // Update current conversation
+    if (conversationId && messages.length > 0) {
+      setConversations(prev => {
+        const existing = prev.find(c => c.id === conversationId)
+        if (existing) {
+          return prev.map(c => c.id === conversationId
+            ? { ...c, messages, timestamp: new Date(), provider: selectedProvider.name }
+            : c
+          )
+        } else {
+          return [...prev, {
+            id: conversationId,
+            messages,
+            timestamp: new Date(),
+            provider: selectedProvider.name,
+          }]
+        }
+      })
+    }
+  }, [messages, conversationId, selectedProvider])
+
   const handleWebSocketMessage = (event) => {
-    const { type, data, trace } = event
+    const { type, data } = event
 
     switch (type) {
-      case 'progress':
+      case 'progress': {
         // Update progress state
         if (data.stage === 'started') {
           setConversationId(data.conversation_id)
@@ -71,8 +121,9 @@ function App() {
           })
         }
         break
+      }
 
-      case 'result':
+      case 'result': {
         // Add final result message
         const result = data.result
         addMessage({
@@ -82,11 +133,14 @@ function App() {
           validationStatus: result.validation_status,
           executionResult: result.execution_result,
           trace: result.reasoning_trace,
+          providerId: selectedProvider.id,
+          iterations: result.iterations,
           timestamp: new Date(),
         })
         break
+      }
 
-      case 'clarification':
+      case 'clarification': {
         // Add clarification request
         addMessage({
           type: 'clarification',
@@ -94,8 +148,9 @@ function App() {
           timestamp: new Date(),
         })
         break
+      }
 
-      case 'error':
+      case 'error': {
         // Add error message
         addMessage({
           type: 'error',
@@ -104,6 +159,7 @@ function App() {
           timestamp: new Date(),
         })
         break
+      }
 
       default:
         console.warn('Unknown event type:', type)
@@ -128,14 +184,45 @@ function App() {
       query,
       conversation_id: conversationId,
       options: {
-        trace_level: 'summary',
-        enable_execution: false,
+        trace_level: settings.trace_level,
+        enable_execution: settings.enable_execution,
+        max_iterations: settings.max_iterations,
+        confidence_threshold: settings.confidence_threshold,
       },
     })
   }
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode)
+  }
+
+  const handleNewConversation = () => {
+    setMessages([])
+    setConversationId(null)
+    setShowHistory(false)
+  }
+
+  const handleSelectConversation = (id) => {
+    const conv = conversations.find(c => c.id === id)
+    if (conv) {
+      setMessages(conv.messages)
+      setConversationId(conv.id)
+      setShowHistory(false)
+    }
+  }
+
+  const handleDeleteConversation = (id) => {
+    setConversations(prev => prev.filter(c => c.id !== id))
+    if (conversationId === id) {
+      handleNewConversation()
+    }
+  }
+
+  const handleWelcomeAction = (query) => {
+    if (query) {
+      // Start with example query
+      handleSendQuery(query)
+    }
   }
 
   return (
@@ -175,6 +262,20 @@ function App() {
                 </span>
               </div>
 
+              {/* History Toggle */}
+              <button
+                onClick={() => setShowHistory(!showHistory)}
+                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative"
+                aria-label="Toggle conversation history"
+              >
+                <History className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                {conversations.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary-500 text-white text-xs rounded-full flex items-center justify-center">
+                    {conversations.length}
+                  </span>
+                )}
+              </button>
+
               {/* Dark Mode Toggle */}
               <button
                 onClick={toggleDarkMode}
@@ -196,7 +297,7 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sidebar */}
-          <aside className="lg:col-span-1">
+          <aside className="lg:col-span-1 space-y-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
               <div className="flex items-center space-x-2 mb-4">
                 <Database className="w-5 h-5 text-primary-500" />
@@ -231,6 +332,9 @@ function App() {
                 </ul>
               </div>
             </div>
+
+            {/* Settings Panel */}
+            <SettingsPanel settings={settings} onChange={setSettings} />
           </aside>
 
           {/* Chat Area */}
@@ -239,34 +343,7 @@ function App() {
               {/* Messages */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <Zap className="w-12 h-12 text-primary-500 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                        Start a conversation
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400 max-w-md">
-                        Ask me anything about your data in plain English. I'll convert it to
-                        the appropriate query language.
-                      </p>
-                      <div className="mt-6 space-y-2">
-                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          Try examples like:
-                        </p>
-                        <div className="space-y-1">
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            "Show me all users who signed up last month"
-                          </p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            "What are the top 10 orders by revenue?"
-                          </p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            "Find customers with more than 5 orders"
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <WelcomeScreen onGetStarted={handleWelcomeAction} />
                 ) : (
                   <>
                     {messages.map((message) => (
@@ -277,25 +354,8 @@ function App() {
                 )}
               </div>
 
-              {/* Progress Bar */}
-              {progress && (
-                <div className="px-6 py-2 border-t border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">
-                      {progress.message}
-                    </span>
-                    <span className="text-gray-500 dark:text-gray-500">
-                      {Math.round(progress.progress * 100)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                    <div
-                      className="bg-primary-500 h-1.5 rounded-full transition-all duration-300"
-                      style={{ width: `${progress.progress * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+              {/* Progress Indicator */}
+              <ProgressIndicator progress={progress} />
 
               {/* Input */}
               <div className="p-6 border-t border-gray-200 dark:border-gray-700">
@@ -313,6 +373,66 @@ function App() {
           </div>
         </div>
       </main>
+
+      {/* Conversation History Sidebar */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={() => setShowHistory(false)}
+          />
+          <div className="absolute right-0 top-0 h-full w-80 bg-white dark:bg-gray-800 shadow-xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Conversation History
+              </h2>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="h-[calc(100%-64px)]">
+              <ConversationHistory
+                conversations={conversations}
+                currentId={conversationId}
+                onSelect={handleSelectConversation}
+                onNew={handleNewConversation}
+                onDelete={handleDeleteConversation}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop History Sidebar */}
+      <div
+        className={`hidden lg:block fixed right-0 top-0 h-full w-80 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 z-40 ${
+          showHistory ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Conversation History
+          </h2>
+          <button
+            onClick={() => setShowHistory(false)}
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        <div className="h-[calc(100%-64px)]">
+          <ConversationHistory
+            conversations={conversations}
+            currentId={conversationId}
+            onSelect={handleSelectConversation}
+            onNew={handleNewConversation}
+            onDelete={handleDeleteConversation}
+          />
+        </div>
+      </div>
     </div>
   )
 }

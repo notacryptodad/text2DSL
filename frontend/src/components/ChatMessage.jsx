@@ -1,8 +1,20 @@
-import { User, Bot, AlertCircle, CheckCircle, Info, Copy, Check } from 'lucide-react'
-import { useState } from 'react'
+import { User, Bot, AlertCircle, CheckCircle, Info, Copy, Check, ChevronDown, ChevronRight, Download } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import Prism from 'prismjs'
+import '../styles/prism-custom.css'
+import 'prismjs/components/prism-sql'
+import 'prismjs/components/prism-mongodb'
+import 'prismjs/components/prism-splunk-spl'
 
 function ChatMessage({ message }) {
   const [copied, setCopied] = useState(false)
+  const [traceExpanded, setTraceExpanded] = useState(false)
+  const [agentDetailsExpanded, setAgentDetailsExpanded] = useState({})
+
+  useEffect(() => {
+    // Highlight code after render
+    Prism.highlightAll()
+  }, [message])
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text)
@@ -10,11 +22,35 @@ function ChatMessage({ message }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const downloadQuery = (query, filename = 'query.sql') => {
+    const blob = new Blob([query], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const formatTimestamp = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
     })
+  }
+
+  const toggleAgentDetails = (agentName) => {
+    setAgentDetailsExpanded(prev => ({
+      ...prev,
+      [agentName]: !prev[agentName]
+    }))
+  }
+
+  const getLanguageClass = (providerId) => {
+    if (providerId?.includes('sql')) return 'language-sql'
+    if (providerId?.includes('mongo')) return 'language-mongodb'
+    if (providerId?.includes('splunk')) return 'language-splunk-spl'
+    return 'language-sql'
   }
 
   if (message.type === 'user') {
@@ -53,20 +89,29 @@ function ChatMessage({ message }) {
                 <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">
                   Generated Query
                 </span>
-                <button
-                  onClick={() => copyToClipboard(message.content)}
-                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
-                  title="Copy query"
-                >
-                  {copied ? (
-                    <Check className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  )}
-                </button>
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => copyToClipboard(message.content)}
+                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                    title="Copy query"
+                  >
+                    {copied ? (
+                      <Check className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <Copy className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => downloadQuery(message.content)}
+                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                    title="Download query"
+                  >
+                    <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  </button>
+                </div>
               </div>
-              <pre className="bg-gray-900 dark:bg-gray-800 text-green-400 p-3 rounded text-sm overflow-x-auto">
-                <code>{message.content}</code>
+              <pre className="bg-gray-900 dark:bg-gray-800 p-3 rounded text-sm overflow-x-auto">
+                <code className={getLanguageClass(message.providerId)}>{message.content}</code>
               </pre>
             </div>
 
@@ -152,25 +197,116 @@ function ChatMessage({ message }) {
 
             {/* Trace Info */}
             {message.trace && (
-              <details className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-                <summary className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase cursor-pointer">
-                  Processing Details
-                </summary>
-                <div className="mt-2 text-xs space-y-2 text-gray-700 dark:text-gray-300">
-                  <div>
-                    <span className="font-semibold">Total Time:</span>{' '}
-                    {message.trace.orchestrator_latency_ms}ms
+              <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                <button
+                  onClick={() => setTraceExpanded(!traceExpanded)}
+                  className="flex items-center justify-between w-full text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:text-gray-800 dark:hover:text-gray-200"
+                >
+                  <span>Processing Details & Reasoning Trace</span>
+                  {traceExpanded ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                </button>
+
+                {traceExpanded && (
+                  <div className="mt-3 space-y-3">
+                    {/* Summary Stats */}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                        <div className="text-gray-500 dark:text-gray-400">Total Time</div>
+                        <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                          {message.trace.orchestrator_latency_ms}ms
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                        <div className="text-gray-500 dark:text-gray-400">Total Tokens</div>
+                        <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                          {message.trace.total_tokens_input + message.trace.total_tokens_output}
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                        <div className="text-gray-500 dark:text-gray-400">Cost</div>
+                        <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                          ${message.trace.total_cost_usd.toFixed(4)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Agent Traces */}
+                    <div className="space-y-2">
+                      {[
+                        { key: 'schema_agent', label: 'Schema Expert', icon: '🗂️' },
+                        { key: 'rag_agent', label: 'RAG Retrieval', icon: '🔍' },
+                        { key: 'query_builder_agent', label: 'Query Builder', icon: '⚙️' },
+                        { key: 'validator_agent', label: 'Validator', icon: '✓' },
+                      ].map(({ key, label, icon }) => {
+                        const agent = message.trace[key]
+                        if (!agent) return null
+
+                        return (
+                          <div key={key} className="bg-gray-50 dark:bg-gray-800 rounded p-2">
+                            <button
+                              onClick={() => toggleAgentDetails(key)}
+                              className="flex items-center justify-between w-full text-left"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <span>{icon}</span>
+                                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {label}
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  {agent.latency_ms}ms
+                                </span>
+                                {agentDetailsExpanded[key] ? (
+                                  <ChevronDown className="w-3 h-3" />
+                                ) : (
+                                  <ChevronRight className="w-3 h-3" />
+                                )}
+                              </div>
+                            </button>
+
+                            {agentDetailsExpanded[key] && (
+                              <div className="mt-2 pl-6 space-y-1 text-xs text-gray-700 dark:text-gray-300">
+                                <div className="flex justify-between">
+                                  <span>Input Tokens:</span>
+                                  <span className="font-mono">{agent.tokens_input}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Output Tokens:</span>
+                                  <span className="font-mono">{agent.tokens_output}</span>
+                                </div>
+                                {agent.iterations > 1 && (
+                                  <div className="flex justify-between">
+                                    <span>Iterations:</span>
+                                    <span className="font-mono">{agent.iterations}</span>
+                                  </div>
+                                )}
+                                {agent.details && Object.keys(agent.details).length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                    <div className="font-semibold mb-1">Details:</div>
+                                    {Object.entries(agent.details).map(([k, v]) => (
+                                      <div key={k} className="flex justify-between">
+                                        <span className="capitalize">{k.replace(/_/g, ' ')}:</span>
+                                        <span className="font-mono">
+                                          {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-semibold">Tokens:</span>{' '}
-                    {message.trace.total_tokens_input + message.trace.total_tokens_output}
-                  </div>
-                  <div>
-                    <span className="font-semibold">Cost:</span> $
-                    {message.trace.total_cost_usd.toFixed(4)}
-                  </div>
-                </div>
-              </details>
+                )}
+              </div>
             )}
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
