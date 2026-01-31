@@ -18,6 +18,20 @@ from .sql_provider import (
     SQLConnectionConfig,
     create_sql_provider,
 )
+from .splunk_provider import (
+    SplunkProvider,
+    SplunkConnectionConfig,
+    SplunkSearchJob,
+    SplunkFieldInfo,
+    SplunkIndexInfo,
+    SearchJobStatus,
+    create_splunk_provider,
+)
+from .nosql_provider import (
+    NoSQLProvider,
+    MongoDBConnectionConfig,
+    create_nosql_provider,
+)
 
 __all__ = [
     # Base classes
@@ -39,4 +53,16 @@ __all__ = [
     "SQLProvider",
     "SQLConnectionConfig",
     "create_sql_provider",
+    # Splunk Provider
+    "SplunkProvider",
+    "SplunkConnectionConfig",
+    "SplunkSearchJob",
+    "SplunkFieldInfo",
+    "SplunkIndexInfo",
+    "SearchJobStatus",
+    "create_splunk_provider",
+    # NoSQL Provider
+    "NoSQLProvider",
+    "MongoDBConnectionConfig",
+    "create_nosql_provider",
 ]

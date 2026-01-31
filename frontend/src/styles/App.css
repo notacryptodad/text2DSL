@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar styles */
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-gray-100 dark:bg-gray-800;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-gray-500;
+  }
+}
+
+/* Apply custom scrollbar to the entire app */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(209 213 219) rgb(243 244 246);
+}
+
+.dark * {
+  scrollbar-color: rgb(75 85 99) rgb(31 41 55);
+}
+
+/* Smooth transitions for dark mode */
+body {
+  @apply transition-colors duration-200;
+}
+
+/* Code block styling */
+pre code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Animation for loading states */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(
+    to right,
+    #f6f7f8 0%,
+    #edeef1 20%,
+    #f6f7f8 40%,
+    #f6f7f8 100%
+  );
+  background-size: 1000px 100%;
+}
+
+.dark .animate-shimmer {
+  background: linear-gradient(
+    to right,
+    #1f2937 0%,
+    #374151 20%,
+    #1f2937 40%,
+    #1f2937 100%
+  );
+}
+
+/* Focus styles for better accessibility */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  @apply ring-2 ring-primary-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 outline-none;
+}
+
+/* Custom animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Disable text selection for UI elements */
+button,
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Allow text selection in code blocks */
+pre,
+code {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
