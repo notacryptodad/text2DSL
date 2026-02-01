@@ -2,6 +2,7 @@
 import logging
 import time
 from datetime import datetime
+from typing import Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
@@ -34,6 +35,25 @@ from text2x.utils.observability import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/query", tags=["query"])
+
+# Global orchestrator instance (initialized on app startup)
+_orchestrator: Optional[any] = None
+
+
+def set_orchestrator(orchestrator):
+    """Set the global orchestrator instance (called from app startup)."""
+    global _orchestrator
+    _orchestrator = orchestrator
+
+
+def get_orchestrator():
+    """Get the global orchestrator instance."""
+    if _orchestrator is None:
+        raise RuntimeError(
+            "Orchestrator not initialized. Make sure to call set_orchestrator() "
+            "during app startup."
+        )
+    return _orchestrator
 
 
 @router.post(
@@ -94,114 +114,162 @@ async def process_query(request: QueryRequest) -> QueryResponse:
                 else settings.enable_execution
             )
 
-            # TODO: Integrate with actual orchestrator
-            # from text2x.agents.orchestrator import QueryOrchestrator
-            # orchestrator = QueryOrchestrator()
-            # result = await orchestrator.process_query(
-            #     provider_id=request.provider_id,
-            #     query=request.query,
-            #     conversation_id=conversation_id,
-            #     max_iterations=max_iterations,
-            #     confidence_threshold=confidence_threshold,
-            #     enable_execution=enable_execution,
-            #     trace_level=request.options.trace_level,
-            # )
+            # Get orchestrator and process query
+            orchestrator = get_orchestrator()
 
-            # Mock response for now (replace with actual orchestrator integration)
+            # Prepare input for orchestrator
+            orchestrator_input = {
+                "user_query": request.query,
+                "provider_id": request.provider_id,
+                "conversation_id": conversation_id,
+                "user_id": "api_user",  # TODO: Extract from authentication context
+                "enable_execution": enable_execution,
+                "trace_level": request.options.trace_level.value,
+                "annotations": {},  # TODO: Add support for schema annotations
+            }
+
+            # Process query through orchestrator
+            orchestrator_result = await orchestrator.process(orchestrator_input)
+
+            # Extract results from orchestrator
+            query_response: QueryResponse = orchestrator_result["query_response"]
+            actual_conversation_id = orchestrator_result["conversation_id"]
+            actual_turn_id = orchestrator_result["turn_id"]
+            all_traces = orchestrator_result.get("all_traces", [])
+
+            # Convert domain QueryResponse to API QueryResponse
             from text2x.api.models import (
                 AgentTrace,
-                ExecutionResult,
-                ReasoningTrace,
-                ValidationResult,
+                ExecutionResult as APIExecutionResult,
+                ReasoningTrace as APIReasoningTrace,
+                ValidationResult as APIValidationResult,
             )
 
-            mock_response = QueryResponse(
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                generated_query="SELECT * FROM users WHERE age > 18",
-                confidence_score=0.92,
-                validation_status=ValidationStatus.VALID,
-                validation_result=ValidationResult(
-                    status=ValidationStatus.VALID,
-                    errors=[],
-                    warnings=[],
-                    suggestions=["Consider adding LIMIT clause for large result sets"],
-                ),
-                execution_result=(
-                    ExecutionResult(
-                        success=True,
-                        row_count=150,
-                        data=None,  # Actual data would be included if needed
-                        execution_time_ms=45,
-                    )
-                    if enable_execution
-                    else None
-                ),
-                reasoning_trace=(
-                    ReasoningTrace(
-                        schema_agent=AgentTrace(
-                            agent_name="SchemaExpert",
-                            latency_ms=250,
-                            tokens_input=500,
-                            tokens_output=800,
-                            details={"tables_analyzed": ["users"]},
-                        ),
-                        rag_agent=AgentTrace(
-                            agent_name="RAGRetrieval",
-                            latency_ms=150,
-                            tokens_input=300,
-                            tokens_output=0,
-                            details={"examples_retrieved": 5, "top_similarity": 0.87},
-                        ),
-                        query_builder_agent=AgentTrace(
-                            agent_name="QueryBuilder",
-                            latency_ms=800,
-                            tokens_input=2000,
-                            tokens_output=150,
-                            iterations=1,
-                            details={"query_type": "filter"},
-                        ),
-                        validator_agent=AgentTrace(
-                            agent_name="Validator",
-                            latency_ms=100,
-                            tokens_input=200,
-                            tokens_output=50,
-                            details={"validation_checks": ["syntax", "schema"]},
-                        ),
-                        orchestrator_latency_ms=1300,
-                        total_tokens_input=3000,
-                        total_tokens_output=1000,
-                        total_cost_usd=0.012,
-                    )
-                    if request.options.trace_level != "none"
-                    else None
-                ),
-                needs_clarification=False,
-                clarification_questions=[],
-                iterations=1,
+            # Convert ValidationStatus from domain to API
+            api_validation_status = ValidationStatus.VALID
+            if query_response.validation_status.value == "passed":
+                api_validation_status = ValidationStatus.VALID
+            elif query_response.validation_status.value == "failed":
+                api_validation_status = ValidationStatus.INVALID
+            elif query_response.validation_status.value == "pending":
+                api_validation_status = ValidationStatus.UNKNOWN
+
+            # Build validation result
+            api_validation_result = APIValidationResult(
+                status=api_validation_status,
+                errors=[query_response.validation_result.error] if query_response.validation_result.error else [],
+                warnings=[],
+                suggestions=query_response.validation_result.suggestions or [],
+            )
+
+            # Build execution result if available
+            api_execution_result = None
+            if query_response.execution_result:
+                api_execution_result = APIExecutionResult(
+                    success=query_response.execution_result.success,
+                    row_count=query_response.execution_result.row_count,
+                    data=None,  # Don't return full data in API response
+                    error_message=query_response.execution_result.error,
+                    execution_time_ms=int(query_response.execution_result.execution_time_ms),
+                )
+
+            # Build reasoning trace if requested
+            api_reasoning_trace = None
+            if request.options.trace_level != "none" and all_traces:
+                # Aggregate traces by agent
+                agent_traces = {}
+                total_input_tokens = 0
+                total_output_tokens = 0
+                total_latency = 0
+
+                for trace in all_traces:
+                    agent_name = trace.agent_name
+                    if agent_name not in agent_traces:
+                        agent_traces[agent_name] = {
+                            "latency_ms": 0,
+                            "tokens_input": 0,
+                            "tokens_output": 0,
+                            "iterations": 0,
+                            "details": {}
+                        }
+
+                    agent_traces[agent_name]["latency_ms"] += trace.duration_ms
+                    # Tokens would be extracted from trace data if available
+                    total_latency += trace.duration_ms
+
+                # Build API trace structure
+                api_reasoning_trace = APIReasoningTrace(
+                    schema_agent=AgentTrace(
+                        agent_name="SchemaExpert",
+                        latency_ms=int(agent_traces.get("SchemaExpertAgent", {}).get("latency_ms", 0)),
+                        tokens_input=0,  # TODO: Extract from trace
+                        tokens_output=0,
+                        details=agent_traces.get("SchemaExpertAgent", {}).get("details", {}),
+                    ) if "SchemaExpertAgent" in agent_traces else None,
+                    rag_agent=AgentTrace(
+                        agent_name="RAGRetrieval",
+                        latency_ms=int(agent_traces.get("RAGRetrievalAgent", {}).get("latency_ms", 0)),
+                        tokens_input=0,
+                        tokens_output=0,
+                        details=agent_traces.get("RAGRetrievalAgent", {}).get("details", {}),
+                    ) if "RAGRetrievalAgent" in agent_traces else None,
+                    query_builder_agent=AgentTrace(
+                        agent_name="QueryBuilder",
+                        latency_ms=int(agent_traces.get("QueryBuilderAgent", {}).get("latency_ms", 0)),
+                        tokens_input=0,
+                        tokens_output=0,
+                        iterations=query_response.iterations,
+                        details=agent_traces.get("QueryBuilderAgent", {}).get("details", {}),
+                    ) if "QueryBuilderAgent" in agent_traces else None,
+                    validator_agent=AgentTrace(
+                        agent_name="Validator",
+                        latency_ms=int(agent_traces.get("ValidatorAgent", {}).get("latency_ms", 0)),
+                        tokens_input=0,
+                        tokens_output=0,
+                        details=agent_traces.get("ValidatorAgent", {}).get("details", {}),
+                    ) if "ValidatorAgent" in agent_traces else None,
+                    orchestrator_latency_ms=int(total_latency),
+                    total_tokens_input=total_input_tokens,
+                    total_tokens_output=total_output_tokens,
+                    total_cost_usd=0.0,  # TODO: Calculate from tokens
+                )
+
+            # Build final API response
+            api_response = QueryResponse(
+                conversation_id=actual_conversation_id,
+                turn_id=actual_turn_id,
+                generated_query=query_response.generated_query,
+                confidence_score=query_response.confidence_score,
+                validation_status=api_validation_status,
+                validation_result=api_validation_result,
+                execution_result=api_execution_result,
+                reasoning_trace=api_reasoning_trace,
+                needs_clarification=query_response.clarification_needed,
+                clarification_questions=[query_response.clarification_question] if query_response.clarification_question else [],
+                iterations=query_response.iterations,
             )
 
             logger.info(
-                f"Query processed successfully: turn_id={turn_id}, "
-                f"confidence={mock_response.confidence_score}"
+                f"Query processed successfully: turn_id={actual_turn_id}, "
+                f"confidence={api_response.confidence_score}"
             )
 
             # Record metrics
             query_duration = time.time() - start_time
-            provider_type = "postgresql"  # Extract from provider_id in real implementation
+            provider_type = "postgresql"  # TODO: Extract from provider_id lookup
 
             # Success metrics
             record_query_success(provider_type)
             record_query_latency(provider_type, query_duration)
-            record_iterations(provider_type, mock_response.iterations)
+            record_iterations(provider_type, api_response.iterations)
 
             # Validation metrics
-            is_valid = mock_response.validation_status == ValidationStatus.VALID
+            is_valid = api_response.validation_status == ValidationStatus.VALID
             record_validation_result(provider_type, is_valid)
 
             # Cost metrics (from trace if available)
-            if mock_response.reasoning_trace:
-                trace = mock_response.reasoning_trace
+            if api_response.reasoning_trace:
+                trace = api_response.reasoning_trace
                 record_tokens_used("input", trace.total_tokens_input, provider_type)
                 record_tokens_used("output", trace.total_tokens_output, provider_type)
                 record_cost(provider_type, trace.total_cost_usd)
@@ -247,13 +315,13 @@ async def process_query(request: QueryRequest) -> QueryResponse:
             # Queue for expert review if confidence is low
             if (
                 settings.auto_queue_low_confidence
-                and mock_response.confidence_score < settings.low_confidence_threshold
+                and api_response.confidence_score < settings.low_confidence_threshold
             ):
-                logger.info(f"Queuing turn {turn_id} for expert review (low confidence)")
+                logger.info(f"Queuing turn {actual_turn_id} for expert review (low confidence)")
                 # TODO: Add to review queue
-                # await add_to_review_queue(turn_id, "low_confidence")
+                # await add_to_review_queue(actual_turn_id, "low_confidence")
 
-            return mock_response
+            return api_response
 
     except ValueError as e:
         logger.warning(f"Invalid request: {e}")

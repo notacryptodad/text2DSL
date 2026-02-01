@@ -145,6 +145,12 @@ class ConversationTurn(Base, UUIDMixin, TimestampMixin):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    feedback = relationship(
+        "UserFeedback",
+        back_populates="turn",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
     
     def __repr__(self) -> str:
         return (

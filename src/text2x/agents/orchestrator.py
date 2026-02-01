@@ -376,19 +376,41 @@ class OrchestratorAgent(BaseAgent):
         Termination logic from design.md section 3.1:
 
         Terminate if:
-        1. confidence >= threshold AND validation_passed
-        2. OR iteration_count >= max_iterations
+        1. confidence >= 0.85 AND validation_passed (PRIMARY CRITERIA)
+        2. OR iteration_count >= max_iterations (FALLBACK)
+
+        The termination criteria ensures we only stop when:
+        - The confidence score is >= 0.85 (high confidence)
+        - AND the query has passed validation (syntactically and semantically correct)
+
+        If these criteria are not met, we continue iterating until max_iterations.
         """
-        # Max iterations reached
+        # Max iterations reached (fallback termination)
         if iteration >= self.max_iterations:
+            logger.warning(
+                f"Terminating after reaching max iterations ({self.max_iterations}). "
+                f"Final confidence: {query_result.confidence_score:.3f}, "
+                f"validation: {query_result.validation_result.validation_status.value}"
+            )
             return True, "max_iterations_reached"
 
-        # Confidence + validation criteria met
+        # Primary termination criteria: confidence >= 0.85 AND validation passed
         if (
             query_result.confidence_score >= self.confidence_threshold
             and query_result.validation_result.validation_status == ValidationStatus.PASSED
         ):
+            logger.info(
+                f"Termination criteria met: confidence={query_result.confidence_score:.3f} >= "
+                f"{self.confidence_threshold}, validation=PASSED"
+            )
             return True, "confidence_and_validation_met"
+
+        # Log why we're continuing
+        logger.debug(
+            f"Continuing iteration: confidence={query_result.confidence_score:.3f} "
+            f"(threshold={self.confidence_threshold}), "
+            f"validation={query_result.validation_result.validation_status.value}"
+        )
 
         # Continue iterating
         return False, "continue_iteration"
@@ -400,19 +422,57 @@ class OrchestratorAgent(BaseAgent):
         schema_context: SchemaContext
     ) -> tuple[bool, Optional[str]]:
         """
-        Determine if user clarification is needed based on confidence and ambiguity
+        Determine if user clarification is needed based on multiple factors:
+
+        1. Low confidence score (< clarification_threshold, typically 0.6)
+        2. Validation failed despite multiple iterations
+        3. Vague query patterns (e.g., very short queries, ambiguous terms)
+        4. Multiple possible interpretations
+
+        This implements the clarification flow for handling vague/ambiguous queries.
         """
-        # If confidence is below clarification threshold, request clarification
+        reasons = []
+
+        # Check 1: Low confidence score
         if query_result.confidence_score < self.clarification_threshold:
+            reasons.append(f"low_confidence_{query_result.confidence_score:.2f}")
             logger.info(
-                f"Low confidence ({query_result.confidence_score:.3f}), "
-                f"requesting clarification"
+                f"Low confidence detected: {query_result.confidence_score:.3f} < "
+                f"{self.clarification_threshold}"
             )
+
+        # Check 2: Validation failed
+        if query_result.validation_result.validation_status == ValidationStatus.FAILED:
+            reasons.append("validation_failed")
+            logger.info("Validation failed, may need clarification")
+
+        # Check 3: Vague query patterns
+        query_words = user_query.strip().split()
+        if len(query_words) <= 3:
+            reasons.append("very_short_query")
+            logger.info(f"Very short query detected: {len(query_words)} words")
+
+        # Check 4: Query contains ambiguous keywords
+        ambiguous_keywords = ["all", "everything", "data", "stuff", "things", "some", "any"]
+        if any(keyword in user_query.lower() for keyword in ambiguous_keywords):
+            if len(query_words) <= 5:  # Only flag if query is also short
+                reasons.append("ambiguous_terms")
+                logger.info("Ambiguous terms detected in short query")
+
+        # Check 5: No relevant tables found
+        if len(schema_context.relevant_tables) == 0:
+            reasons.append("no_relevant_tables")
+            logger.warning("No relevant tables found in schema context")
+
+        # Determine if clarification is needed
+        if reasons:
+            logger.info(f"Clarification needed. Reasons: {', '.join(reasons)}")
 
             clarification_question = await self._generate_clarification_question(
                 user_query=user_query,
                 query_result=query_result,
-                schema_context=schema_context
+                schema_context=schema_context,
+                reasons=reasons
             )
 
             return True, clarification_question
@@ -423,38 +483,76 @@ class OrchestratorAgent(BaseAgent):
         self,
         user_query: str,
         query_result: QueryResult,
-        schema_context: SchemaContext
+        schema_context: SchemaContext,
+        reasons: List[str] = None
     ) -> str:
-        """Use LLM to generate a helpful clarification question"""
+        """
+        Use LLM to generate a helpful clarification question for vague/ambiguous queries.
+
+        The question should be:
+        - Specific and actionable
+        - Friendly and non-technical (when possible)
+        - Focused on resolving the primary ambiguity
+        - Context-aware (references available tables/columns)
+        """
+        reasons = reasons or []
         tables_str = ", ".join([t.name for t in schema_context.relevant_tables])
+
+        # Build context based on reasons for clarification
+        reason_context = ""
+        if "no_relevant_tables" in reasons:
+            reason_context = "\nNote: No relevant tables were found for this query."
+        elif "validation_failed" in reasons:
+            reason_context = f"\nNote: Query validation failed: {query_result.validation_result.error}"
+        elif "very_short_query" in reasons or "ambiguous_terms" in reasons:
+            reason_context = "\nNote: The query is too vague and needs more specific details."
 
         messages = [
             LLMMessage(role="system", content=self.build_system_prompt()),
             LLMMessage(
                 role="user",
-                content=f"""The system has low confidence in understanding the user's query.
-Generate a clarification question to help the user provide more specific information.
+                content=f"""The system needs clarification to better understand the user's query.
+Generate a helpful clarification question that guides the user to be more specific.
 
-User Query: {user_query}
+User Query: "{user_query}"
 
-Available Tables: {tables_str}
+Available Tables: {tables_str if tables_str else "None found"}
 
 Generated Query (low confidence): {query_result.generated_query}
 
 Confidence Score: {query_result.confidence_score:.2f}
 
-Generate ONE specific clarification question that would help improve the query.
-Focus on ambiguities in the user's request or missing details.
-Keep it concise and friendly."""
+Reasons for clarification: {', '.join(reasons)}{reason_context}
+
+Generate ONE specific, friendly clarification question that will help resolve the ambiguity.
+Examples of good clarification questions:
+- "Which table would you like to query: users, orders, or products?"
+- "Do you want to see the count of records, or specific fields like name and email?"
+- "Are you looking for records from a specific time period?"
+
+Keep it concise, specific, and helpful."""
             )
         ]
 
         try:
             response = await self.invoke_llm(messages, temperature=0.3)
-            return response.content.strip()
+            question = response.content.strip()
+
+            # Remove quotes if the LLM wrapped the question
+            if question.startswith('"') and question.endswith('"'):
+                question = question[1:-1]
+
+            return question
         except Exception as e:
             logger.error(f"Failed to generate clarification question: {e}")
-            return "Could you please provide more details about what you're looking for?"
+
+            # Fallback to a generic but helpful question
+            if "no_relevant_tables" in reasons:
+                return "I couldn't identify which tables to query. Could you specify which data you're interested in?"
+            elif "very_short_query" in reasons:
+                return "Could you provide more details about what you're looking for? For example, which fields do you need and any filtering criteria?"
+            else:
+                return "Could you please provide more details about what you're looking for?"
 
     def _collect_all_traces(self) -> List[ReasoningTrace]:
         """Collect reasoning traces from all sub-agents"""
