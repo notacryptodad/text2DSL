@@ -34,7 +34,7 @@ function Providers() {
   const [selectedWorkspace, setSelectedWorkspace] = useState(workspaceId || '')
   const [formData, setFormData] = useState({
     name: '',
-    provider_type: 'postgresql',
+    type: 'postgresql',
     workspace_id: workspaceId || '',
     description: '',
   })
@@ -95,24 +95,29 @@ function Providers() {
       setSubmitting(true)
       const apiUrl = ''
 
-      const response = await fetch(`${apiUrl}/api/v1/admin/providers`, {
+      const response = await fetch(`${apiUrl}/api/v1/workspaces/${formData.workspace_id}/providers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          name: formData.name,
+          type: formData.type,
+          description: formData.description || null,
+          settings: {},
+        }),
       })
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.detail || 'Failed to create provider')
+        throw new Error(error.detail?.message || error.detail || 'Failed to create provider')
       }
 
       await fetchProviders()
       setShowModal(false)
       setFormData({
         name: '',
-        provider_type: 'postgresql',
+        type: 'postgresql',
         workspace_id: workspaceId || '',
         description: '',
       })
@@ -328,6 +333,7 @@ function Providers() {
                       Workspace *
                     </label>
                     <select
+                      name="workspace_id"
                       value={formData.workspace_id}
                       onChange={(e) =>
                         setFormData({ ...formData, workspace_id: e.target.value })
@@ -349,9 +355,10 @@ function Providers() {
                       Provider Type *
                     </label>
                     <select
-                      value={formData.provider_type}
+                      name="type"
+                      value={formData.type}
                       onChange={(e) =>
-                        setFormData({ ...formData, provider_type: e.target.value })
+                        setFormData({ ...formData, type: e.target.value })
                       }
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
                       required
@@ -370,6 +377,7 @@ function Providers() {
                     </label>
                     <input
                       type="text"
+                      name="name"
                       value={formData.name}
                       onChange={(e) =>
                         setFormData({ ...formData, name: e.target.value })
@@ -385,6 +393,7 @@ function Providers() {
                       Description
                     </label>
                     <textarea
+                      name="description"
                       value={formData.description}
                       onChange={(e) =>
                         setFormData({ ...formData, description: e.target.value })
