@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from text2x.agents.base import BaseAgent, LLMConfig, LLMMessage
 from text2x.models import RAGExample, ExampleStatus, SchemaContext
+from text2x.services.embedding_service import BedrockEmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class RAGRetrievalAgent(BaseAgent):
         llm_config: LLMConfig,
         opensearch_client: Any,
         provider_id: str,
+        embedding_service: Optional[BedrockEmbeddingService] = None,
         max_iterations: int = 3,
         min_similarity: float = 0.7,
         keyword_weight: float = 0.3,
@@ -40,6 +42,7 @@ class RAGRetrievalAgent(BaseAgent):
         super().__init__(llm_config, agent_name="RAGRetrievalAgent")
         self.opensearch_client = opensearch_client
         self.provider_id = provider_id
+        self.embedding_service = embedding_service
         self.max_iterations = max_iterations
         self.min_similarity = min_similarity
         self.keyword_weight = keyword_weight
@@ -219,22 +222,28 @@ Return ONLY a JSON array of keywords: ["keyword1", "keyword2", ...]"""
 
     async def _get_embedding(self, text: str) -> List[float]:
         """
-        Get embedding for semantic search
+        Get embedding for semantic search using Bedrock Titan
 
-        TODO: Integrate with actual embedding service (e.g., Bedrock Titan, OpenAI)
-        For now, return a mock embedding
+        Uses BedrockEmbeddingService to generate embeddings.
+        Falls back to mock embedding if service is not configured.
         """
-        # Mock embedding for development
-        # In production, use:
-        # - AWS Bedrock Titan embeddings
-        # - OpenAI embeddings
-        # - Sentence transformers
+        if self.embedding_service:
+            try:
+                embedding = await self.embedding_service.embed_text(text)
+                logger.debug(f"Generated embedding with {len(embedding)} dimensions")
+                return embedding
+            except Exception as e:
+                logger.error(f"Embedding service failed: {e}, falling back to mock")
+
+        # Fallback: Mock embedding for development/testing
+        logger.warning("Using mock embedding - configure BedrockEmbeddingService for production")
         import hashlib
         hash_obj = hashlib.md5(text.encode())
         hash_int = int(hash_obj.hexdigest(), 16)
 
         # Generate deterministic "embedding" from hash
-        embedding = [(hash_int >> i) % 100 / 100.0 for i in range(768)]
+        # Use 1024 dimensions to match Titan v2
+        embedding = [(hash_int >> i) % 100 / 100.0 for i in range(1024)]
         return embedding
 
     async def _classify_intent(self, user_query: str) -> str:

@@ -62,11 +62,27 @@ class Settings(BaseSettings):
         default="http://localhost:9200",
         validation_alias="OPENSEARCH_URL",
     )
+    opensearch_host: str = Field(
+        default="localhost",
+        validation_alias="OPENSEARCH_HOST",
+    )
+    opensearch_port: int = Field(
+        default=443,
+        validation_alias="OPENSEARCH_PORT",
+    )
     opensearch_username: Optional[str] = Field(default=None, validation_alias="OPENSEARCH_USERNAME")
     opensearch_password: Optional[str] = Field(default=None, validation_alias="OPENSEARCH_PASSWORD")
+    opensearch_index: str = Field(
+        default="rag_examples",
+        validation_alias="OPENSEARCH_INDEX",
+    )
     opensearch_index_examples: str = Field(
         default="text2dsl_examples",
         validation_alias="OPENSEARCH_INDEX_EXAMPLES",
+    )
+    opensearch_use_ssl: bool = Field(
+        default=True,
+        validation_alias="OPENSEARCH_USE_SSL",
     )
 
     # LLM Configuration
@@ -84,6 +100,17 @@ class Settings(BaseSettings):
     aws_access_key_id: Optional[str] = Field(default=None, validation_alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: Optional[str] = Field(
         default=None, validation_alias="AWS_SECRET_ACCESS_KEY"
+    )
+
+    # Bedrock Embedding Configuration
+    bedrock_region: str = Field(default="us-east-1", validation_alias="BEDROCK_REGION")
+    bedrock_embedding_model: str = Field(
+        default="amazon.titan-embed-text-v2:0",
+        validation_alias="BEDROCK_EMBEDDING_MODEL"
+    )
+    bedrock_embedding_batch_size: int = Field(
+        default=25,
+        validation_alias="BEDROCK_EMBEDDING_BATCH_SIZE"
     )
 
     # Agent Configuration
