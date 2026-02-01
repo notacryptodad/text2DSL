@@ -2,6 +2,11 @@ import { chromium } from '@playwright/test';
 import { TEST_USERS, loginViaAPI, registerViaAPI } from './fixtures/auth.fixture.js';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * Global setup script for Playwright E2E tests
