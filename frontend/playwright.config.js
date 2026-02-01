@@ -82,7 +82,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       env: {
         // Use test database
-        DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgresql+asyncpg://postgres:postgres@localhost:5432/text2dsl_test',
+        DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgresql+asyncpg://text2x:text2x@localhost:5433/text2x',
 
         // Authentication settings
         ENABLE_AUTH: 'true',

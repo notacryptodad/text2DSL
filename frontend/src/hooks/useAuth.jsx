@@ -7,9 +7,8 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  const apiUrl = import.meta.env.DEV
-    ? 'http://localhost:8000'
-    : window.location.origin
+  // Use relative URLs to leverage Vite's proxy configuration
+  const apiUrl = ''
 
   useEffect(() => {
     // Check for existing token on mount
@@ -51,21 +50,20 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      const formData = new URLSearchParams()
-      formData.append('username', email) // OAuth2 spec uses 'username' field
-      formData.append('password', password)
-
       const response = await fetch(`${apiUrl}/api/v1/auth/token`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: formData,
+        body: JSON.stringify({
+          email,
+          password,
+        }),
       })
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.detail || 'Login failed')
+        throw new Error(error.message || error.detail || 'Login failed')
       }
 
       const data = await response.json()

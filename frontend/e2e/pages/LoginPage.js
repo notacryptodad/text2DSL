@@ -10,7 +10,7 @@ export class LoginPage {
     this.passwordInput = 'input[name="password"], input[type="password"]';
     this.submitButton = 'button[type="submit"]';
     this.registerLink = 'a:has-text("Register"), a:has-text("Sign up")';
-    this.errorMessage = '[role="alert"], .error-message, .text-red-500';
+    this.errorMessage = '.text-red-800, .text-red-300, [role="alert"], .error-message, .text-red-500';
   }
 
   /**
@@ -37,7 +37,7 @@ export class LoginPage {
    * Wait for successful login navigation
    */
   async waitForSuccessfulLogin() {
-    await this.page.waitForURL(/\/(chat|dashboard)/, { timeout: 15000 });
+    await this.page.waitForURL(/\/app/, { timeout: 15000 });
   }
 
   /**

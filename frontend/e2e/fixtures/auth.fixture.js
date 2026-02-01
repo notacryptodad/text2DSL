@@ -97,14 +97,14 @@ export async function loginViaUI(page, credentials) {
   await page.waitForLoadState('networkidle');
 
   // Fill in login form
-  await page.fill('input[name="email"], input[type="email"]', credentials.email);
-  await page.fill('input[name="password"], input[type="password"]', credentials.password);
+  await page.fill('input[name="email"]', credentials.email);
+  await page.fill('input[name="password"]', credentials.password);
 
-  // Submit form
+  // Click submit button
   await page.click('button[type="submit"]');
 
   // Wait for navigation after successful login
-  await page.waitForURL(/\/(chat|dashboard)/, { timeout: 15000 });
+  await page.waitForURL(/\/app/, { timeout: 15000 });
 }
 
 /**
