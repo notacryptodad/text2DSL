@@ -11,6 +11,11 @@ import SchemaAnnotation from './pages/SchemaAnnotation'
 import FeedbackStats from './pages/FeedbackStats'
 import UserProfile from './pages/UserProfile'
 import AdminUsers from './pages/AdminUsers'
+import AdminDashboard from './pages/AdminDashboard'
+import Workspaces from './pages/Workspaces'
+import WorkspaceDetail from './pages/WorkspaceDetail'
+import Providers from './pages/Providers'
+import Connections from './pages/Connections'
 
 function App() {
   const [darkMode, setDarkMode] = useState(() => {
@@ -62,6 +67,48 @@ function App() {
                     />
                   </Routes>
                 </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin Routes - Standalone layout with AdminSidebar */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/workspaces"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <Workspaces />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/workspaces/:workspaceId"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <WorkspaceDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/providers"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <Providers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/connections"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <Connections />
               </ProtectedRoute>
             }
           />

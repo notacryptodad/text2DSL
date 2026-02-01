@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Tag,
   BarChart3,
+  LayoutDashboard,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
@@ -99,17 +100,30 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                   <span className="font-medium">Feedback</span>
                 </Link>
                 {isSuperAdmin && (
-                  <Link
-                    to="/app/admin/users"
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/app/admin/users')
-                        ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <Users className="w-4 h-4" />
-                    <span className="font-medium">Users</span>
-                  </Link>
+                  <>
+                    <Link
+                      to="/admin"
+                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+                        location.pathname.startsWith('/admin')
+                          ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <LayoutDashboard className="w-4 h-4" />
+                      <span className="font-medium">Admin</span>
+                    </Link>
+                    <Link
+                      to="/app/admin/users"
+                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+                        isActive('/app/admin/users')
+                          ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <Users className="w-4 h-4" />
+                      <span className="font-medium">Users</span>
+                    </Link>
+                  </>
                 )}
               </nav>
             </div>
