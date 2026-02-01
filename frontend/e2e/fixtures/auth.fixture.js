@@ -70,10 +70,10 @@ export const testAsUser = base.extend({
 export async function loginViaAPI(page, credentials) {
   const response = await page.request.post('http://localhost:8000/api/v1/auth/token', {
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/json',
     },
-    form: {
-      username: credentials.email,
+    data: {
+      email: credentials.email,
       password: credentials.password,
     },
   });
