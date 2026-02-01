@@ -422,10 +422,11 @@ async def update_review_item(
                     f"Review item {item_id} approved - adding to RAG index"
                 )
                 try:
-                    # The RAG service will handle OpenSearch indexing
-                    # For now, the example is already marked as approved in DB
-                    # and ready for retrieval
-                    pass
+                    # Index in OpenSearch for vector similarity search
+                    await rag_service._index_in_opensearch(example)
+                    logger.info(
+                        f"Successfully indexed example {item_id} in OpenSearch"
+                    )
                 except Exception as e:
                     logger.error(f"Failed to index in RAG system: {e}")
                     # Don't fail the request, just log the error

@@ -20,6 +20,7 @@ from text2x.models.conversation import ConversationTurn
 from text2x.models.feedback import FeedbackCategory, FeedbackRating, UserFeedback
 from text2x.models.rag import ExampleStatus, RAGExample
 from text2x.repositories.feedback import FeedbackRepository
+from text2x.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class FeedbackService:
 
     def __init__(self):
         self.feedback_repo = FeedbackRepository()
+        self.rag_service = RAGService()
 
     async def submit_feedback(
         self,
@@ -229,6 +231,7 @@ class FeedbackService:
             if feedback_text:
                 existing_example.review_notes = feedback_text
             logger.info(f"Updated existing RAG example {existing_example.id}")
+            rag_example = existing_example
         else:
             # Create new approved RAG example
             rag_example = RAGExample(
@@ -252,6 +255,19 @@ class FeedbackService:
             )
             session.add(rag_example)
             logger.info(f"Created new auto-approved RAG example")
+
+        # Flush to get the ID if it's a new example
+        await session.flush()
+
+        # Index in OpenSearch for vector similarity search
+        try:
+            await self.rag_service._index_in_opensearch(rag_example)
+            logger.info(
+                f"Successfully indexed auto-approved example {rag_example.id} in OpenSearch"
+            )
+        except Exception as e:
+            logger.error(f"Failed to index in OpenSearch: {e}")
+            # Continue - example is still saved in DB
 
     async def _queue_for_review(
         self,
