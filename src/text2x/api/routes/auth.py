@@ -90,35 +90,25 @@ async def login(credentials: LoginRequest) -> TokenResponse:
     try:
         logger.info(f"Login attempt for user: {credentials.email}")
 
-        # TODO: Implement real user authentication
-        # For now, this is a placeholder that accepts any credentials
-        # In production, you should:
-        # 1. Fetch user from database by email
-        # 2. Verify password hash
-        # 3. Check if user is active
+        # Authenticate user with database
+        from text2x.repositories.user import UserRepository
 
-        # Placeholder user data - replace with database lookup
-        # Example of how you might validate:
-        # user = await user_repository.get_by_email(credentials.email)
-        # if not user or not verify_password(credentials.password, user.hashed_password):
-        #     raise HTTPException(...)
+        repository = UserRepository()
+        user = await repository.authenticate(credentials.email, credentials.password)
 
-        # For demo purposes, accept test credentials
-        if credentials.email == "admin@example.com" and credentials.password == "password123":
-            user_id = "user-001"
-            user_email = credentials.email
-            user_roles = ["user", "admin"]
-        elif credentials.email.endswith("@example.com"):
-            # Accept any @example.com email for testing
-            user_id = f"user-{hash(credentials.email) % 1000}"
-            user_email = credentials.email
-            user_roles = ["user"]
-        else:
+        if user is None:
             logger.warning(f"Invalid login attempt for: {credentials.email}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
             )
+
+        # Get user ID and roles
+        user_id = str(user.id)
+        user_email = user.email
+        # Handle role - it might be an enum or a string
+        user_role = user.role.value if hasattr(user.role, 'value') else user.role
+        user_roles = [user_role]
 
         # Generate tokens
         access_token = create_access_token(

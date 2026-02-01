@@ -163,6 +163,9 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = Field(default=30, validation_alias="JWT_EXPIRE_MINUTES")
     jwt_refresh_expire_days: int = Field(default=7, validation_alias="JWT_REFRESH_EXPIRE_DAYS")
     api_key_header: str = Field(default="X-API-Key", validation_alias="API_KEY_HEADER")
+    allow_self_registration: bool = Field(
+        default=False, validation_alias="ALLOW_SELF_REGISTRATION"
+    )
 
 
 @lru_cache

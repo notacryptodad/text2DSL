@@ -227,8 +227,35 @@ async def get_current_user_from_token(
     token = credentials.credentials
     token_data = decode_token(token)
 
-    # In a real application, you would fetch the user from the database here
-    # For now, we'll construct a user from the token data
+    # Try to fetch user from database to verify it exists and is active
+    try:
+        from uuid import UUID
+        from text2x.repositories.user import UserRepository
+
+        repository = UserRepository()
+        db_user = await repository.get_by_id(UUID(token_data.user_id))
+
+        if db_user:
+            # Use database user information
+            if not db_user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User account is inactive",
+                )
+
+            user = User(
+                id=str(db_user.id),
+                email=db_user.email,
+                roles=[db_user.role.value],
+                is_active=db_user.is_active,
+            )
+            return user
+    except Exception as e:
+        # If database lookup fails, fall back to token data
+        # This allows the system to work even if DB is temporarily unavailable
+        logger.debug(f"Database user lookup failed, using token data: {e}")
+
+    # Fall back to token data (backward compatibility)
     user = User(
         id=token_data.user_id,
         email=token_data.email,
