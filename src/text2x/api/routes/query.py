@@ -5,8 +5,9 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from text2x.api.auth import User, get_current_user
 from text2x.api.models import (
     ConversationResponse,
     ConversationTurnResponse,
@@ -69,7 +70,10 @@ def get_orchestrator():
     summary="Process natural language query",
     description="Convert natural language to executable database query using multi-agent system",
 )
-async def process_query(request: QueryRequest) -> QueryResponse:
+async def process_query(
+    request: QueryRequest,
+    current_user: Optional[User] = Depends(get_current_user),
+) -> QueryResponse:
     """
     Process a natural language query and generate executable database query.
 
@@ -426,7 +430,10 @@ async def process_query(request: QueryRequest) -> QueryResponse:
     response_model=ConversationResponse,
     summary="Get conversation details",
 )
-async def get_conversation(conversation_id: UUID) -> ConversationResponse:
+async def get_conversation(
+    conversation_id: UUID,
+    current_user: Optional[User] = Depends(get_current_user),
+) -> ConversationResponse:
     """
     Retrieve conversation details including all turns.
 
@@ -507,6 +514,7 @@ async def get_conversation(conversation_id: UUID) -> ConversationResponse:
 )
 async def get_conversation_turns(
     conversation_id: UUID,
+    current_user: Optional[User] = Depends(get_current_user),
 ) -> list[ConversationTurnResponse]:
     """
     Retrieve all turns for a conversation.
@@ -577,6 +585,7 @@ async def get_conversation_turns(
 async def submit_feedback(
     conversation_id: UUID,
     feedback: FeedbackRequest,
+    current_user: Optional[User] = Depends(get_current_user),
 ) -> None:
     """
     Submit user feedback for a conversation/turn.

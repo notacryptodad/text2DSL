@@ -5,12 +5,13 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from text2x.api.app import app_state
+from text2x.api.auth import User, get_current_user
 from text2x.api.models import (
     ErrorResponse,
     ExampleStatus,
@@ -321,6 +322,7 @@ async def get_review_item(item_id: UUID) -> RAGExampleResponse:
 async def update_review_item(
     item_id: UUID,
     update: ReviewUpdateRequest,
+    current_user: Optional[User] = Depends(get_current_user),
 ) -> RAGExampleResponse:
     """
     Update/approve/reject a review queue item.
@@ -393,10 +395,13 @@ async def update_review_item(
                 )
             )
 
+            # Extract reviewer from auth context if available
+            reviewer = current_user.email if current_user else "anonymous"
+
             result = await review_service.process_review_decision(
                 item_id=item_id,
                 decision=decision,
-                reviewer="expert",  # TODO: Get from auth context
+                reviewer=reviewer,
                 corrected_query=update.corrected_query,
                 notes=update.feedback,
             )
