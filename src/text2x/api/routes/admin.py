@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from text2x.api.auth import get_current_active_user, require_role
 from text2x.api.state import app_state
 from text2x.api.models import ErrorResponse
 from text2x.models.admin import AdminRole, WorkspaceAdmin
@@ -123,6 +124,7 @@ class AcceptInvitationResponse(BaseModel):
     response_model=WorkspaceListResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create workspace (super admin only)",
+    dependencies=[Depends(require_role("super_admin"))],
 )
 async def create_workspace(workspace: WorkspaceCreateAdmin) -> WorkspaceListResponse:
     """
@@ -209,6 +211,7 @@ async def create_workspace(workspace: WorkspaceCreateAdmin) -> WorkspaceListResp
     "/workspaces",
     response_model=list[WorkspaceListResponse],
     summary="List all workspaces (super admin only)",
+    dependencies=[Depends(require_role("super_admin"))],
 )
 async def list_workspaces() -> list[WorkspaceListResponse]:
     """
@@ -274,6 +277,7 @@ async def list_workspaces() -> list[WorkspaceListResponse]:
     response_model=AdminResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Invite workspace admin",
+    dependencies=[Depends(require_role("super_admin"))],
 )
 async def invite_admin(
     workspace_id: UUID, invite: InviteAdminRequest
@@ -378,6 +382,7 @@ async def invite_admin(
     response_model=AdminResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Directly assign workspace admin (super admin only)",
+    dependencies=[Depends(require_role("super_admin"))],
 )
 async def assign_admin(
     workspace_id: UUID, assign: AssignAdminRequest
@@ -474,6 +479,7 @@ async def assign_admin(
     "/invitations/{invitation_id}/accept",
     response_model=AcceptInvitationResponse,
     summary="Accept workspace invitation",
+    dependencies=[Depends(get_current_active_user)],
 )
 async def accept_invitation(invitation_id: UUID) -> AcceptInvitationResponse:
     """
@@ -570,6 +576,7 @@ async def accept_invitation(invitation_id: UUID) -> AcceptInvitationResponse:
     "/workspaces/{workspace_id}/admins/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove workspace admin",
+    dependencies=[Depends(require_role("super_admin"))],
 )
 async def remove_admin(workspace_id: UUID, user_id: str) -> None:
     """
