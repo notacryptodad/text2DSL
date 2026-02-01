@@ -83,6 +83,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 async def initialize_database() -> None:
     """Initialize database connection pool."""
+    from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
 
     try:
@@ -96,7 +97,7 @@ async def initialize_database() -> None:
 
         # Test connection
         async with app_state.db_engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
 
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")

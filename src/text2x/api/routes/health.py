@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict
 
 from fastapi import APIRouter, Response, status
+from sqlalchemy import text
 
 from text2x.api.state import app_state
 from text2x.config import settings
@@ -34,7 +35,7 @@ async def check_database_health() -> Dict[str, Any]:
         # Execute a simple query with timeout
         async with app_state.db_engine.connect() as conn:
             start_time = time.time()
-            result = await conn.execute("SELECT 1")
+            result = await conn.execute(text("SELECT 1"))
             latency_ms = (time.time() - start_time) * 1000
 
             return {
