@@ -618,6 +618,390 @@ Your role is to:
 
 You are analytical, precise, and focused on achieving the best possible results for the user."""
 
+    async def process_query_stream(
+        self,
+        user_query: str,
+        provider_id: str,
+        conversation_id: Optional[UUID] = None,
+        user_id: str = "anonymous",
+        enable_execution: bool = False,
+        trace_level: str = "summary",
+        annotations: Dict[str, str] = None
+    ):
+        """
+        Stream query processing events in real-time for WebSocket clients.
+
+        Yields events as the query is processed through different phases:
+        - Schema retrieval progress
+        - RAG search progress
+        - Query generation progress (per iteration)
+        - Validation progress
+        - Clarification requests
+        - Final results
+
+        Args:
+            user_query: Natural language query from user
+            provider_id: Database provider ID
+            conversation_id: Optional conversation ID for multi-turn dialogue
+            user_id: User ID
+            enable_execution: Whether to execute the generated query
+            trace_level: Trace level ("none", "summary", "full")
+            annotations: Optional query annotations
+
+        Yields:
+            dict: Events with type, data, and optional trace information
+        """
+        start_time = time.time()
+        annotations = annotations or {}
+
+        logger.info(f"Starting streaming query processing: '{user_query[:50]}...'")
+
+        # Yield started event
+        yield {
+            "type": "progress",
+            "data": {
+                "stage": "started",
+                "message": "Query processing started",
+                "progress": 0.0
+            }
+        }
+
+        # Get or create conversation
+        conversation, is_new = await self._get_or_create_conversation(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            provider_id=provider_id
+        )
+
+        conversation_id = conversation.id
+        turn_id = uuid4()
+
+        # Iterative refinement loop
+        iteration = 0
+        query_result: Optional[QueryResult] = None
+        schema_context: Optional[SchemaContext] = None
+        rag_examples: List[RAGExample] = []
+        validation_feedback: Optional[ValidationResult] = None
+
+        while iteration < self.max_iterations:
+            iteration += 1
+            logger.info(f"Starting iteration {iteration}/{self.max_iterations}")
+
+            # Phase 1: Parallel context gathering (Schema + RAG) - only on first iteration
+            if iteration == 1:
+                # Yield schema retrieval start
+                yield {
+                    "type": "progress",
+                    "data": {
+                        "stage": "schema_retrieval",
+                        "message": "Retrieving database schema...",
+                        "progress": 0.1,
+                        "iteration": iteration
+                    },
+                    "trace": {"agent": "SchemaExpert", "action": "retrieving_schema"} if trace_level == "full" else None
+                }
+
+                # Start parallel tasks
+                schema_task = self.schema_expert.process({
+                    "user_query": user_query,
+                    "annotations": annotations
+                })
+
+                # Yield RAG search start
+                yield {
+                    "type": "progress",
+                    "data": {
+                        "stage": "rag_search",
+                        "message": "Searching for similar examples...",
+                        "progress": 0.2,
+                        "iteration": iteration
+                    },
+                    "trace": {"agent": "RAGRetrieval", "action": "searching_examples"} if trace_level == "full" else None
+                }
+
+                rag_task = self.rag_retrieval.process({
+                    "user_query": user_query
+                })
+
+                # Wait for both to complete
+                schema_result, rag_result = await asyncio.gather(schema_task, rag_task)
+
+                schema_context = schema_result["schema_context"]
+                rag_examples = rag_result["examples"]
+
+                # Yield context gathering complete with details
+                yield {
+                    "type": "progress",
+                    "data": {
+                        "stage": "context_gathered",
+                        "message": f"Found {len(schema_context.relevant_tables)} tables and {len(rag_examples)} examples",
+                        "progress": 0.3,
+                        "iteration": iteration,
+                        "tables_found": len(schema_context.relevant_tables),
+                        "examples_found": len(rag_examples),
+                        "top_similarity": rag_examples[0].similarity_score if rag_examples else 0.0
+                    },
+                    "trace": {
+                        "schema": {
+                            "tables": [t.name for t in schema_context.relevant_tables],
+                            "total_columns": sum(len(t.columns) for t in schema_context.relevant_tables)
+                        },
+                        "rag": {
+                            "examples_count": len(rag_examples),
+                            "top_scores": [e.similarity_score for e in rag_examples[:3]]
+                        }
+                    } if trace_level == "full" else None
+                }
+
+            # Phase 2: Query generation
+            yield {
+                "type": "progress",
+                "data": {
+                    "stage": "query_generation",
+                    "message": f"Generating query (iteration {iteration})...",
+                    "progress": 0.3 + (iteration - 1) * 0.15,
+                    "iteration": iteration
+                },
+                "trace": {"agent": "QueryBuilder", "action": "generating_query", "iteration": iteration} if trace_level == "full" else None
+            }
+
+            query_result = await self._generate_query(
+                user_query=user_query,
+                schema_context=schema_context,
+                rag_examples=rag_examples,
+                validation_feedback=validation_feedback,
+                iteration=iteration
+            )
+
+            # Yield query generated
+            yield {
+                "type": "progress",
+                "data": {
+                    "stage": "query_generated",
+                    "message": f"Query generated with confidence {query_result.confidence_score:.2f}",
+                    "progress": 0.4 + (iteration - 1) * 0.15,
+                    "iteration": iteration,
+                    "confidence": query_result.confidence_score,
+                    "query_preview": query_result.generated_query[:100] + "..." if len(query_result.generated_query) > 100 else query_result.generated_query
+                },
+                "trace": {
+                    "confidence": query_result.confidence_score,
+                    "reasoning_steps": len(query_result.reasoning_steps)
+                } if trace_level == "full" else None
+            }
+
+            # Phase 3: Validation
+            yield {
+                "type": "progress",
+                "data": {
+                    "stage": "validation",
+                    "message": "Validating generated query...",
+                    "progress": 0.5 + (iteration - 1) * 0.15,
+                    "iteration": iteration
+                },
+                "trace": {"agent": "Validator", "action": "validating_query"} if trace_level == "full" else None
+            }
+
+            validation_result, execution_result = await self._validate_query(
+                query=query_result.generated_query,
+                user_query=user_query,
+                enable_execution=enable_execution
+            )
+
+            # Update query result
+            query_result.validation_result = validation_result
+            query_result.execution_result = execution_result
+
+            # Yield validation result
+            yield {
+                "type": "progress",
+                "data": {
+                    "stage": "validation_complete",
+                    "message": f"Validation {validation_result.validation_status.value}",
+                    "progress": 0.6 + (iteration - 1) * 0.15,
+                    "iteration": iteration,
+                    "validation_status": validation_result.validation_status.value,
+                    "has_errors": len(validation_result.errors) > 0,
+                    "has_warnings": len(validation_result.warnings) > 0
+                },
+                "trace": {
+                    "validation_status": validation_result.validation_status.value,
+                    "errors": validation_result.errors,
+                    "warnings": validation_result.warnings
+                } if trace_level == "full" else None
+            }
+
+            # If execution was performed, yield execution result
+            if execution_result and enable_execution:
+                yield {
+                    "type": "progress",
+                    "data": {
+                        "stage": "execution_complete",
+                        "message": f"Execution {'successful' if execution_result.success else 'failed'}",
+                        "progress": 0.7 + (iteration - 1) * 0.15,
+                        "iteration": iteration,
+                        "execution_success": execution_result.success,
+                        "row_count": execution_result.row_count,
+                        "execution_time_ms": execution_result.execution_time_ms
+                    },
+                    "trace": {
+                        "success": execution_result.success,
+                        "row_count": execution_result.row_count,
+                        "execution_time_ms": execution_result.execution_time_ms,
+                        "error": execution_result.error
+                    } if trace_level == "full" else None
+                }
+
+            # Check termination criteria
+            should_terminate, reason = self._should_terminate(
+                query_result=query_result,
+                iteration=iteration
+            )
+
+            logger.info(
+                f"Iteration {iteration}: confidence={query_result.confidence_score:.3f}, "
+                f"validation={validation_result.validation_status.value}, "
+                f"terminate={should_terminate} ({reason})"
+            )
+
+            if should_terminate:
+                break
+
+            # Check if clarification is needed DURING iteration
+            if (
+                query_result.confidence_score < self.clarification_threshold
+                and iteration < self.max_iterations
+            ):
+                logger.info(
+                    f"Low confidence ({query_result.confidence_score:.3f} < {self.clarification_threshold}) "
+                    f"on iteration {iteration}, requesting clarification"
+                )
+                break
+
+            # Prepare feedback for next iteration
+            validation_feedback = validation_result
+
+            # Yield iteration complete
+            yield {
+                "type": "progress",
+                "data": {
+                    "stage": "iteration_complete",
+                    "message": f"Iteration {iteration} complete, continuing...",
+                    "progress": 0.3 + iteration * 0.15,
+                    "iteration": iteration
+                }
+            }
+
+        # Check if clarification is needed
+        needs_clarification, clarification_question = await self._check_clarification_needed(
+            user_query=user_query,
+            query_result=query_result,
+            schema_context=schema_context,
+            iteration=iteration
+        )
+
+        # If clarification is needed, yield clarification event
+        if needs_clarification:
+            yield {
+                "type": "clarification",
+                "data": {
+                    "stage": "clarification_needed",
+                    "message": "Need clarification from user",
+                    "question": clarification_question,
+                    "conversation_id": str(conversation_id),
+                    "turn_id": str(turn_id),
+                    "current_query": query_result.generated_query,
+                    "confidence": query_result.confidence_score
+                }
+            }
+
+        # Build final query response
+        from text2x.api.models import QueryResponse as APIQueryResponse
+
+        query_response = APIQueryResponse(
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            generated_query=query_result.generated_query,
+            confidence_score=query_result.confidence_score,
+            validation_status=validation_result.validation_status,
+            validation_result=None,  # Will be set below
+            execution_result=query_result.execution_result,
+            reasoning_trace=None,  # Will be set below
+            needs_clarification=needs_clarification,
+            clarification_questions=[clarification_question] if needs_clarification and clarification_question else [],
+            iterations=iteration
+        )
+
+        # Collect all traces
+        all_traces = self._collect_all_traces()
+
+        # Add turn to conversation
+        from text2x.models import QueryResponse as DomainQueryResponse
+        domain_response = DomainQueryResponse(
+            generated_query=query_result.generated_query,
+            confidence_score=query_result.confidence_score,
+            validation_status=validation_result.validation_status,
+            execution_result=query_result.execution_result,
+            iterations=iteration,
+            clarification_needed=needs_clarification,
+            clarification_question=clarification_question,
+            reasoning_trace=query_result.reasoning_steps if trace_level != "none" else []
+        )
+
+        turn = conversation.add_turn(
+            user_input=user_query,
+            response=domain_response,
+            trace=all_traces
+        )
+
+        # Update conversation status
+        if needs_clarification:
+            conversation.status = ConversationStatus.ACTIVE
+        else:
+            conversation.status = ConversationStatus.COMPLETED
+
+        duration_ms = (time.time() - start_time) * 1000
+
+        # Yield final result
+        yield {
+            "type": "result",
+            "data": {
+                "stage": "completed",
+                "message": "Query processing completed",
+                "progress": 1.0,
+                "conversation_id": str(conversation_id),
+                "turn_id": str(turn_id),
+                "generated_query": query_result.generated_query,
+                "confidence_score": query_result.confidence_score,
+                "validation_status": validation_result.validation_status.value,
+                "execution_result": {
+                    "success": execution_result.success,
+                    "row_count": execution_result.row_count,
+                    "execution_time_ms": execution_result.execution_time_ms,
+                    "error": execution_result.error
+                } if execution_result else None,
+                "iterations": iteration,
+                "needs_clarification": needs_clarification,
+                "clarification_question": clarification_question,
+                "total_duration_ms": duration_ms
+            },
+            "trace": {
+                "total_latency_ms": duration_ms,
+                "iterations": iteration,
+                "agents": {
+                    "schema_expert": len(self.schema_expert.get_traces()),
+                    "rag_retrieval": len(self.rag_retrieval.get_traces()),
+                    "query_builder": len(self.query_builder.get_traces()),
+                    "validator": len(self.validator.get_traces())
+                }
+            } if trace_level == "full" else None
+        }
+
+        logger.info(
+            f"Streaming query processing completed: conversation_id={conversation_id}, "
+            f"turn_id={turn_id}, iterations={iteration}, duration={duration_ms:.1f}ms"
+        )
+
     async def cleanup(self):
         """Cleanup all sub-agents"""
         await self.schema_expert.cleanup()

@@ -84,6 +84,10 @@ class Settings(BaseSettings):
         default=True,
         validation_alias="OPENSEARCH_USE_SSL",
     )
+    opensearch_verify_certs: bool = Field(
+        default=False,
+        validation_alias="OPENSEARCH_VERIFY_CERTS",
+    )
 
     # LLM Configuration
     llm_provider: str = Field(default="bedrock", validation_alias="LLM_PROVIDER")
@@ -148,6 +152,17 @@ class Settings(BaseSettings):
     low_confidence_threshold: float = Field(
         default=0.6, validation_alias="LOW_CONFIDENCE_THRESHOLD"
     )
+
+    # Authentication
+    enable_auth: bool = Field(default=False, validation_alias="ENABLE_AUTH")
+    jwt_secret_key: str = Field(
+        default="your-secret-key-change-this-in-production",
+        validation_alias="JWT_SECRET_KEY"
+    )
+    jwt_algorithm: str = Field(default="HS256", validation_alias="JWT_ALGORITHM")
+    jwt_expire_minutes: int = Field(default=30, validation_alias="JWT_EXPIRE_MINUTES")
+    jwt_refresh_expire_days: int = Field(default=7, validation_alias="JWT_REFRESH_EXPIRE_DAYS")
+    api_key_header: str = Field(default="X-API-Key", validation_alias="API_KEY_HEADER")
 
 
 @lru_cache

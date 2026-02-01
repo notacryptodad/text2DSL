@@ -241,8 +241,9 @@ async def root() -> dict[str, str]:
 
 
 # Include API routers
-from text2x.api.routes import admin, annotations, conversations, feedback, providers, query, review, health, metrics, workspaces
+from text2x.api.routes import admin, annotations, auth, conversations, feedback, providers, query, review, health, metrics, workspaces
 
+app.include_router(auth.router, prefix=settings.api_prefix)  # Authentication endpoints
 app.include_router(query.router, prefix=settings.api_prefix)
 app.include_router(workspaces.router, prefix=settings.api_prefix)  # Workspaces with nested providers/connections
 app.include_router(providers.router, prefix=settings.api_prefix)  # Legacy flat provider endpoints
@@ -304,8 +305,30 @@ async def query_websocket(websocket: WebSocket) -> None:
                 # Parse and validate request
                 request = WebSocketQueryRequest(**message)
 
+                # Get global orchestrator (same pattern as query route)
+                from text2x.api.routes.query import get_orchestrator
+
+                try:
+                    orchestrator = get_orchestrator()
+                except RuntimeError:
+                    # Orchestrator not initialized - send error
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "data": {
+                                "error": "initialization_error",
+                                "message": "Query orchestrator not initialized",
+                            },
+                        }
+                    )
+                    continue
+
                 # Process query and stream events
-                await handle_websocket_query(websocket, request)
+                await handle_websocket_query(
+                    websocket,
+                    request,
+                    orchestrator=orchestrator
+                )
 
             except ValidationError as e:
                 logger.warning(f"Invalid WebSocket message: {e}")

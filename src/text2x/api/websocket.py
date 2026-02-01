@@ -1,6 +1,6 @@
 """WebSocket handler for streaming query processing."""
 import logging
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Any
 from uuid import UUID, uuid4
 
 from fastapi import WebSocket, WebSocketDisconnect, status
@@ -13,6 +13,7 @@ from text2x.api.models import (
     ValidationStatus,
 )
 from text2x.config import settings
+from text2x.agents.orchestrator import OrchestratorAgent
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class ProgressStage:
 async def handle_websocket_query(
     websocket: WebSocket,
     request: WebSocketQueryRequest,
+    orchestrator: OrchestratorAgent,
 ) -> None:
     """
     Process a query request and stream events to the WebSocket client.
@@ -83,16 +85,13 @@ async def handle_websocket_query(
     Args:
         websocket: WebSocket connection
         request: Query request with natural language input
+        orchestrator: Orchestrator instance (injected from app state)
 
     Yields:
         WebSocketEvent objects representing progress, clarification needs, results, or errors
     """
     try:
         # Merge request options with defaults
-        max_iterations = request.options.max_iterations or settings.max_iterations
-        confidence_threshold = (
-            request.options.confidence_threshold or settings.confidence_threshold
-        )
         enable_execution = (
             request.options.enable_execution
             if request.options.enable_execution is not None
@@ -100,68 +99,33 @@ async def handle_websocket_query(
         )
         trace_level = request.options.trace_level
 
-        # Generate IDs
-        conversation_id = request.conversation_id or uuid4()
-        turn_id = uuid4()
+        # Generate conversation ID if not provided
+        conversation_id = request.conversation_id
 
         logger.info(
             f"WebSocket query processing started: provider={request.provider_id}, "
-            f"conversation_id={conversation_id}, turn_id={turn_id}"
+            f"conversation_id={conversation_id}, query='{request.query[:50]}...'"
         )
 
-        # Send started event
-        await send_event(
-            websocket,
-            EventType.PROGRESS,
-            {
-                "stage": ProgressStage.STARTED,
-                "message": "Query processing started",
-                "conversation_id": str(conversation_id),
-                "turn_id": str(turn_id),
-            },
-            trace_level=trace_level,
-        )
-
-        # TODO: Integrate with actual orchestrator
-        # from text2x.agents.orchestrator import QueryOrchestrator
-        # orchestrator = QueryOrchestrator()
-        #
-        # async for event in orchestrator.process_query_stream(
-        #     provider_id=request.provider_id,
-        #     query=request.query,
-        #     conversation_id=conversation_id,
-        #     max_iterations=max_iterations,
-        #     confidence_threshold=confidence_threshold,
-        #     enable_execution=enable_execution,
-        #     trace_level=trace_level,
-        # ):
-        #     await send_event(
-        #         websocket,
-        #         event.type,
-        #         event.data,
-        #         trace=event.trace if trace_level != TraceLevel.NONE else None,
-        #         trace_level=trace_level,
-        #     )
-
-        # Mock streaming events for now (replace with actual orchestrator integration)
-        async for event in mock_query_stream(
-            request,
-            conversation_id,
-            turn_id,
-            max_iterations,
-            confidence_threshold,
-            enable_execution,
-            trace_level,
+        # Stream events from orchestrator
+        async for event in orchestrator.process_query_stream(
+            user_query=request.query,
+            provider_id=request.provider_id,
+            conversation_id=conversation_id,
+            enable_execution=enable_execution,
+            trace_level=trace_level.value,
+            annotations={}
         ):
+            # Send event to WebSocket client
             await send_event(
                 websocket,
                 event["type"],
                 event["data"],
-                trace=event.get("trace"),
+                trace=event.get("trace") if trace_level != TraceLevel.NONE else None,
                 trace_level=trace_level,
             )
 
-        logger.info(f"WebSocket query processing completed: turn_id={turn_id}")
+        logger.info(f"WebSocket query processing completed")
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected during query processing")
