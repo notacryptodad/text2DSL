@@ -79,6 +79,15 @@ class InviteAdminRequest(BaseModel):
     invited_by: str = Field(..., description="User ID of the inviter")
 
 
+class AssignAdminRequest(BaseModel):
+    """Request model for directly assigning a workspace admin (no invitation)."""
+
+    user_id: str = Field(..., description="User ID to assign")
+    role: AdminRole = Field(
+        default=AdminRole.ADMIN, description="Role to assign (owner, admin, or member)"
+    )
+
+
 class AdminResponse(BaseModel):
     """Response model for workspace admin."""
 
@@ -360,6 +369,103 @@ async def invite_admin(
             detail=ErrorResponse(
                 error="invite_error",
                 message="Failed to invite admin",
+            ).model_dump(),
+        )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/admins/assign",
+    response_model=AdminResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Directly assign workspace admin (super admin only)",
+)
+async def assign_admin(
+    workspace_id: UUID, assign: AssignAdminRequest
+) -> AdminResponse:
+    """
+    Directly assign a user as workspace admin without invitation.
+
+    This endpoint is for super admins only. It immediately grants
+    access to the workspace without requiring the user to accept
+    an invitation.
+
+    Args:
+        workspace_id: Workspace UUID
+        assign: Assignment details (user_id, role)
+
+    Returns:
+        Created admin assignment
+    """
+    try:
+        logger.info(
+            f"Assigning user {assign.user_id} to workspace {workspace_id} as {assign.role.value}"
+        )
+
+        from sqlalchemy import select
+
+        # Verify workspace exists
+        async with await get_session() as session:
+            stmt = select(Workspace).where(Workspace.id == workspace_id)
+            result = await session.execute(stmt)
+            workspace = result.scalar_one_or_none()
+
+            if not workspace:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Workspace {workspace_id} not found",
+                    ).model_dump(mode='json'),
+                )
+
+            # Check if user already has access
+            admin_repo = WorkspaceAdminRepository(session)
+            existing = await admin_repo.get_by_workspace_and_user(
+                workspace_id, assign.user_id
+            )
+
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorResponse(
+                        error="validation_error",
+                        message=f"User {assign.user_id} already has access to this workspace",
+                    ).model_dump(),
+                )
+
+            # Create admin assignment with immediate acceptance
+            admin = await admin_repo.create(
+                workspace_id=workspace_id,
+                user_id=assign.user_id,
+                invited_by="system",
+                role=assign.role,
+                accepted_at=datetime.utcnow(),  # Immediate access
+            )
+
+            await session.commit()
+
+        return AdminResponse(
+            id=admin.id,
+            workspace_id=admin.workspace_id,
+            user_id=admin.user_id,
+            role=admin.role.value,
+            invited_by=admin.invited_by,
+            invited_at=admin.invited_at,
+            accepted_at=admin.accepted_at,
+            is_pending=admin.is_pending,
+            created_at=admin.created_at,
+            updated_at=admin.updated_at,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error assigning admin: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="assign_error",
+                message="Failed to assign admin",
             ).model_dump(),
         )
 
