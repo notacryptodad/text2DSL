@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '001_workspace_provider_connection'
+revision: str = '001'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -77,29 +77,9 @@ def upgrade() -> None:
     op.create_index('ix_connections_provider_id', 'connections', ['provider_id'])
     op.create_index('ix_connections_status', 'connections', ['status'])
     op.create_index('ix_connections_provider_database', 'connections', ['provider_id', 'database'])
-    
-    # Add connection_id to conversations table
-    op.add_column(
-        'conversations',
-        sa.Column('connection_id', postgresql.UUID(as_uuid=True), nullable=True)
-    )
-    op.create_foreign_key(
-        'fk_conversations_connection_id',
-        'conversations',
-        'connections',
-        ['connection_id'],
-        ['id'],
-        ondelete='SET NULL'
-    )
-    op.create_index('ix_conversations_connection_id', 'conversations', ['connection_id'])
 
 
 def downgrade() -> None:
-    # Remove connection_id from conversations
-    op.drop_index('ix_conversations_connection_id', table_name='conversations')
-    op.drop_constraint('fk_conversations_connection_id', 'conversations', type_='foreignkey')
-    op.drop_column('conversations', 'connection_id')
-    
     # Drop connections table
     op.drop_index('ix_connections_provider_database', table_name='connections')
     op.drop_index('ix_connections_status', table_name='connections')

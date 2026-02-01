@@ -85,6 +85,7 @@ async def initialize_database() -> None:
     """Initialize database connection pool."""
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
+    from text2x.models.base import DatabaseConfig, init_db
 
     try:
         app_state.db_engine = create_async_engine(
@@ -94,6 +95,10 @@ async def initialize_database() -> None:
             echo=settings.database_echo,
             pool_pre_ping=True,  # Verify connections before using
         )
+
+        # Also initialize the models database session
+        config = DatabaseConfig.from_env()
+        init_db(config)
 
         # Test connection
         async with app_state.db_engine.connect() as conn:
@@ -174,6 +179,25 @@ if settings.enable_metrics:
 
 
 # Exception handlers
+def _serialize_validation_errors(errors: list) -> list:
+    """Convert validation errors to JSON-serializable format."""
+    serialized = []
+    for error in errors:
+        serialized_error = {}
+        for key, value in error.items():
+            if isinstance(value, bytes):
+                serialized_error[key] = value.decode('utf-8', errors='replace')
+            elif isinstance(value, (list, tuple)):
+                serialized_error[key] = [
+                    item.decode('utf-8', errors='replace') if isinstance(item, bytes) else item
+                    for item in value
+                ]
+            else:
+                serialized_error[key] = value
+        serialized.append(serialized_error)
+    return serialized
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
@@ -190,7 +214,7 @@ async def validation_exception_handler(
         content=ErrorResponse(
             error="validation_error",
             message="Request validation failed",
-            details={"errors": exc.errors()},
+            details={"errors": _serialize_validation_errors(exc.errors())},
         ).model_dump(),
     )
 
