@@ -1,33 +1,33 @@
 import { test as base } from '@playwright/test';
 
 /**
+ * Default super admin credentials (seeded on system startup)
+ * This admin is used to create other test users
+ */
+export const DEFAULT_ADMIN = {
+  email: 'admin@text2dsl.com',
+  password: 'Admin123!',
+  role: 'super_admin',
+  name: 'System Administrator',
+};
+
+/**
  * Test user credentials for E2E tests
- * These users should be created during global setup
+ * These users are created by the super admin during global setup
  */
 export const TEST_USERS = {
-  super_admin: {
-    email: 'super.admin@example.com',
-    password: 'SuperAdmin123!',
-    role: 'super_admin',
-    name: 'Super Admin',
-  },
+  super_admin: DEFAULT_ADMIN,
   admin: {
     email: 'admin.user@example.com',
-    password: 'Admin123!',
-    role: 'admin',
-    name: 'Admin User',
-  },
-  expert: {
-    email: 'expert.user@example.com',
-    password: 'Expert123!',
-    role: 'expert',
-    name: 'Expert User',
+    password: 'TestAdmin123!',
+    role: 'super_admin',
+    name: 'Test Admin User',
   },
   user: {
     email: 'regular.user@example.com',
-    password: 'User123!',
+    password: 'TestUser123!',
     role: 'user',
-    name: 'Regular User',
+    name: 'Test Regular User',
   },
 };
 
@@ -108,11 +108,45 @@ export async function loginViaUI(page, credentials) {
 }
 
 /**
- * Helper function to register a new user via API
+ * Helper function to create a user via admin API
+ * Requires super admin authentication token
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page object
+ * @param {string} adminToken - Super admin access token
+ * @param {Object} userData - User data with email, password, name, role
+ * @returns {Promise<Object>} Created user data
+ */
+export async function createUserViaAdmin(page, adminToken, userData) {
+  const response = await page.request.post('http://localhost:8000/api/v1/admin/users', {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${adminToken}`,
+    },
+    data: {
+      email: userData.email,
+      password: userData.password,
+      name: userData.name || 'Test User',
+      role: userData.role || 'user',
+      is_active: true,
+    },
+  });
+
+  if (!response.ok()) {
+    const errorText = await response.text();
+    throw new Error(`User creation failed: ${response.status()} ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Helper function to register a new user via self-registration API
+ * Note: Self-registration must be enabled in config
  *
  * @param {import('@playwright/test').Page} page - Playwright page object
  * @param {Object} userData - User data with email, password, name
  * @returns {Promise<Object>} Created user data
+ * @deprecated Use createUserViaAdmin instead for E2E tests
  */
 export async function registerViaAPI(page, userData) {
   const response = await page.request.post('http://localhost:8000/api/v1/users/register', {
