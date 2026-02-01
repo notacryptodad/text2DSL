@@ -994,30 +994,67 @@ async def create_connection(
     summary="Get connection details",
 )
 async def get_connection(
-    workspace_id: UUID, 
-    provider_id: UUID, 
+    workspace_id: UUID,
+    provider_id: UUID,
     connection_id: UUID
 ) -> ConnectionResponse:
     """
     Get connection details.
     """
     try:
-        return ConnectionResponse(
-            id=connection_id,
-            provider_id=provider_id,
-            name="Production",
-            host="prod-db.example.com",
-            port=5432,
-            database="ecommerce",
-            schema_name="public",
-            status="connected",
-            status_message=None,
-            last_health_check=datetime.utcnow(),
-            schema_last_refreshed=datetime.utcnow(),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-        
+        logger.info(f"Fetching connection {connection_id}")
+
+        async with await get_session() as session:
+            # Query connection from database
+            connection_stmt = select(Connection).where(
+                Connection.id == connection_id,
+                Connection.provider_id == provider_id
+            )
+            connection_result = await session.execute(connection_stmt)
+            db_connection = connection_result.scalar_one_or_none()
+
+            if not db_connection:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Connection {connection_id} not found",
+                    ).model_dump(),
+                )
+
+            # Verify provider belongs to workspace
+            provider_stmt = select(Provider).where(
+                Provider.id == provider_id,
+                Provider.workspace_id == workspace_id
+            )
+            provider_result = await session.execute(provider_stmt)
+            if not provider_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Provider {provider_id} not found in workspace {workspace_id}",
+                    ).model_dump(),
+                )
+
+            return ConnectionResponse(
+                id=db_connection.id,
+                provider_id=db_connection.provider_id,
+                name=db_connection.name,
+                host=db_connection.host,
+                port=db_connection.port,
+                database=db_connection.database,
+                schema_name=db_connection.schema_name,
+                status=db_connection.status.value,
+                status_message=db_connection.status_message,
+                last_health_check=db_connection.last_health_check,
+                schema_last_refreshed=db_connection.schema_last_refreshed,
+                created_at=db_connection.created_at,
+                updated_at=db_connection.updated_at,
+            )
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching connection: {e}", exc_info=True)
         raise HTTPException(
@@ -1044,22 +1081,78 @@ async def update_connection(
     Update connection details.
     """
     try:
-        return ConnectionResponse(
-            id=connection_id,
-            provider_id=provider_id,
-            name=update.name or "Production",
-            host=update.host or "prod-db.example.com",
-            port=update.port or 5432,
-            database=update.database or "ecommerce",
-            schema_name=update.schema_name,
-            status="connected",
-            status_message=None,
-            last_health_check=datetime.utcnow(),
-            schema_last_refreshed=datetime.utcnow(),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-        
+        logger.info(f"Updating connection {connection_id}")
+
+        async with await get_session() as session:
+            # Query connection from database
+            connection_stmt = select(Connection).where(
+                Connection.id == connection_id,
+                Connection.provider_id == provider_id
+            )
+            connection_result = await session.execute(connection_stmt)
+            db_connection = connection_result.scalar_one_or_none()
+
+            if not db_connection:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Connection {connection_id} not found",
+                    ).model_dump(),
+                )
+
+            # Verify provider belongs to workspace
+            provider_stmt = select(Provider).where(
+                Provider.id == provider_id,
+                Provider.workspace_id == workspace_id
+            )
+            provider_result = await session.execute(provider_stmt)
+            if not provider_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Provider {provider_id} not found in workspace {workspace_id}",
+                    ).model_dump(),
+                )
+
+            # Update fields if provided
+            if update.name is not None:
+                db_connection.name = update.name
+            if update.host is not None:
+                db_connection.host = update.host
+            if update.port is not None:
+                db_connection.port = update.port
+            if update.database is not None:
+                db_connection.database = update.database
+            if update.schema_name is not None:
+                db_connection.schema_name = update.schema_name
+            if update.credentials is not None:
+                db_connection.credentials = update.credentials
+            if update.connection_options is not None:
+                db_connection.connection_options = update.connection_options
+
+            await session.commit()
+            await session.refresh(db_connection)
+
+            return ConnectionResponse(
+                id=db_connection.id,
+                provider_id=db_connection.provider_id,
+                name=db_connection.name,
+                host=db_connection.host,
+                port=db_connection.port,
+                database=db_connection.database,
+                schema_name=db_connection.schema_name,
+                status=db_connection.status.value,
+                status_message=db_connection.status_message,
+                last_health_check=db_connection.last_health_check,
+                schema_last_refreshed=db_connection.schema_last_refreshed,
+                created_at=db_connection.created_at,
+                updated_at=db_connection.updated_at,
+            )
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error updating connection: {e}", exc_info=True)
         raise HTTPException(
