@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from text2x.api.auth import get_current_active_user, require_role
 from text2x.api.state import app_state
 from text2x.api.models import ErrorResponse
+from text2x.api.auth import User, get_current_active_user, require_role
 from text2x.models.admin import AdminRole, WorkspaceAdmin
 from text2x.models.workspace import Workspace
 from text2x.repositories.admin import WorkspaceAdminRepository
@@ -659,5 +660,204 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
             detail=ErrorResponse(
                 error="delete_error",
                 message="Failed to remove admin",
+            ).model_dump(),
+        )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/admins",
+    response_model=list[AdminResponse],
+    summary="List workspace admins",
+    dependencies=[Depends(require_role("super_admin"))],
+)
+async def list_workspace_admins(workspace_id: UUID) -> list[AdminResponse]:
+    """
+    List all admins for a workspace.
+
+    This endpoint is for super admins only. Returns both pending
+    invitations and accepted admins.
+
+    Args:
+        workspace_id: Workspace UUID
+
+    Returns:
+        List of workspace admins (both pending and accepted)
+    """
+    try:
+        logger.info(f"Fetching admins for workspace {workspace_id}")
+
+        from sqlalchemy import select
+
+        async with await get_session() as session:
+            # Verify workspace exists
+            stmt = select(Workspace).where(Workspace.id == workspace_id)
+            result = await session.execute(stmt)
+            workspace = result.scalar_one_or_none()
+
+            if not workspace:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Workspace {workspace_id} not found",
+                    ).model_dump(mode='json'),
+                )
+
+            # Get all admins for the workspace
+            admin_repo = WorkspaceAdminRepository(session)
+            admins = await admin_repo.list_by_workspace(workspace_id)
+
+            return [
+                AdminResponse(
+                    id=admin.id,
+                    workspace_id=admin.workspace_id,
+                    user_id=admin.user_id,
+                    role=admin.role.value,
+                    invited_by=admin.invited_by,
+                    invited_at=admin.invited_at,
+                    accepted_at=admin.accepted_at,
+                    is_pending=admin.is_pending,
+                    created_at=admin.created_at,
+                    updated_at=admin.updated_at,
+                )
+                for admin in admins
+            ]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching workspace admins: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="fetch_error",
+                message="Failed to fetch workspace admins",
+            ).model_dump(),
+        )
+
+
+@router.get(
+    "/invitations",
+    response_model=list[AdminResponse],
+    summary="List pending invitations for current user",
+)
+async def list_invitations(
+    current_user: User = Depends(get_current_active_user),
+) -> list[AdminResponse]:
+    """
+    List pending workspace invitations for the current user.
+
+    Returns all pending invitations that the user has not yet accepted.
+
+    Args:
+        current_user: Current authenticated user
+
+    Returns:
+        List of pending workspace invitations
+    """
+    try:
+        logger.info(f"Fetching pending invitations for user {current_user.id}")
+
+        async with await get_session() as session:
+            admin_repo = WorkspaceAdminRepository(session)
+            invitations = await admin_repo.list_pending_for_user(current_user.id)
+
+            return [
+                AdminResponse(
+                    id=invitation.id,
+                    workspace_id=invitation.workspace_id,
+                    user_id=invitation.user_id,
+                    role=invitation.role.value,
+                    invited_by=invitation.invited_by,
+                    invited_at=invitation.invited_at,
+                    accepted_at=invitation.accepted_at,
+                    is_pending=invitation.is_pending,
+                    created_at=invitation.created_at,
+                    updated_at=invitation.updated_at,
+                )
+                for invitation in invitations
+            ]
+
+    except Exception as e:
+        logger.error(f"Error fetching invitations: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="fetch_error",
+                message="Failed to fetch invitations",
+            ).model_dump(),
+        )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/invitations",
+    response_model=list[AdminResponse],
+    summary="List pending invitations for a workspace",
+    dependencies=[Depends(require_role("super_admin"))],
+)
+async def list_workspace_invitations(workspace_id: UUID) -> list[AdminResponse]:
+    """
+    List pending invitations for a workspace.
+
+    This endpoint is for super admins only. Returns only pending
+    invitations that have not been accepted yet.
+
+    Args:
+        workspace_id: Workspace UUID
+
+    Returns:
+        List of pending workspace invitations
+    """
+    try:
+        logger.info(f"Fetching pending invitations for workspace {workspace_id}")
+
+        from sqlalchemy import select
+
+        async with await get_session() as session:
+            # Verify workspace exists
+            stmt = select(Workspace).where(Workspace.id == workspace_id)
+            result = await session.execute(stmt)
+            workspace = result.scalar_one_or_none()
+
+            if not workspace:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Workspace {workspace_id} not found",
+                    ).model_dump(mode='json'),
+                )
+
+            # Get pending invitations for the workspace
+            admin_repo = WorkspaceAdminRepository(session)
+            invitations = await admin_repo.list_by_workspace(
+                workspace_id, pending_only=True
+            )
+
+            return [
+                AdminResponse(
+                    id=invitation.id,
+                    workspace_id=invitation.workspace_id,
+                    user_id=invitation.user_id,
+                    role=invitation.role.value,
+                    invited_by=invitation.invited_by,
+                    invited_at=invitation.invited_at,
+                    accepted_at=invitation.accepted_at,
+                    is_pending=invitation.is_pending,
+                    created_at=invitation.created_at,
+                    updated_at=invitation.updated_at,
+                )
+                for invitation in invitations
+            ]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching workspace invitations: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="fetch_error",
+                message="Failed to fetch workspace invitations",
             ).model_dump(),
         )
