@@ -3,6 +3,7 @@ Text2DSL database models.
 
 This package contains all SQLAlchemy models for the Text2DSL system:
 - Base classes and session management
+- Workspace, Provider, and Connection management
 - Conversation and query tracking
 - RAG examples
 - Audit logs
@@ -30,6 +31,13 @@ from .conversation import (
     ValidationResult,
 )
 from .rag import ComplexityLevel, ExampleStatus, QueryIntent, RAGExample
+from .workspace import (
+    Connection,
+    ConnectionStatus,
+    Provider,
+    ProviderType,
+    Workspace,
+)
 
 __all__ = [
     # Base classes
@@ -41,6 +49,12 @@ __all__ = [
     "init_db",
     "get_db",
     "close_db",
+    # Workspace models
+    "Workspace",
+    "Provider",
+    "ProviderType",
+    "Connection",
+    "ConnectionStatus",
     # Conversation models
     "Conversation",
     "ConversationStatus",

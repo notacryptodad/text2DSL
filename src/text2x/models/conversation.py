@@ -8,7 +8,7 @@ by the system.
 
 from datetime import datetime
 from enum import Enum as PyEnum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from sqlalchemy import (
@@ -22,9 +22,12 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID as PGUUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from .workspace import Connection
 
 
 class ConversationStatus(str, PyEnum):
@@ -41,12 +44,26 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
     
     A conversation contains multiple turns where the user asks questions
     and the system generates query responses.
+    
+    Each conversation is associated with a specific Connection, which
+    provides the schema context for query generation.
     """
     
     __tablename__ = "conversations"
     
     user_id = Column(String(255), nullable=False, index=True)
-    provider_id = Column(String(255), nullable=False, index=True)
+    
+    # Link to Connection (which maps to a schema)
+    connection_id: Mapped[Optional[PGUUID]] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("connections.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    
+    # Keep provider_id for backward compatibility / denormalization
+    provider_id = Column(String(255), nullable=True, index=True)
+    
     status = Column(
         Enum(ConversationStatus),
         nullable=False,
@@ -55,6 +72,10 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
     )
     
     # Relationships
+    connection: Mapped[Optional["Connection"]] = relationship(
+        "Connection",
+        back_populates="conversations",
+    )
     turns = relationship(
         "ConversationTurn",
         back_populates="conversation",

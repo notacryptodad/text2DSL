@@ -5,6 +5,7 @@
 A multi-agent system that converts natural language queries into executable queries (SQL, NoSQL, Splunk SPL, etc.) with >=95% accuracy through iterative refinement, RAG-powered examples, and expert feedback loops.
 
 ### Key Design Principles
+- **Multi-Tenancy**: Workspace → Provider → Connection hierarchy for isolation
 - **Agentic over Reactive**: Autonomous agents with specialized roles instead of REACT loops
 - **Parallel Processing**: Sub-agents run concurrently where dependencies allow
 - **Iterative Refinement**: Loop until confidence + validation thresholds met
@@ -21,6 +22,18 @@ A multi-agent system that converts natural language queries into executable quer
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
 │  │   Web UI    │  │    API      │  │    CLI      │  │    SDK      │        │
 │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         MULTI-TENANCY LAYER                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  Workspace → Provider → Connection                                   │    │
+│  │  - Logical isolation per team/project                                │    │
+│  │  - Multiple DB types per workspace                                   │    │
+│  │  - Multiple connections per provider (dev/staging/prod)              │    │
+│  │  - Schema caching per connection (Redis)                             │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
@@ -223,9 +236,191 @@ def calculate_confidence(self, query: str, context: Context) -> float:
 
 ---
 
-## 4. Provider Abstraction
+## 4. Multi-Tenancy & Connection Management
 
-### 4.1 Provider Interface
+### 4.1 Data Model Hierarchy
+
+The system supports multi-tenancy through a hierarchical workspace structure:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           WORKSPACE HIERARCHY                                │
+│                                                                              │
+│  Workspace (Team/Project Grouping)                                          │
+│  ├── Settings, slug, description                                            │
+│  │                                                                           │
+│  └── Provider (Database Type)                                               │
+│      ├── Type: postgresql, mysql, athena, bigquery, snowflake,              │
+│      │         redshift, mongodb, opensearch, elasticsearch, splunk         │
+│      ├── Settings (timeouts, defaults)                                      │
+│      │                                                                       │
+│      └── Connection (Specific Database Instance)                            │
+│          ├── Host, port, database, schema_name                              │
+│          ├── Credentials (encrypted JSONB)                                  │
+│          ├── Connection options (SSL, etc.)                                 │
+│          ├── Status: pending, connected, disconnected, error                │
+│          ├── Schema cache key (Redis)                                       │
+│          └── Last schema refresh timestamp                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 Entity Relationships
+
+```
+┌───────────────┐         ┌───────────────┐         ┌───────────────┐
+│   Workspace   │ 1────n  │   Provider    │ 1────n  │  Connection   │
+├───────────────┤         ├───────────────┤         ├───────────────┤
+│ id (UUID)     │         │ id (UUID)     │         │ id (UUID)     │
+│ name          │         │ workspace_id  │◄────────│ provider_id   │
+│ slug (unique) │         │ name          │         │ name          │
+│ description   │         │ type (enum)   │         │ host          │
+│ settings      │         │ description   │         │ port          │
+│ created_at    │         │ settings      │         │ database      │
+│ updated_at    │         │ created_at    │         │ schema_name   │
+└───────────────┘         │ updated_at    │         │ credentials   │
+                          └───────────────┘         │ status        │
+                                                    │ schema_cache  │
+                                                    └───────────────┘
+                                                           │
+                                                           │ 1
+                                                           │
+                                                           ▼ n
+                                                    ┌───────────────┐
+                                                    │ Conversation  │
+                                                    ├───────────────┤
+                                                    │ connection_id │
+                                                    │ user_id       │
+                                                    │ status        │
+                                                    └───────────────┘
+```
+
+### 4.3 Database Models
+
+```python
+class ProviderType(str, Enum):
+    """Supported database provider types"""
+    POSTGRESQL = "postgresql"
+    MYSQL = "mysql"
+    ATHENA = "athena"
+    BIGQUERY = "bigquery"
+    SNOWFLAKE = "snowflake"
+    REDSHIFT = "redshift"
+    MONGODB = "mongodb"
+    OPENSEARCH = "opensearch"
+    ELASTICSEARCH = "elasticsearch"
+    SPLUNK = "splunk"
+
+class ConnectionStatus(str, Enum):
+    """Connection health status"""
+    PENDING = "pending"        # Not yet tested
+    CONNECTED = "connected"    # Successfully connected
+    DISCONNECTED = "disconnected"  # Failed to connect
+    ERROR = "error"            # Connection error
+
+@dataclass
+class Workspace:
+    id: UUID
+    name: str
+    slug: str  # URL-friendly unique identifier
+    description: Optional[str]
+    settings: Dict[str, Any]  # Workspace-specific settings
+    created_at: datetime
+    updated_at: datetime
+    providers: List["Provider"]  # One-to-many relationship
+
+@dataclass
+class Provider:
+    id: UUID
+    workspace_id: UUID
+    name: str
+    type: ProviderType
+    description: Optional[str]
+    settings: Dict[str, Any]  # Provider-specific settings
+    created_at: datetime
+    updated_at: datetime
+    connections: List["Connection"]  # One-to-many relationship
+
+@dataclass
+class Connection:
+    id: UUID
+    provider_id: UUID
+    name: str  # e.g., "Production", "Staging", "Analytics"
+    host: str
+    port: Optional[int]
+    database: str
+    schema_name: Optional[str]
+    credentials: Dict[str, Any]  # Encrypted at rest
+    connection_options: Dict[str, Any]
+    status: ConnectionStatus
+    last_health_check: Optional[datetime]
+    status_message: Optional[str]
+    schema_cache_key: Optional[str]  # Redis key
+    schema_last_refreshed: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+```
+
+### 4.4 API Structure
+
+```yaml
+# Workspace Management
+GET    /api/v1/workspaces                                    # List all
+POST   /api/v1/workspaces                                    # Create
+GET    /api/v1/workspaces/{workspace_id}                     # Get by ID
+PATCH  /api/v1/workspaces/{workspace_id}                     # Update
+DELETE /api/v1/workspaces/{workspace_id}                     # Delete (cascades)
+
+# Provider Management (nested under workspace)
+GET    /api/v1/workspaces/{workspace_id}/providers           # List providers
+POST   /api/v1/workspaces/{workspace_id}/providers           # Create provider
+GET    /api/v1/workspaces/{workspace_id}/providers/{id}      # Get provider
+PATCH  /api/v1/workspaces/{workspace_id}/providers/{id}      # Update provider
+DELETE /api/v1/workspaces/{workspace_id}/providers/{id}      # Delete (cascades)
+
+# Connection Management (nested under provider)
+GET    /api/v1/workspaces/{ws_id}/providers/{prov_id}/connections
+POST   /api/v1/workspaces/{ws_id}/providers/{prov_id}/connections
+GET    /api/v1/workspaces/{ws_id}/providers/{prov_id}/connections/{id}
+PATCH  /api/v1/workspaces/{ws_id}/providers/{prov_id}/connections/{id}
+DELETE /api/v1/workspaces/{ws_id}/providers/{prov_id}/connections/{id}
+POST   /api/v1/workspaces/{ws_id}/providers/{prov_id}/connections/{id}/test
+POST   /api/v1/workspaces/{ws_id}/providers/{prov_id}/connections/{id}/schema/refresh
+```
+
+### 4.5 Schema Caching Strategy
+
+```
+┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
+│   Connection    │         │      Redis      │         │   Target DB     │
+│                 │         │  Schema Cache   │         │                 │
+└────────┬────────┘         └────────┬────────┘         └────────┬────────┘
+         │                           │                           │
+         │  1. Check cache           │                           │
+         │────────────────────────►  │                           │
+         │                           │                           │
+         │  2a. Cache HIT            │                           │
+         │◄────────────────────────  │                           │
+         │     (return schema)       │                           │
+         │                           │                           │
+         │  2b. Cache MISS           │                           │
+         │◄────────────────────────  │                           │
+         │                           │                           │
+         │  3. Introspect schema     │                           │
+         │──────────────────────────────────────────────────────►│
+         │                           │                           │
+         │  4. Schema response       │                           │
+         │◄──────────────────────────────────────────────────────│
+         │                           │                           │
+         │  5. Store in cache        │                           │
+         │────────────────────────►  │                           │
+         │                           │                           │
+```
+
+---
+
+## 5. Provider Abstraction
+
+### 5.1 Provider Interface
 
 ```python
 from abc import ABC, abstractmethod
@@ -281,7 +476,7 @@ class QueryProvider(ABC):
         raise NotImplementedError()
 ```
 
-### 4.2 Provider Implementations
+### 5.2 Provider Implementations
 
 #### SQL Provider
 ```python
@@ -339,9 +534,9 @@ class SQLProvider(QueryProvider):
 
 ---
 
-## 5. Data Models
+## 6. Data Models
 
-### 5.1 Conversation & Session
+### 6.1 Conversation & Session
 
 ```python
 @dataclass
@@ -375,7 +570,7 @@ class QueryResponse:
     clarification_question: Optional[str]
 ```
 
-### 5.2 RAG Examples
+### 6.2 RAG Examples
 
 ```python
 @dataclass
@@ -403,7 +598,7 @@ class RAGExample:
     source_conversation_id: Optional[UUID]
 ```
 
-### 5.3 Audit Log
+### 6.3 Audit Log
 
 ```python
 @dataclass
@@ -445,9 +640,9 @@ class AuditLog:
 
 ---
 
-## 6. Core Flows
+## 7. Core Flows
 
-### 6.1 Query Processing Flow
+### 7.1 Query Processing Flow
 
 ```
 User Input: "Show me all orders from last month with total > $1000"
@@ -505,9 +700,9 @@ User Input: "Show me all orders from last month with total > $1000"
 
 ---
 
-## 7. Technology Stack
+## 8. Technology Stack
 
-### 7.1 Core Components
+### 8.1 Core Components
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
@@ -520,7 +715,7 @@ User Input: "Show me all orders from last month with total > $1000"
 | Schema Cache | Redis | Hot schema cache + annotations |
 | Message Queue | SQS/Redis | Async review queue processing |
 
-### 7.2 LLM Configuration
+### 8.2 LLM Configuration
 
 ```python
 LLM_CONFIGS = {
@@ -555,9 +750,9 @@ AGENT_MODEL_MAPPING = {
 
 ---
 
-## 8. API Design
+## 9. API Design
 
-### 8.1 REST Endpoints
+### 9.1 REST Endpoints
 
 ```yaml
 # Query Processing
@@ -600,7 +795,7 @@ GET  /api/v1/examples
 POST /api/v1/examples
 ```
 
-### 8.2 WebSocket for Streaming
+### 9.2 WebSocket for Streaming
 
 ```python
 @websocket("/ws/query")
@@ -618,9 +813,9 @@ async def query_stream(websocket: WebSocket):
 
 ---
 
-## 9. Observability & Monitoring
+## 10. Observability & Monitoring
 
-### 9.1 Metrics
+### 10.1 Metrics
 
 ```python
 METRICS = {
@@ -651,9 +846,9 @@ METRICS = {
 
 ---
 
-## 10. Schema Annotation System
+## 11. Schema Annotation System
 
-### 10.1 Annotation Model
+### 11.1 Annotation Model
 
 ```python
 @dataclass
@@ -681,7 +876,7 @@ class SchemaAnnotation:
     updated_at: datetime
 ```
 
-### 10.2 Annotation Examples
+### 11.2 Annotation Examples
 
 ```yaml
 annotations:
@@ -702,7 +897,7 @@ annotations:
 
 ---
 
-## 11. Deployment Architecture
+## 12. Deployment Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -748,7 +943,7 @@ annotations:
 
 ---
 
-## 12. Success Metrics & Targets
+## 13. Success Metrics & Targets
 
 | Metric | Target | Measurement Method |
 |--------|--------|-------------------|
@@ -762,7 +957,7 @@ annotations:
 
 ---
 
-## 13. Future Enhancements
+## 14. Future Enhancements
 
 1. **Query Caching**: Cache frequently asked queries for instant response
 2. **Auto-Learning**: Automatically promote high-confidence queries to RAG without expert review
