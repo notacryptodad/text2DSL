@@ -17,6 +17,12 @@ from text2x.api.models import (
     ValidationStatus,
 )
 from text2x.config import settings
+from text2x.repositories.annotation import SchemaAnnotationRepository
+from text2x.repositories.conversation import ConversationRepository
+from text2x.repositories.provider import ProviderRepository
+from text2x.services.feedback_service import FeedbackService
+from text2x.services.rag_service import RAGService
+from text2x.services.review_service import ReviewService, ReviewTrigger
 from text2x.utils.observability import (
     async_log_context,
     record_query_success,
@@ -117,15 +123,48 @@ async def process_query(request: QueryRequest) -> QueryResponse:
             # Get orchestrator and process query
             orchestrator = get_orchestrator()
 
+            # Get schema annotations for the provider
+            annotation_repo = SchemaAnnotationRepository()
+            annotations_list = await annotation_repo.list_by_provider(request.provider_id)
+
+            # Convert annotations to dict format expected by orchestrator
+            annotations = {}
+            for ann in annotations_list:
+                if ann.table_name and not ann.column_name:
+                    # Table-level annotation
+                    if ann.table_name not in annotations:
+                        annotations[ann.table_name] = {}
+                    annotations[ann.table_name]["description"] = ann.description
+                    if ann.business_terms:
+                        annotations[ann.table_name]["business_terms"] = ann.business_terms
+                elif ann.column_name:
+                    # Column-level annotation (format: "table.column")
+                    parts = ann.column_name.split(".", 1)
+                    if len(parts) == 2:
+                        table_name, col_name = parts
+                        if table_name not in annotations:
+                            annotations[table_name] = {}
+                        if "columns" not in annotations[table_name]:
+                            annotations[table_name]["columns"] = {}
+                        annotations[table_name]["columns"][col_name] = {
+                            "description": ann.description,
+                            "business_terms": ann.business_terms or [],
+                            "examples": ann.examples or [],
+                            "sensitive": ann.sensitive,
+                        }
+
+            # Extract user ID from auth context if available
+            user_id = current_user.id if current_user else "anonymous"
+
             # Prepare input for orchestrator
             orchestrator_input = {
                 "user_query": request.query,
                 "provider_id": request.provider_id,
                 "conversation_id": conversation_id,
-                "user_id": "api_user",  # TODO: Extract from authentication context
+                "user_id": user_id,
                 "enable_execution": enable_execution,
                 "trace_level": request.options.trace_level.value,
-                "annotations": {},  # TODO: Add support for schema annotations
+                "annotations": annotations,
             }
 
             # Process query through orchestrator
@@ -194,44 +233,62 @@ async def process_query(request: QueryRequest) -> QueryResponse:
                         }
 
                     agent_traces[agent_name]["latency_ms"] += trace.duration_ms
-                    # Tokens would be extracted from trace data if available
+
+                    # Extract token counts from trace metadata if available
+                    trace_data = trace.data or {}
+                    tokens_in = trace_data.get("tokens_input", 0)
+                    tokens_out = trace_data.get("tokens_output", 0)
+
+                    agent_traces[agent_name]["tokens_input"] += tokens_in
+                    agent_traces[agent_name]["tokens_output"] += tokens_out
+                    total_input_tokens += tokens_in
+                    total_output_tokens += tokens_out
                     total_latency += trace.duration_ms
+
+                # Calculate cost based on token usage (using Claude Sonnet pricing as default)
+                # Input: $3 per 1M tokens, Output: $15 per 1M tokens
+                cost_per_input_token = 3.0 / 1_000_000
+                cost_per_output_token = 15.0 / 1_000_000
+                total_cost_usd = (
+                    total_input_tokens * cost_per_input_token +
+                    total_output_tokens * cost_per_output_token
+                )
 
                 # Build API trace structure
                 api_reasoning_trace = APIReasoningTrace(
                     schema_agent=AgentTrace(
                         agent_name="SchemaExpert",
                         latency_ms=int(agent_traces.get("SchemaExpertAgent", {}).get("latency_ms", 0)),
-                        tokens_input=0,  # TODO: Extract from trace
-                        tokens_output=0,
+                        tokens_input=int(agent_traces.get("SchemaExpertAgent", {}).get("tokens_input", 0)),
+                        tokens_output=int(agent_traces.get("SchemaExpertAgent", {}).get("tokens_output", 0)),
                         details=agent_traces.get("SchemaExpertAgent", {}).get("details", {}),
                     ) if "SchemaExpertAgent" in agent_traces else None,
                     rag_agent=AgentTrace(
                         agent_name="RAGRetrieval",
                         latency_ms=int(agent_traces.get("RAGRetrievalAgent", {}).get("latency_ms", 0)),
-                        tokens_input=0,
-                        tokens_output=0,
+                        tokens_input=int(agent_traces.get("RAGRetrievalAgent", {}).get("tokens_input", 0)),
+                        tokens_output=int(agent_traces.get("RAGRetrievalAgent", {}).get("tokens_output", 0)),
                         details=agent_traces.get("RAGRetrievalAgent", {}).get("details", {}),
                     ) if "RAGRetrievalAgent" in agent_traces else None,
                     query_builder_agent=AgentTrace(
                         agent_name="QueryBuilder",
                         latency_ms=int(agent_traces.get("QueryBuilderAgent", {}).get("latency_ms", 0)),
-                        tokens_input=0,
-                        tokens_output=0,
+                        tokens_input=int(agent_traces.get("QueryBuilderAgent", {}).get("tokens_input", 0)),
+                        tokens_output=int(agent_traces.get("QueryBuilderAgent", {}).get("tokens_output", 0)),
                         iterations=query_response.iterations,
                         details=agent_traces.get("QueryBuilderAgent", {}).get("details", {}),
                     ) if "QueryBuilderAgent" in agent_traces else None,
                     validator_agent=AgentTrace(
                         agent_name="Validator",
                         latency_ms=int(agent_traces.get("ValidatorAgent", {}).get("latency_ms", 0)),
-                        tokens_input=0,
-                        tokens_output=0,
+                        tokens_input=int(agent_traces.get("ValidatorAgent", {}).get("tokens_input", 0)),
+                        tokens_output=int(agent_traces.get("ValidatorAgent", {}).get("tokens_output", 0)),
                         details=agent_traces.get("ValidatorAgent", {}).get("details", {}),
                     ) if "ValidatorAgent" in agent_traces else None,
                     orchestrator_latency_ms=int(total_latency),
                     total_tokens_input=total_input_tokens,
                     total_tokens_output=total_output_tokens,
-                    total_cost_usd=0.0,  # TODO: Calculate from tokens
+                    total_cost_usd=total_cost_usd,
                 )
 
             # Build final API response
@@ -256,7 +313,18 @@ async def process_query(request: QueryRequest) -> QueryResponse:
 
             # Record metrics
             query_duration = time.time() - start_time
-            provider_type = "postgresql"  # TODO: Extract from provider_id lookup
+
+            # Look up provider type from database
+            provider_repo = ProviderRepository()
+            try:
+                from uuid import UUID as PyUUID
+                provider_uuid = PyUUID(request.provider_id) if request.provider_id else None
+                provider = await provider_repo.get_by_id(provider_uuid) if provider_uuid else None
+                provider_type = provider.type.value if provider else "unknown"
+            except (ValueError, AttributeError):
+                # Fall back to unknown if provider_id is not a valid UUID or provider not found
+                logger.warning(f"Could not determine provider type for provider_id={request.provider_id}")
+                provider_type = "unknown"
 
             # Success metrics
             record_query_success(provider_type)
@@ -318,8 +386,15 @@ async def process_query(request: QueryRequest) -> QueryResponse:
                 and api_response.confidence_score < settings.low_confidence_threshold
             ):
                 logger.info(f"Queuing turn {actual_turn_id} for expert review (low confidence)")
-                # TODO: Add to review queue
-                # await add_to_review_queue(actual_turn_id, "low_confidence")
+                review_service = ReviewService()
+                try:
+                    await review_service.auto_queue_for_review(
+                        turn_id=actual_turn_id,
+                        trigger=ReviewTrigger.LOW_CONFIDENCE,
+                        provider_id=request.provider_id,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to queue turn for review: {e}", exc_info=True)
 
             return api_response
 
@@ -367,44 +442,50 @@ async def get_conversation(conversation_id: UUID) -> ConversationResponse:
     try:
         logger.info(f"Fetching conversation {conversation_id}")
 
-        # TODO: Fetch from database
-        # from text2x.db.repositories import ConversationRepository
-        # repo = ConversationRepository()
-        # conversation = await repo.get_by_id(conversation_id)
-        # if not conversation:
-        #     raise HTTPException(status_code=404, detail="Conversation not found")
+        # Fetch from database
+        conversation_repo = ConversationRepository()
+        conversation = await conversation_repo.get_by_id(conversation_id)
 
-        # Mock response
-        mock_response = ConversationResponse(
-            id=conversation_id,
-            provider_id="postgres-main",
-            status="active",
-            turn_count=2,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-            turns=[
-                ConversationTurnResponse(
-                    id=uuid4(),
-                    turn_number=1,
-                    user_input="Show me all users",
-                    generated_query="SELECT * FROM users",
-                    confidence_score=0.95,
-                    validation_status=ValidationStatus.VALID,
-                    created_at=datetime.utcnow(),
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorResponse(
+                    error="not_found",
+                    message=f"Conversation {conversation_id} not found",
+                ).model_dump(),
+            )
+
+        # Convert turns to API response format
+        turns = [
+            ConversationTurnResponse(
+                id=turn.id,
+                turn_number=turn.turn_number,
+                user_input=turn.user_input,
+                generated_query=turn.generated_query,
+                confidence_score=turn.confidence_score,
+                validation_status=(
+                    ValidationStatus.VALID
+                    if turn.validation_result and turn.validation_result.get("status") == "passed"
+                    else ValidationStatus.INVALID
+                    if turn.validation_result and turn.validation_result.get("status") == "failed"
+                    else ValidationStatus.UNKNOWN
                 ),
-                ConversationTurnResponse(
-                    id=uuid4(),
-                    turn_number=2,
-                    user_input="Filter by age over 18",
-                    generated_query="SELECT * FROM users WHERE age > 18",
-                    confidence_score=0.92,
-                    validation_status=ValidationStatus.VALID,
-                    created_at=datetime.utcnow(),
-                ),
-            ],
+                created_at=turn.created_at,
+            )
+            for turn in conversation.turns
+        ]
+
+        response = ConversationResponse(
+            id=conversation.id,
+            provider_id=conversation.provider_id or "unknown",
+            status=conversation.status.value,
+            turn_count=len(conversation.turns),
+            created_at=conversation.created_at,
+            updated_at=conversation.updated_at,
+            turns=turns,
         )
 
-        return mock_response
+        return response
 
     except HTTPException:
         raise
@@ -442,21 +523,40 @@ async def get_conversation_turns(
     try:
         logger.info(f"Fetching turns for conversation {conversation_id}")
 
-        # TODO: Fetch from database
-        # Mock response
-        mock_turns = [
+        # Fetch from database
+        conversation_repo = ConversationRepository()
+        conversation = await conversation_repo.get_by_id(conversation_id)
+
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorResponse(
+                    error="not_found",
+                    message=f"Conversation {conversation_id} not found",
+                ).model_dump(),
+            )
+
+        # Convert turns to API response format
+        turns = [
             ConversationTurnResponse(
-                id=uuid4(),
-                turn_number=1,
-                user_input="Show me all users",
-                generated_query="SELECT * FROM users",
-                confidence_score=0.95,
-                validation_status=ValidationStatus.VALID,
-                created_at=datetime.utcnow(),
-            ),
+                id=turn.id,
+                turn_number=turn.turn_number,
+                user_input=turn.user_input,
+                generated_query=turn.generated_query,
+                confidence_score=turn.confidence_score,
+                validation_status=(
+                    ValidationStatus.VALID
+                    if turn.validation_result and turn.validation_result.get("status") == "passed"
+                    else ValidationStatus.INVALID
+                    if turn.validation_result and turn.validation_result.get("status") == "failed"
+                    else ValidationStatus.UNKNOWN
+                ),
+                created_at=turn.created_at,
+            )
+            for turn in conversation.turns
         ]
 
-        return mock_turns
+        return turns
 
     except Exception as e:
         logger.error(f"Error fetching turns: {e}", exc_info=True)
@@ -495,16 +595,81 @@ async def submit_feedback(
             # Record user satisfaction metrics
             record_user_satisfaction(feedback.rating, feedback.is_query_correct)
 
-            # TODO: Store feedback in database
-            # If corrected query provided and is_query_correct=False, add to RAG as negative example
+            # Get the turn_id from the feedback request (assumes it's provided)
+            # If not provided, we'll need to get the latest turn for this conversation
+            turn_id = feedback.turn_id if hasattr(feedback, 'turn_id') else None
+
+            if not turn_id:
+                # Get the latest turn for this conversation
+                conversation_repo = ConversationRepository()
+                conversation = await conversation_repo.get_by_id(conversation_id)
+                if conversation and conversation.turns:
+                    turn_id = conversation.turns[-1].id
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=ErrorResponse(
+                            error="not_found",
+                            message=f"No turns found for conversation {conversation_id}",
+                        ).model_dump(),
+                    )
+
+            # Store feedback using FeedbackService
+            from text2x.models.feedback import FeedbackRating, FeedbackCategory
+
+            feedback_service = FeedbackService()
+            rating = FeedbackRating.UP if feedback.is_query_correct else FeedbackRating.DOWN
+            category = FeedbackCategory.CORRECTNESS
+
+            try:
+                await feedback_service.submit_feedback(
+                    turn_id=turn_id,
+                    rating=rating,
+                    category=category,
+                    user_id="anonymous",  # Will be replaced with auth context
+                    feedback_text=feedback.feedback_text if hasattr(feedback, 'feedback_text') else None,
+                )
+            except Exception as e:
+                logger.error(f"Failed to submit feedback: {e}", exc_info=True)
+                # Don't fail the request if feedback submission fails
+                pass
+
+            # If corrected query provided and is_query_correct=False, add to RAG as learning example
             if not feedback.is_query_correct and feedback.corrected_query:
                 logger.info("Adding corrected query to RAG store as learning example")
-                # TODO: Add to RAG store
-                # await rag_service.add_example(
-                #     conversation_id=conversation_id,
-                #     corrected_query=feedback.corrected_query,
-                #     is_good_example=True,
-                # )
+                try:
+                    rag_service = RAGService()
+
+                    # Get conversation to extract provider_id and original query
+                    conversation_repo = ConversationRepository()
+                    conversation = await conversation_repo.get_by_id(conversation_id)
+
+                    if conversation:
+                        # Get the turn to get the original query
+                        from text2x.repositories.conversation import ConversationTurnRepository
+                        turn_repo = ConversationTurnRepository()
+                        turn = await turn_repo.get_by_id(turn_id)
+
+                        if turn:
+                            # Add the corrected example to RAG (auto-approve good corrections)
+                            await rag_service.add_example(
+                                nl_query=turn.user_input,
+                                generated_query=feedback.corrected_query,
+                                is_good=True,
+                                provider_id=conversation.provider_id or "unknown",
+                                auto_approve=True,  # Auto-approve user corrections with high confidence
+                                metadata={
+                                    "source": "user_feedback",
+                                    "original_query": turn.generated_query,
+                                    "conversation_id": str(conversation_id),
+                                    "turn_id": str(turn_id),
+                                },
+                            )
+                            logger.info(f"Successfully added corrected query to RAG for turn {turn_id}")
+                except Exception as e:
+                    logger.error(f"Failed to add corrected query to RAG: {e}", exc_info=True)
+                    # Don't fail the request if RAG addition fails
+                    pass
 
             logger.info(
                 f"Feedback submitted successfully for conversation {conversation_id}"
