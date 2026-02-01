@@ -1207,11 +1207,21 @@ clarify = confidence < 0.6 AND iterations < 5
 |----------|--------|--------------|------------|----------|--------|-------|
 | 1. Admin Setup | ✅ | ✅ | ✅ | ✅ | N/A | ✅ |
 | 2. Schema Annotation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 3. Query Generation | ✅ | ✅ | ⚠️ Partial | ⚠️ Partial | ⚠️ Partial | ⚠️ |
-| 4. Review Queue | ✅ | ✅ | ⚠️ Partial | ✅ | N/A | ⚠️ Partial |
+| 3. Query Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 4. Review Queue | ✅ | ✅ | ✅ | ✅ | N/A | ✅ |
 | 5. User Feedback | ✅ | ✅ | ✅ | ✅ | N/A | ✅ |
 
 **Legend:** ✅ Complete | ⚠️ Partial | ❌ Not Started
+
+**Additional Components:**
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Authentication (JWT/API Key) | ✅ | Optional auth layer with FastAPI dependencies |
+| WebSocket Streaming | ✅ | Real-time orchestrator integration |
+| Bedrock Titan Embeddings | ✅ | Vector embeddings for RAG |
+| OpenSearch Integration | ✅ | Hybrid vector + keyword search |
+| All Tests | ✅ | 319+ tests passing |
 
 **Recent Updates (Phase 2):**
 - ✅ Completed `src/text2x/api/routes/admin.py` with all admin endpoints
