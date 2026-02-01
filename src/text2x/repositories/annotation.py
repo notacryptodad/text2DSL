@@ -65,6 +65,7 @@ class SchemaAnnotationRepository:
             )
             session.add(annotation)
             await session.flush()
+            await session.commit()
             await session.refresh(annotation)
             return annotation
 
@@ -208,6 +209,7 @@ class SchemaAnnotationRepository:
                 annotation.sensitive = sensitive
 
             await session.flush()
+            await session.commit()
             await session.refresh(annotation)
             return annotation
 
