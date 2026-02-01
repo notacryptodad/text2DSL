@@ -13,7 +13,6 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from text2x.models.admin import AdminRole, WorkspaceAdmin
-from text2x.models.base import get_db
 
 
 class WorkspaceAdminRepository:
@@ -25,6 +24,16 @@ class WorkspaceAdminRepository:
     return None when the admin is not found rather than raising exceptions.
     """
 
+    def __init__(self, session: Optional[AsyncSession] = None):
+        """
+        Initialize the repository.
+
+        Args:
+            session: Optional database session. If not provided, methods will
+                    expect session to be passed in explicitly.
+        """
+        self.session = session
+
     async def create(
         self,
         workspace_id: UUID,
@@ -33,6 +42,7 @@ class WorkspaceAdminRepository:
         role: AdminRole = AdminRole.MEMBER,
         invited_at: Optional[datetime] = None,
         accepted_at: Optional[datetime] = None,
+        session: Optional[AsyncSession] = None,
     ) -> WorkspaceAdmin:
         """
         Create a new workspace admin record.
@@ -44,6 +54,7 @@ class WorkspaceAdminRepository:
             role: Admin role (default: MEMBER)
             invited_at: When the invitation was sent (default: now)
             accepted_at: When the invitation was accepted (default: None)
+            session: Database session (uses instance session if not provided)
 
         Returns:
             The newly created workspace admin
@@ -51,39 +62,49 @@ class WorkspaceAdminRepository:
         Raises:
             IntegrityError: If user already has a role in this workspace
         """
-        db = get_db()
-        async with db.session() as session:
-            admin = WorkspaceAdmin(
-                workspace_id=workspace_id,
-                user_id=user_id,
-                role=role,
-                invited_by=invited_by,
-                invited_at=invited_at or datetime.utcnow(),
-                accepted_at=accepted_at,
-            )
-            session.add(admin)
-            await session.flush()
-            await session.refresh(admin)
-            return admin
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
 
-    async def get_by_id(self, admin_id: UUID) -> Optional[WorkspaceAdmin]:
+        admin = WorkspaceAdmin(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            role=role,
+            invited_by=invited_by,
+            invited_at=invited_at or datetime.utcnow(),
+            accepted_at=accepted_at,
+        )
+        sess.add(admin)
+        await sess.flush()
+        await sess.refresh(admin)
+        return admin
+
+    async def get_by_id(
+        self, admin_id: UUID, session: Optional[AsyncSession] = None
+    ) -> Optional[WorkspaceAdmin]:
         """
         Retrieve a workspace admin by its ID.
 
         Args:
             admin_id: The workspace admin UUID
+            session: Database session (uses instance session if not provided)
 
         Returns:
             The workspace admin if found, None otherwise
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = select(WorkspaceAdmin).where(WorkspaceAdmin.id == admin_id)
-            result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
+
+        stmt = select(WorkspaceAdmin).where(WorkspaceAdmin.id == admin_id)
+        result = await sess.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def get_by_workspace_and_user(
-        self, workspace_id: UUID, user_id: str
+        self,
+        workspace_id: UUID,
+        user_id: str,
+        session: Optional[AsyncSession] = None,
     ) -> Optional[WorkspaceAdmin]:
         """
         Retrieve a workspace admin by workspace and user.
@@ -91,26 +112,30 @@ class WorkspaceAdminRepository:
         Args:
             workspace_id: The workspace UUID
             user_id: User identifier
+            session: Database session (uses instance session if not provided)
 
         Returns:
             The workspace admin if found, None otherwise
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = select(WorkspaceAdmin).where(
-                and_(
-                    WorkspaceAdmin.workspace_id == workspace_id,
-                    WorkspaceAdmin.user_id == user_id,
-                )
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
+
+        stmt = select(WorkspaceAdmin).where(
+            and_(
+                WorkspaceAdmin.workspace_id == workspace_id,
+                WorkspaceAdmin.user_id == user_id,
             )
-            result = await session.execute(stmt)
-            return result.scalar_one_or_none()
+        )
+        result = await sess.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def list_by_workspace(
         self,
         workspace_id: UUID,
         role: Optional[AdminRole] = None,
         pending_only: bool = False,
+        session: Optional[AsyncSession] = None,
     ) -> List[WorkspaceAdmin]:
         """
         List all admins for a workspace.
@@ -119,97 +144,115 @@ class WorkspaceAdminRepository:
             workspace_id: The workspace UUID
             role: Filter by role (optional)
             pending_only: Only return pending invitations (default: False)
+            session: Database session (uses instance session if not provided)
 
         Returns:
             List of workspace admins, ordered by created_at descending
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = select(WorkspaceAdmin).where(
-                WorkspaceAdmin.workspace_id == workspace_id
-            )
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
 
-            if role is not None:
-                stmt = stmt.where(WorkspaceAdmin.role == role)
+        stmt = select(WorkspaceAdmin).where(
+            WorkspaceAdmin.workspace_id == workspace_id
+        )
 
-            if pending_only:
-                stmt = stmt.where(WorkspaceAdmin.accepted_at.is_(None))
+        if role is not None:
+            stmt = stmt.where(WorkspaceAdmin.role == role)
 
-            stmt = stmt.order_by(WorkspaceAdmin.created_at.desc())
-            result = await session.execute(stmt)
-            return list(result.scalars().all())
+        if pending_only:
+            stmt = stmt.where(WorkspaceAdmin.accepted_at.is_(None))
 
-    async def list_by_user(self, user_id: str) -> List[WorkspaceAdmin]:
+        stmt = stmt.order_by(WorkspaceAdmin.created_at.desc())
+        result = await sess.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_by_user(
+        self, user_id: str, session: Optional[AsyncSession] = None
+    ) -> List[WorkspaceAdmin]:
         """
         List all workspaces for a user.
 
         Args:
             user_id: User identifier
+            session: Database session (uses instance session if not provided)
 
         Returns:
             List of workspace admins for the user, ordered by created_at descending
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = (
-                select(WorkspaceAdmin)
-                .where(WorkspaceAdmin.user_id == user_id)
-                .order_by(WorkspaceAdmin.created_at.desc())
-            )
-            result = await session.execute(stmt)
-            return list(result.scalars().all())
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
 
-    async def list_pending_for_user(self, user_id: str) -> List[WorkspaceAdmin]:
+        stmt = (
+            select(WorkspaceAdmin)
+            .where(WorkspaceAdmin.user_id == user_id)
+            .order_by(WorkspaceAdmin.created_at.desc())
+        )
+        result = await sess.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_pending_for_user(
+        self, user_id: str, session: Optional[AsyncSession] = None
+    ) -> List[WorkspaceAdmin]:
         """
         List pending invitations for a user.
 
         Args:
             user_id: User identifier
+            session: Database session (uses instance session if not provided)
 
         Returns:
             List of pending workspace invitations for the user
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = (
-                select(WorkspaceAdmin)
-                .where(
-                    and_(
-                        WorkspaceAdmin.user_id == user_id,
-                        WorkspaceAdmin.accepted_at.is_(None),
-                    )
-                )
-                .order_by(WorkspaceAdmin.invited_at.desc())
-            )
-            result = await session.execute(stmt)
-            return list(result.scalars().all())
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
 
-    async def accept_invitation(self, admin_id: UUID) -> Optional[WorkspaceAdmin]:
+        stmt = (
+            select(WorkspaceAdmin)
+            .where(
+                and_(
+                    WorkspaceAdmin.user_id == user_id,
+                    WorkspaceAdmin.accepted_at.is_(None),
+                )
+            )
+            .order_by(WorkspaceAdmin.invited_at.desc())
+        )
+        result = await sess.execute(stmt)
+        return list(result.scalars().all())
+
+    async def accept_invitation(
+        self, admin_id: UUID, session: Optional[AsyncSession] = None
+    ) -> Optional[WorkspaceAdmin]:
         """
         Accept a workspace invitation.
 
         Args:
             admin_id: The workspace admin UUID
+            session: Database session (uses instance session if not provided)
 
         Returns:
             The updated workspace admin if found, None otherwise
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = select(WorkspaceAdmin).where(WorkspaceAdmin.id == admin_id)
-            result = await session.execute(stmt)
-            admin = result.scalar_one_or_none()
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
 
-            if admin is None:
-                return None
+        stmt = select(WorkspaceAdmin).where(WorkspaceAdmin.id == admin_id)
+        result = await sess.execute(stmt)
+        admin = result.scalar_one_or_none()
 
-            admin.accept_invitation()
-            await session.flush()
-            await session.refresh(admin)
-            return admin
+        if admin is None:
+            return None
+
+        admin.accept_invitation()
+        await sess.flush()
+        await sess.refresh(admin)
+        return admin
 
     async def update_role(
-        self, admin_id: UUID, role: AdminRole
+        self, admin_id: UUID, role: AdminRole, session: Optional[AsyncSession] = None
     ) -> Optional[WorkspaceAdmin]:
         """
         Update an admin's role.
@@ -217,48 +260,56 @@ class WorkspaceAdminRepository:
         Args:
             admin_id: The workspace admin UUID
             role: New admin role
+            session: Database session (uses instance session if not provided)
 
         Returns:
             The updated workspace admin if found, None otherwise
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = select(WorkspaceAdmin).where(WorkspaceAdmin.id == admin_id)
-            result = await session.execute(stmt)
-            admin = result.scalar_one_or_none()
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
 
-            if admin is None:
-                return None
+        stmt = select(WorkspaceAdmin).where(WorkspaceAdmin.id == admin_id)
+        result = await sess.execute(stmt)
+        admin = result.scalar_one_or_none()
 
-            admin.role = role
-            await session.flush()
-            await session.refresh(admin)
-            return admin
+        if admin is None:
+            return None
 
-    async def delete(self, admin_id: UUID) -> bool:
+        admin.role = role
+        await sess.flush()
+        await sess.refresh(admin)
+        return admin
+
+    async def delete(
+        self, admin_id: UUID, session: Optional[AsyncSession] = None
+    ) -> bool:
         """
         Delete a workspace admin by ID.
 
         Args:
             admin_id: The workspace admin UUID
+            session: Database session (uses instance session if not provided)
 
         Returns:
             True if admin was deleted, False if admin was not found
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = select(WorkspaceAdmin).where(WorkspaceAdmin.id == admin_id)
-            result = await session.execute(stmt)
-            admin = result.scalar_one_or_none()
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
 
-            if admin is None:
-                return False
+        stmt = select(WorkspaceAdmin).where(WorkspaceAdmin.id == admin_id)
+        result = await sess.execute(stmt)
+        admin = result.scalar_one_or_none()
 
-            await session.delete(admin)
-            return True
+        if admin is None:
+            return False
+
+        await sess.delete(admin)
+        return True
 
     async def delete_by_workspace_and_user(
-        self, workspace_id: UUID, user_id: str
+        self, workspace_id: UUID, user_id: str, session: Optional[AsyncSession] = None
     ) -> bool:
         """
         Delete a workspace admin by workspace and user.
@@ -266,29 +317,35 @@ class WorkspaceAdminRepository:
         Args:
             workspace_id: The workspace UUID
             user_id: User identifier
+            session: Database session (uses instance session if not provided)
 
         Returns:
             True if admin was deleted, False if admin was not found
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = select(WorkspaceAdmin).where(
-                and_(
-                    WorkspaceAdmin.workspace_id == workspace_id,
-                    WorkspaceAdmin.user_id == user_id,
-                )
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
+
+        stmt = select(WorkspaceAdmin).where(
+            and_(
+                WorkspaceAdmin.workspace_id == workspace_id,
+                WorkspaceAdmin.user_id == user_id,
             )
-            result = await session.execute(stmt)
-            admin = result.scalar_one_or_none()
+        )
+        result = await sess.execute(stmt)
+        admin = result.scalar_one_or_none()
 
-            if admin is None:
-                return False
+        if admin is None:
+            return False
 
-            await session.delete(admin)
-            return True
+        await sess.delete(admin)
+        return True
 
     async def count_by_workspace(
-        self, workspace_id: UUID, role: Optional[AdminRole] = None
+        self,
+        workspace_id: UUID,
+        role: Optional[AdminRole] = None,
+        session: Optional[AsyncSession] = None,
     ) -> int:
         """
         Count admins in a workspace.
@@ -296,18 +353,21 @@ class WorkspaceAdminRepository:
         Args:
             workspace_id: The workspace UUID
             role: Filter by role (optional)
+            session: Database session (uses instance session if not provided)
 
         Returns:
             Number of admins matching the criteria
         """
-        db = get_db()
-        async with db.session() as session:
-            stmt = select(WorkspaceAdmin).where(
-                WorkspaceAdmin.workspace_id == workspace_id
-            )
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
 
-            if role is not None:
-                stmt = stmt.where(WorkspaceAdmin.role == role)
+        stmt = select(WorkspaceAdmin).where(
+            WorkspaceAdmin.workspace_id == workspace_id
+        )
 
-            result = await session.execute(stmt)
-            return len(list(result.scalars().all()))
+        if role is not None:
+            stmt = stmt.where(WorkspaceAdmin.role == role)
+
+        result = await sess.execute(stmt)
+        return len(list(result.scalars().all()))

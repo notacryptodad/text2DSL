@@ -6,7 +6,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from text2x.api.app import app_state
 from text2x.api.models import ErrorResponse
 from text2x.models.admin import AdminRole, WorkspaceAdmin
 from text2x.models.workspace import Workspace
@@ -15,6 +17,16 @@ from text2x.repositories.admin import WorkspaceAdminRepository
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+async def get_session() -> AsyncSession:
+    """Get database session from app state."""
+    session_maker = async_sessionmaker(
+        app_state.db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    return session_maker()
 
 
 # ============================================================================
@@ -119,13 +131,10 @@ async def create_workspace(workspace: WorkspaceCreateAdmin) -> WorkspaceListResp
     try:
         logger.info(f"Creating workspace: {workspace.name} with owner: {workspace.owner_user_id}")
 
-        from text2x.models.base import get_db
         from sqlalchemy import select, func
         from text2x.models.workspace import Provider
 
-        db = get_db()
-
-        async with db.session() as session:
+        async with await get_session() as session:
             # Check if slug already exists
             stmt = select(Workspace).where(Workspace.slug == workspace.slug)
             result = await session.execute(stmt)
@@ -152,7 +161,7 @@ async def create_workspace(workspace: WorkspaceCreateAdmin) -> WorkspaceListResp
             await session.refresh(db_workspace)
 
             # Create owner admin record
-            admin_repo = WorkspaceAdminRepository()
+            admin_repo = WorkspaceAdminRepository(session)
             await admin_repo.create(
                 workspace_id=db_workspace.id,
                 user_id=workspace.owner_user_id,
@@ -160,6 +169,8 @@ async def create_workspace(workspace: WorkspaceCreateAdmin) -> WorkspaceListResp
                 role=AdminRole.OWNER,
                 accepted_at=datetime.utcnow(),
             )
+
+            await session.commit()
 
             return WorkspaceListResponse(
                 id=db_workspace.id,
@@ -202,13 +213,10 @@ async def list_workspaces() -> list[WorkspaceListResponse]:
     try:
         logger.info("Fetching all workspaces (admin)")
 
-        from text2x.models.base import get_db
         from sqlalchemy import select, func
         from text2x.models.workspace import Provider
 
-        db = get_db()
-
-        async with db.session() as session:
+        async with await get_session() as session:
             # Query workspaces with admin and provider counts
             stmt = (
                 select(
@@ -278,13 +286,10 @@ async def invite_admin(
             f"Inviting user {invite.user_id} to workspace {workspace_id} as {invite.role.value}"
         )
 
-        from text2x.models.base import get_db
         from sqlalchemy import select
 
-        db = get_db()
-
-        # Verify workspace exists
-        async with db.session() as session:
+        # Verify workspace exists and create invitation
+        async with await get_session() as session:
             stmt = select(Workspace).where(Workspace.id == workspace_id)
             result = await session.execute(stmt)
             workspace = result.scalar_one_or_none()
@@ -298,38 +303,40 @@ async def invite_admin(
                     ).model_dump(mode='json'),
                 )
 
-        # Check if user already has access
-        admin_repo = WorkspaceAdminRepository()
-        existing = await admin_repo.get_by_workspace_and_user(
-            workspace_id, invite.user_id
-        )
-
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ErrorResponse(
-                    error="validation_error",
-                    message=f"User {invite.user_id} already has access to this workspace",
-                ).model_dump(),
+            # Check if user already has access
+            admin_repo = WorkspaceAdminRepository(session)
+            existing = await admin_repo.get_by_workspace_and_user(
+                workspace_id, invite.user_id
             )
 
-        # Validate role - cannot invite as owner through this endpoint
-        if invite.role == AdminRole.OWNER:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ErrorResponse(
-                    error="validation_error",
-                    message="Cannot invite users as OWNER. Use admin workspace creation instead.",
-                ).model_dump(),
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorResponse(
+                        error="validation_error",
+                        message=f"User {invite.user_id} already has access to this workspace",
+                    ).model_dump(),
+                )
+
+            # Validate role - cannot invite as owner through this endpoint
+            if invite.role == AdminRole.OWNER:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorResponse(
+                        error="validation_error",
+                        message="Cannot invite users as OWNER. Use admin workspace creation instead.",
+                    ).model_dump(),
+                )
+
+            # Create invitation
+            admin = await admin_repo.create(
+                workspace_id=workspace_id,
+                user_id=invite.user_id,
+                invited_by=invite.invited_by,
+                role=invite.role,
             )
 
-        # Create invitation
-        admin = await admin_repo.create(
-            workspace_id=workspace_id,
-            user_id=invite.user_id,
-            invited_by=invite.invited_by,
-            role=invite.role,
-        )
+            await session.commit()
 
         return AdminResponse(
             id=admin.id,
@@ -375,67 +382,70 @@ async def accept_invitation(invitation_id: UUID) -> AcceptInvitationResponse:
     try:
         logger.info(f"Accepting invitation {invitation_id}")
 
-        admin_repo = WorkspaceAdminRepository()
+        async with await get_session() as session:
+            admin_repo = WorkspaceAdminRepository(session)
 
-        # Get invitation
-        admin = await admin_repo.get_by_id(invitation_id)
+            # Get invitation
+            admin = await admin_repo.get_by_id(invitation_id)
 
-        if not admin:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ErrorResponse(
-                    error="not_found",
-                    message=f"Invitation {invitation_id} not found",
-                ).model_dump(),
-            )
+            if not admin:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Invitation {invitation_id} not found",
+                    ).model_dump(),
+                )
 
-        # Check if already accepted
-        if admin.is_accepted:
+            # Check if already accepted
+            if admin.is_accepted:
+                return AcceptInvitationResponse(
+                    success=True,
+                    message="Invitation already accepted",
+                    admin=AdminResponse(
+                        id=admin.id,
+                        workspace_id=admin.workspace_id,
+                        user_id=admin.user_id,
+                        role=admin.role.value,
+                        invited_by=admin.invited_by,
+                        invited_at=admin.invited_at,
+                        accepted_at=admin.accepted_at,
+                        is_pending=admin.is_pending,
+                        created_at=admin.created_at,
+                        updated_at=admin.updated_at,
+                    ),
+                )
+
+            # Accept invitation
+            updated_admin = await admin_repo.accept_invitation(invitation_id)
+
+            if not updated_admin:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=ErrorResponse(
+                        error="accept_error",
+                        message="Failed to accept invitation",
+                    ).model_dump(),
+                )
+
+            await session.commit()
+
             return AcceptInvitationResponse(
                 success=True,
-                message="Invitation already accepted",
+                message="Invitation accepted successfully",
                 admin=AdminResponse(
-                    id=admin.id,
-                    workspace_id=admin.workspace_id,
-                    user_id=admin.user_id,
-                    role=admin.role.value,
-                    invited_by=admin.invited_by,
-                    invited_at=admin.invited_at,
-                    accepted_at=admin.accepted_at,
-                    is_pending=admin.is_pending,
-                    created_at=admin.created_at,
-                    updated_at=admin.updated_at,
+                    id=updated_admin.id,
+                    workspace_id=updated_admin.workspace_id,
+                    user_id=updated_admin.user_id,
+                    role=updated_admin.role.value,
+                    invited_by=updated_admin.invited_by,
+                    invited_at=updated_admin.invited_at,
+                    accepted_at=updated_admin.accepted_at,
+                    is_pending=updated_admin.is_pending,
+                    created_at=updated_admin.created_at,
+                    updated_at=updated_admin.updated_at,
                 ),
             )
-
-        # Accept invitation
-        updated_admin = await admin_repo.accept_invitation(invitation_id)
-
-        if not updated_admin:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=ErrorResponse(
-                    error="accept_error",
-                    message="Failed to accept invitation",
-                ).model_dump(),
-            )
-
-        return AcceptInvitationResponse(
-            success=True,
-            message="Invitation accepted successfully",
-            admin=AdminResponse(
-                id=updated_admin.id,
-                workspace_id=updated_admin.workspace_id,
-                user_id=updated_admin.user_id,
-                role=updated_admin.role.value,
-                invited_by=updated_admin.invited_by,
-                invited_at=updated_admin.invited_at,
-                accepted_at=updated_admin.accepted_at,
-                is_pending=updated_admin.is_pending,
-                created_at=updated_admin.created_at,
-                updated_at=updated_admin.updated_at,
-            ),
-        )
 
     except HTTPException:
         raise
@@ -468,13 +478,10 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
     try:
         logger.info(f"Removing user {user_id} from workspace {workspace_id}")
 
-        from text2x.models.base import get_db
         from sqlalchemy import select
 
-        db = get_db()
-
-        # Verify workspace exists
-        async with db.session() as session:
+        # Verify workspace exists and remove admin
+        async with await get_session() as session:
             stmt = select(Workspace).where(Workspace.id == workspace_id)
             result = await session.execute(stmt)
             workspace = result.scalar_one_or_none()
@@ -488,44 +495,46 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
                     ).model_dump(mode='json'),
                 )
 
-        # Get admin record
-        admin_repo = WorkspaceAdminRepository()
-        admin = await admin_repo.get_by_workspace_and_user(workspace_id, user_id)
+            # Get admin record
+            admin_repo = WorkspaceAdminRepository(session)
+            admin = await admin_repo.get_by_workspace_and_user(workspace_id, user_id)
 
-        if not admin:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ErrorResponse(
-                    error="not_found",
-                    message=f"User {user_id} is not a member of workspace {workspace_id}",
-                ).model_dump(),
-            )
-
-        # Prevent removing the last owner
-        if admin.role == AdminRole.OWNER:
-            owner_count = await admin_repo.count_by_workspace(
-                workspace_id, role=AdminRole.OWNER
-            )
-            if owner_count <= 1:
+            if not admin:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status_code=status.HTTP_404_NOT_FOUND,
                     detail=ErrorResponse(
-                        error="validation_error",
-                        message="Cannot remove the last owner from a workspace",
-                    ).model_dump(mode='json'),
+                        error="not_found",
+                        message=f"User {user_id} is not a member of workspace {workspace_id}",
+                    ).model_dump(),
                 )
 
-        # Delete admin
-        success = await admin_repo.delete_by_workspace_and_user(workspace_id, user_id)
+            # Prevent removing the last owner
+            if admin.role == AdminRole.OWNER:
+                owner_count = await admin_repo.count_by_workspace(
+                    workspace_id, role=AdminRole.OWNER
+                )
+                if owner_count <= 1:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=ErrorResponse(
+                            error="validation_error",
+                            message="Cannot remove the last owner from a workspace",
+                        ).model_dump(mode='json'),
+                    )
 
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=ErrorResponse(
-                    error="delete_error",
-                    message="Failed to remove admin",
-                ).model_dump(),
-            )
+            # Delete admin
+            success = await admin_repo.delete_by_workspace_and_user(workspace_id, user_id)
+
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=ErrorResponse(
+                        error="delete_error",
+                        message="Failed to remove admin",
+                    ).model_dump(),
+                )
+
+            await session.commit()
 
     except HTTPException:
         raise
