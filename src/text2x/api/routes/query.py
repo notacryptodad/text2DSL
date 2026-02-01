@@ -339,6 +339,23 @@ async def process_query(
             is_valid = api_response.validation_status == ValidationStatus.VALID
             record_validation_result(provider_type, is_valid)
 
+            # Queue for expert review if validation failed
+            if (
+                settings.review_queue_enabled
+                and api_response.validation_status == ValidationStatus.INVALID
+            ):
+                logger.info(f"Queuing turn {actual_turn_id} for expert review (validation failure)")
+                review_service = ReviewService()
+                try:
+                    await review_service.auto_queue_for_review(
+                        turn_id=actual_turn_id,
+                        trigger=ReviewTrigger.VALIDATION_FAILURE,
+                        provider_id=request.provider_id,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to queue validation failure: {e}", exc_info=True)
+                    # Don't fail the request if queuing fails
+
             # Cost metrics (from trace if available)
             if api_response.reasoning_trace:
                 trace = api_response.reasoning_trace
