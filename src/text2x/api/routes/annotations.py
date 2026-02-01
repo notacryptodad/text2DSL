@@ -393,6 +393,41 @@ class AutoAnnotateResponse(BaseModel):
     message: str = Field(..., description="Status message")
 
 
+class AnnotationResponse(BaseModel):
+    """Response model for annotation."""
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: UUID = Field(..., description="Annotation ID")
+    provider_id: str = Field(..., description="Provider ID")
+    table_name: Optional[str] = Field(None, description="Table name")
+    column_name: Optional[str] = Field(None, description="Column name")
+    description: str = Field(..., description="Description")
+    business_terms: Optional[List[str]] = Field(None, description="Business terms")
+    examples: Optional[List[str]] = Field(None, description="Examples")
+    relationships: Optional[List[str]] = Field(None, description="Relationships")
+    date_format: Optional[str] = Field(None, description="Date format")
+    enum_values: Optional[List[str]] = Field(None, description="Enum values")
+    sensitive: bool = Field(..., description="Whether data is sensitive")
+    created_by: str = Field(..., description="User who created the annotation")
+    created_at: Optional[str] = Field(None, description="Creation timestamp")
+    updated_at: Optional[str] = Field(None, description="Last update timestamp")
+
+
+class AnnotationUpdate(BaseModel):
+    """Request model for updating an annotation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: Optional[str] = Field(None, min_length=1, description="Description")
+    business_terms: Optional[List[str]] = Field(None, description="Business terms")
+    examples: Optional[List[str]] = Field(None, description="Examples")
+    relationships: Optional[List[str]] = Field(None, description="Relationships")
+    date_format: Optional[str] = Field(None, description="Date format")
+    enum_values: Optional[List[str]] = Field(None, description="Enum values")
+    sensitive: Optional[bool] = Field(None, description="Whether data is sensitive")
+
+
 @router.get(
     "/workspaces/{workspace_id}/connections/{connection_id}/schema",
     response_model=SchemaResponse,
@@ -598,6 +633,191 @@ Let's start by sampling data from the table."""
             detail=ErrorResponse(
                 error="annotation_error",
                 message="Failed to auto-annotate table",
+                details={"error": str(e)} if settings.debug else None,
+            ).model_dump(),
+        )
+
+
+@router.get(
+    "/{annotation_id}",
+    response_model=AnnotationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get annotation by ID",
+    description="Retrieve a single annotation by its ID",
+)
+async def get_annotation(annotation_id: UUID) -> AnnotationResponse:
+    """
+    Get a single annotation by ID.
+
+    Args:
+        annotation_id: UUID of the annotation
+
+    Returns:
+        Annotation details
+
+    Raises:
+        HTTPException: If annotation not found
+    """
+    try:
+        logger.info(f"Fetching annotation: {annotation_id}")
+
+        repo = SchemaAnnotationRepository()
+        annotation = await repo.get_by_id(annotation_id)
+
+        if not annotation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorResponse(
+                    error="not_found",
+                    message=f"Annotation {annotation_id} not found",
+                ).model_dump(),
+            )
+
+        return AnnotationResponse(
+            id=annotation.id,
+            provider_id=annotation.provider_id,
+            table_name=annotation.table_name,
+            column_name=annotation.column_name,
+            description=annotation.description,
+            business_terms=annotation.business_terms,
+            examples=annotation.examples,
+            relationships=annotation.relationships,
+            date_format=annotation.date_format,
+            enum_values=annotation.enum_values,
+            sensitive=annotation.sensitive,
+            created_by=annotation.created_by,
+            created_at=annotation.created_at.isoformat() if annotation.created_at else None,
+            updated_at=annotation.updated_at.isoformat() if annotation.updated_at else None,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching annotation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="fetch_error",
+                message="Failed to fetch annotation",
+                details={"error": str(e)} if settings.debug else None,
+            ).model_dump(),
+        )
+
+
+@router.put(
+    "/{annotation_id}",
+    response_model=AnnotationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update annotation",
+    description="Update an existing annotation",
+)
+async def update_annotation(
+    annotation_id: UUID,
+    update: AnnotationUpdate
+) -> AnnotationResponse:
+    """
+    Update an existing annotation.
+
+    Args:
+        annotation_id: UUID of the annotation
+        update: Fields to update
+
+    Returns:
+        Updated annotation
+
+    Raises:
+        HTTPException: If annotation not found or update fails
+    """
+    try:
+        logger.info(f"Updating annotation: {annotation_id}")
+
+        repo = SchemaAnnotationRepository()
+
+        # Build update kwargs from request, excluding unset fields
+        update_data = update.model_dump(exclude_unset=True)
+
+        annotation = await repo.update(annotation_id, **update_data)
+
+        if not annotation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorResponse(
+                    error="not_found",
+                    message=f"Annotation {annotation_id} not found",
+                ).model_dump(),
+            )
+
+        return AnnotationResponse(
+            id=annotation.id,
+            provider_id=annotation.provider_id,
+            table_name=annotation.table_name,
+            column_name=annotation.column_name,
+            description=annotation.description,
+            business_terms=annotation.business_terms,
+            examples=annotation.examples,
+            relationships=annotation.relationships,
+            date_format=annotation.date_format,
+            enum_values=annotation.enum_values,
+            sensitive=annotation.sensitive,
+            created_by=annotation.created_by,
+            created_at=annotation.created_at.isoformat() if annotation.created_at else None,
+            updated_at=annotation.updated_at.isoformat() if annotation.updated_at else None,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating annotation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="update_error",
+                message="Failed to update annotation",
+                details={"error": str(e)} if settings.debug else None,
+            ).model_dump(),
+        )
+
+
+@router.delete(
+    "/{annotation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete annotation",
+    description="Delete an annotation by ID",
+)
+async def delete_annotation(annotation_id: UUID) -> None:
+    """
+    Delete an annotation.
+
+    Args:
+        annotation_id: UUID of the annotation
+
+    Raises:
+        HTTPException: If annotation not found or delete fails
+    """
+    try:
+        logger.info(f"Deleting annotation: {annotation_id}")
+
+        repo = SchemaAnnotationRepository()
+        success = await repo.delete(annotation_id)
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorResponse(
+                    error="not_found",
+                    message=f"Annotation {annotation_id} not found",
+                ).model_dump(),
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting annotation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="delete_error",
+                message="Failed to delete annotation",
                 details={"error": str(e)} if settings.debug else None,
             ).model_dump(),
         )
