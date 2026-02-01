@@ -78,7 +78,9 @@ class WorkspaceAdmin(Base, UUIDMixin, TimestampMixin):
     workspace: Mapped["Workspace"] = relationship("Workspace")
 
     __table_args__ = (
-        UniqueConstraint("workspace_id", "user_id", name="uq_workspace_admin_user"),
+        # Changed from UniqueConstraint to allow multiple roles per user in a workspace
+        UniqueConstraint("workspace_id", "user_id", "role", name="uq_workspace_admin_user_role"),
+        Index("ix_workspace_admins_workspace_user", "workspace_id", "user_id"),
         Index("ix_workspace_admins_workspace_role", "workspace_id", "role"),
         Index("ix_workspace_admins_user", "user_id"),
     )

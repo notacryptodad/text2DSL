@@ -312,10 +312,10 @@ async def invite_admin(
                     ).model_dump(mode='json'),
                 )
 
-            # Check if user already has access
+            # Check if user already has this specific role
             admin_repo = WorkspaceAdminRepository(session)
-            existing = await admin_repo.get_by_workspace_and_user(
-                workspace_id, invite.user_id
+            existing = await admin_repo.get_by_workspace_user_and_role(
+                workspace_id, invite.user_id, invite.role
             )
 
             if existing:
@@ -323,7 +323,7 @@ async def invite_admin(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=ErrorResponse(
                         error="validation_error",
-                        message=f"User {invite.user_id} already has access to this workspace",
+                        message=f"User {invite.user_id} already has the {invite.role.value} role in this workspace",
                     ).model_dump(),
                 )
 
@@ -418,10 +418,10 @@ async def assign_admin(
                     ).model_dump(mode='json'),
                 )
 
-            # Check if user already has access
+            # Check if user already has this specific role
             admin_repo = WorkspaceAdminRepository(session)
-            existing = await admin_repo.get_by_workspace_and_user(
-                workspace_id, assign.user_id
+            existing = await admin_repo.get_by_workspace_user_and_role(
+                workspace_id, assign.user_id, assign.role
             )
 
             if existing:
@@ -429,7 +429,7 @@ async def assign_admin(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=ErrorResponse(
                         error="validation_error",
-                        message=f"User {assign.user_id} already has access to this workspace",
+                        message=f"User {assign.user_id} already has the {assign.role.value} role in this workspace",
                     ).model_dump(),
                 )
 
@@ -601,11 +601,11 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
                     ).model_dump(mode='json'),
                 )
 
-            # Get admin record
+            # Get all admin roles for the user
             admin_repo = WorkspaceAdminRepository(session)
-            admin = await admin_repo.get_by_workspace_and_user(workspace_id, user_id)
+            admin_roles = await admin_repo.get_by_workspace_and_user(workspace_id, user_id)
 
-            if not admin:
+            if not admin_roles:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=ErrorResponse(
@@ -614,8 +614,9 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
                     ).model_dump(),
                 )
 
-            # Prevent removing the last owner
-            if admin.role == AdminRole.OWNER:
+            # Check if user has OWNER role and prevent removing last owner
+            has_owner_role = any(admin.role == AdminRole.OWNER for admin in admin_roles)
+            if has_owner_role:
                 owner_count = await admin_repo.count_by_workspace(
                     workspace_id, role=AdminRole.OWNER
                 )
@@ -628,10 +629,10 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
                         ).model_dump(mode='json'),
                     )
 
-            # Delete admin
-            success = await admin_repo.delete_by_workspace_and_user(workspace_id, user_id)
+            # Delete all admin roles for the user
+            deleted_count = await admin_repo.delete_by_workspace_and_user(workspace_id, user_id)
 
-            if not success:
+            if deleted_count == 0:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=ErrorResponse(

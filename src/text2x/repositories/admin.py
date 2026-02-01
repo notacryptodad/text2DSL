@@ -105,13 +105,48 @@ class WorkspaceAdminRepository:
         workspace_id: UUID,
         user_id: str,
         session: Optional[AsyncSession] = None,
-    ) -> Optional[WorkspaceAdmin]:
+    ) -> List[WorkspaceAdmin]:
         """
-        Retrieve a workspace admin by workspace and user.
+        Retrieve all workspace admin roles for a user in a workspace.
+
+        Note: This now returns a list since users can have multiple roles.
+        For single role lookup, use get_by_workspace_user_and_role.
 
         Args:
             workspace_id: The workspace UUID
             user_id: User identifier
+            session: Database session (uses instance session if not provided)
+
+        Returns:
+            List of workspace admin records for the user (can have multiple roles)
+        """
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
+
+        stmt = select(WorkspaceAdmin).where(
+            and_(
+                WorkspaceAdmin.workspace_id == workspace_id,
+                WorkspaceAdmin.user_id == user_id,
+            )
+        )
+        result = await sess.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_workspace_user_and_role(
+        self,
+        workspace_id: UUID,
+        user_id: str,
+        role: AdminRole,
+        session: Optional[AsyncSession] = None,
+    ) -> Optional[WorkspaceAdmin]:
+        """
+        Retrieve a specific role assignment for a user in a workspace.
+
+        Args:
+            workspace_id: The workspace UUID
+            user_id: User identifier
+            role: The specific role to lookup
             session: Database session (uses instance session if not provided)
 
         Returns:
@@ -125,6 +160,7 @@ class WorkspaceAdminRepository:
             and_(
                 WorkspaceAdmin.workspace_id == workspace_id,
                 WorkspaceAdmin.user_id == user_id,
+                WorkspaceAdmin.role == role,
             )
         )
         result = await sess.execute(stmt)
@@ -310,13 +346,56 @@ class WorkspaceAdminRepository:
 
     async def delete_by_workspace_and_user(
         self, workspace_id: UUID, user_id: str, session: Optional[AsyncSession] = None
-    ) -> bool:
+    ) -> int:
         """
-        Delete a workspace admin by workspace and user.
+        Delete all workspace admin roles for a user.
+
+        Note: This now deletes ALL roles for the user in the workspace.
+        For single role deletion, use delete_by_workspace_user_and_role.
 
         Args:
             workspace_id: The workspace UUID
             user_id: User identifier
+            session: Database session (uses instance session if not provided)
+
+        Returns:
+            Number of admin records deleted (can be multiple if user has multiple roles)
+        """
+        sess = session or self.session
+        if sess is None:
+            raise ValueError("Session must be provided")
+
+        stmt = select(WorkspaceAdmin).where(
+            and_(
+                WorkspaceAdmin.workspace_id == workspace_id,
+                WorkspaceAdmin.user_id == user_id,
+            )
+        )
+        result = await sess.execute(stmt)
+        admins = list(result.scalars().all())
+
+        if not admins:
+            return 0
+
+        for admin in admins:
+            await sess.delete(admin)
+
+        return len(admins)
+
+    async def delete_by_workspace_user_and_role(
+        self,
+        workspace_id: UUID,
+        user_id: str,
+        role: AdminRole,
+        session: Optional[AsyncSession] = None,
+    ) -> bool:
+        """
+        Delete a specific role assignment for a user in a workspace.
+
+        Args:
+            workspace_id: The workspace UUID
+            user_id: User identifier
+            role: The specific role to delete
             session: Database session (uses instance session if not provided)
 
         Returns:
@@ -330,6 +409,7 @@ class WorkspaceAdminRepository:
             and_(
                 WorkspaceAdmin.workspace_id == workspace_id,
                 WorkspaceAdmin.user_id == user_id,
+                WorkspaceAdmin.role == role,
             )
         )
         result = await sess.execute(stmt)
