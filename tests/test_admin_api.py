@@ -54,8 +54,8 @@ async def setup_db():
     await close_db()
 
 
-@pytest.fixture
-def client(setup_db):
+@pytest_asyncio.fixture
+async def client(setup_db):
     """Create test client."""
     return TestClient(app)
 
@@ -79,7 +79,7 @@ class TestAdminWorkspaceEndpoints:
             "owner_user_id": "user-123",
         }
 
-        response = client.post("/admin/workspaces", json=workspace_data)
+        response = client.post("/api/v1/admin/workspaces", json=workspace_data)
 
         assert response.status_code == 201
         data = response.json()
@@ -122,11 +122,11 @@ class TestAdminWorkspaceEndpoints:
                 "slug": f"workspace-{i}",
                 "owner_user_id": f"user-{i}",
             }
-            response = client.post("/admin/workspaces", json=workspace_data)
+            response = client.post("/api/v1/admin/workspaces", json=workspace_data)
             assert response.status_code == 201
 
         # List all workspaces
-        response = client.get("/admin/workspaces")
+        response = client.get("/api/v1/admin/workspaces")
 
         assert response.status_code == 200
         data = response.json()
@@ -139,7 +139,7 @@ class TestAdminWorkspaceEndpoints:
     @pytest.mark.asyncio
     async def test_list_workspaces_empty(self, client):
         """Test listing workspaces when none exist."""
-        response = client.get("/admin/workspaces")
+        response = client.get("/api/v1/admin/workspaces")
 
         assert response.status_code == 200
         data = response.json()
@@ -164,7 +164,7 @@ class TestAdminInvitationEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
@@ -175,7 +175,7 @@ class TestAdminInvitationEndpoints:
             "invited_by": "owner-123",
         }
         response = client.post(
-            f"/admin/workspaces/{workspace_id}/admins", json=invite_data
+            f"/api/v1/admin/workspaces/{workspace_id}/admins", json=invite_data
         )
 
         assert response.status_code == 201
@@ -198,7 +198,7 @@ class TestAdminInvitationEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
@@ -209,7 +209,7 @@ class TestAdminInvitationEndpoints:
             "invited_by": "owner-123",
         }
         response = client.post(
-            f"/admin/workspaces/{workspace_id}/admins", json=invite_data
+            f"/api/v1/admin/workspaces/{workspace_id}/admins", json=invite_data
         )
 
         assert response.status_code == 201
@@ -228,7 +228,7 @@ class TestAdminInvitationEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
@@ -239,7 +239,7 @@ class TestAdminInvitationEndpoints:
             "invited_by": "owner-123",
         }
         response = client.post(
-            f"/admin/workspaces/{workspace_id}/admins", json=invite_data
+            f"/api/v1/admin/workspaces/{workspace_id}/admins", json=invite_data
         )
 
         assert response.status_code == 400
@@ -254,7 +254,7 @@ class TestAdminInvitationEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
@@ -288,7 +288,7 @@ class TestAdminInvitationEndpoints:
             "invited_by": "owner-123",
         }
         response = client.post(
-            f"/admin/workspaces/{fake_workspace_id}/admins", json=invite_data
+            f"/api/v1/admin/workspaces/{fake_workspace_id}/admins", json=invite_data
         )
 
         assert response.status_code == 404
@@ -312,7 +312,7 @@ class TestAcceptInvitationEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
@@ -323,13 +323,13 @@ class TestAcceptInvitationEndpoints:
             "invited_by": "owner-123",
         }
         invite_response = client.post(
-            f"/admin/workspaces/{workspace_id}/admins", json=invite_data
+            f"/api/v1/admin/workspaces/{workspace_id}/admins", json=invite_data
         )
         assert invite_response.status_code == 201
         invitation_id = invite_response.json()["id"]
 
         # Accept invitation
-        response = client.post(f"/admin/invitations/{invitation_id}/accept")
+        response = client.post(f"/api/v1/admin/invitations/{invitation_id}/accept")
 
         assert response.status_code == 200
         data = response.json()
@@ -348,7 +348,7 @@ class TestAcceptInvitationEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
@@ -358,7 +358,7 @@ class TestAcceptInvitationEndpoints:
             "invited_by": "owner-123",
         }
         invite_response = client.post(
-            f"/admin/workspaces/{workspace_id}/admins", json=invite_data
+            f"/api/v1/admin/workspaces/{workspace_id}/admins", json=invite_data
         )
         invitation_id = invite_response.json()["id"]
 
@@ -379,7 +379,7 @@ class TestAcceptInvitationEndpoints:
         """Test accepting a non-existent invitation fails."""
         fake_invitation_id = str(uuid4())
 
-        response = client.post(f"/admin/invitations/{fake_invitation_id}/accept")
+        response = client.post(f"/api/v1/admin/invitations/{fake_invitation_id}/accept")
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]["message"]
@@ -402,7 +402,7 @@ class TestRemoveAdminEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
@@ -413,13 +413,13 @@ class TestRemoveAdminEndpoints:
             "invited_by": "owner-123",
         }
         invite_response = client.post(
-            f"/admin/workspaces/{workspace_id}/admins", json=invite_data
+            f"/api/v1/admin/workspaces/{workspace_id}/admins", json=invite_data
         )
         assert invite_response.status_code == 201
 
         # Remove admin
         response = client.delete(
-            f"/admin/workspaces/{workspace_id}/admins/admin-456"
+            f"/api/v1/admin/workspaces/{workspace_id}/admins/admin-456"
         )
 
         assert response.status_code == 204
@@ -433,13 +433,13 @@ class TestRemoveAdminEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
         # Try to remove non-existent admin
         response = client.delete(
-            f"/admin/workspaces/{workspace_id}/admins/nonexistent-user"
+            f"/api/v1/admin/workspaces/{workspace_id}/admins/nonexistent-user"
         )
 
         assert response.status_code == 404
@@ -454,13 +454,13 @@ class TestRemoveAdminEndpoints:
             "slug": "test-workspace",
             "owner_user_id": "owner-123",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
         # Try to remove the owner (which is the only owner)
         response = client.delete(
-            f"/admin/workspaces/{workspace_id}/admins/owner-123"
+            f"/api/v1/admin/workspaces/{workspace_id}/admins/owner-123"
         )
 
         assert response.status_code == 400
@@ -472,7 +472,7 @@ class TestRemoveAdminEndpoints:
         fake_workspace_id = str(uuid4())
 
         response = client.delete(
-            f"/admin/workspaces/{fake_workspace_id}/admins/admin-456"
+            f"/api/v1/admin/workspaces/{fake_workspace_id}/admins/admin-456"
         )
 
         assert response.status_code == 404
@@ -497,7 +497,7 @@ class TestAdminWorkflowIntegration:
             "description": "Engineering team workspace",
             "owner_user_id": "alice",
         }
-        ws_response = client.post("/admin/workspaces", json=workspace_data)
+        ws_response = client.post("/api/v1/admin/workspaces", json=workspace_data)
         assert ws_response.status_code == 201
         workspace_id = ws_response.json()["id"]
 
@@ -508,7 +508,7 @@ class TestAdminWorkflowIntegration:
             "invited_by": "alice",
         }
         bob_response = client.post(
-            f"/admin/workspaces/{workspace_id}/admins", json=bob_invite
+            f"/api/v1/admin/workspaces/{workspace_id}/admins", json=bob_invite
         )
         assert bob_response.status_code == 201
         bob_invitation_id = bob_response.json()["id"]
@@ -520,25 +520,25 @@ class TestAdminWorkflowIntegration:
             "invited_by": "alice",
         }
         charlie_response = client.post(
-            f"/admin/workspaces/{workspace_id}/admins", json=charlie_invite
+            f"/api/v1/admin/workspaces/{workspace_id}/admins", json=charlie_invite
         )
         assert charlie_response.status_code == 201
         charlie_invitation_id = charlie_response.json()["id"]
 
         # 4. Bob accepts invitation
-        bob_accept = client.post(f"/admin/invitations/{bob_invitation_id}/accept")
+        bob_accept = client.post(f"/api/v1/admin/invitations/{bob_invitation_id}/accept")
         assert bob_accept.status_code == 200
         assert bob_accept.json()["admin"]["is_pending"] is False
 
         # 5. Charlie accepts invitation
         charlie_accept = client.post(
-            f"/admin/invitations/{charlie_invitation_id}/accept"
+            f"/api/v1/admin/invitations/{charlie_invitation_id}/accept"
         )
         assert charlie_accept.status_code == 200
         assert charlie_accept.json()["admin"]["is_pending"] is False
 
         # 6. List workspaces - should have 1 workspace with 3 admins
-        list_response = client.get("/admin/workspaces")
+        list_response = client.get("/api/v1/admin/workspaces")
         assert list_response.status_code == 200
         workspaces = list_response.json()
         assert len(workspaces) == 1
@@ -553,7 +553,7 @@ class TestAdminWorkflowIntegration:
             "slug": "workspace-1",
             "owner_user_id": "alice",
         }
-        ws1_response = client.post("/admin/workspaces", json=ws1_data)
+        ws1_response = client.post("/api/v1/admin/workspaces", json=ws1_data)
         assert ws1_response.status_code == 201
         ws1_id = ws1_response.json()["id"]
 
@@ -562,7 +562,7 @@ class TestAdminWorkflowIntegration:
             "slug": "workspace-2",
             "owner_user_id": "bob",
         }
-        ws2_response = client.post("/admin/workspaces", json=ws2_data)
+        ws2_response = client.post("/api/v1/admin/workspaces", json=ws2_data)
         assert ws2_response.status_code == 201
         ws2_id = ws2_response.json()["id"]
 
@@ -572,17 +572,17 @@ class TestAdminWorkflowIntegration:
             "role": "admin",
             "invited_by": "alice",
         }
-        client.post(f"/admin/workspaces/{ws1_id}/admins", json=charlie_ws1)
+        client.post(f"/api/v1/admin/workspaces/{ws1_id}/admins", json=charlie_ws1)
 
         charlie_ws2 = {
             "user_id": "charlie",
             "role": "member",
             "invited_by": "bob",
         }
-        client.post(f"/admin/workspaces/{ws2_id}/admins", json=charlie_ws2)
+        client.post(f"/api/v1/admin/workspaces/{ws2_id}/admins", json=charlie_ws2)
 
         # List all workspaces
-        list_response = client.get("/admin/workspaces")
+        list_response = client.get("/api/v1/admin/workspaces")
         assert list_response.status_code == 200
         workspaces = list_response.json()
         assert len(workspaces) == 2

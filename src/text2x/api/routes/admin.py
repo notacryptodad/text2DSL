@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from text2x.api.models import ErrorResponse
 from text2x.models.admin import AdminRole, WorkspaceAdmin
@@ -45,6 +45,8 @@ class WorkspaceCreateAdmin(BaseModel):
 class WorkspaceListResponse(BaseModel):
     """Response model for workspace list."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     slug: str
@@ -53,9 +55,6 @@ class WorkspaceListResponse(BaseModel):
     provider_count: int = 0
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class InviteAdminRequest(BaseModel):
@@ -71,6 +70,8 @@ class InviteAdminRequest(BaseModel):
 class AdminResponse(BaseModel):
     """Response model for workspace admin."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     workspace_id: UUID
     user_id: str
@@ -81,9 +82,6 @@ class AdminResponse(BaseModel):
     is_pending: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class AcceptInvitationResponse(BaseModel):
@@ -139,7 +137,7 @@ async def create_workspace(workspace: WorkspaceCreateAdmin) -> WorkspaceListResp
                     detail=ErrorResponse(
                         error="validation_error",
                         message=f"Workspace with slug '{workspace.slug}' already exists",
-                    ).model_dump(),
+                    ).model_dump(mode='json'),
                 )
 
             # Create workspace
@@ -297,7 +295,7 @@ async def invite_admin(
                     detail=ErrorResponse(
                         error="not_found",
                         message=f"Workspace {workspace_id} not found",
-                    ).model_dump(),
+                    ).model_dump(mode='json'),
                 )
 
         # Check if user already has access
@@ -487,7 +485,7 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
                     detail=ErrorResponse(
                         error="not_found",
                         message=f"Workspace {workspace_id} not found",
-                    ).model_dump(),
+                    ).model_dump(mode='json'),
                 )
 
         # Get admin record
@@ -514,7 +512,7 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
                     detail=ErrorResponse(
                         error="validation_error",
                         message="Cannot remove the last owner from a workspace",
-                    ).model_dump(),
+                    ).model_dump(mode='json'),
                 )
 
         # Delete admin

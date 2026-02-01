@@ -11,19 +11,30 @@ from text2x.agents.schema_expert import SchemaExpertAgent
 from text2x.agents.rag_retrieval import RAGRetrievalAgent
 from text2x.agents.query_builder import QueryBuilderAgent
 from text2x.agents.validator import ValidatorAgent
-from text2x.models import (
-    Conversation,
-    ConversationStatus,
-    ConversationTurn,
-    QueryResponse,
-    QueryResult,
-    ReasoningTrace,
-    ValidationStatus,
-    SchemaContext,
-    RAGExample,
-    ValidationResult,
-    ExecutionResult,
-)
+
+# Import domain models (dataclasses) from models.py, not the database models from models/
+# The models/ package exports database models, but agents need domain dataclasses
+import importlib.util
+from pathlib import Path as _Path
+
+_models_file = _Path(__file__).parent.parent / "models.py"
+_spec = importlib.util.spec_from_file_location("text2x_domain_models", _models_file)
+_domain_models = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_domain_models)
+
+# Use domain dataclasses that have the methods agents need (like add_turn())
+Conversation = _domain_models.Conversation
+ConversationStatus = _domain_models.ConversationStatus
+ConversationTurn = _domain_models.ConversationTurn
+QueryResponse = _domain_models.QueryResponse
+QueryResult = _domain_models.QueryResult
+ReasoningTrace = _domain_models.ReasoningTrace
+ValidationStatus = _domain_models.ValidationStatus
+SchemaContext = _domain_models.SchemaContext
+RAGExample = _domain_models.RAGExample
+ValidationResult = _domain_models.ValidationResult
+ExecutionResult = _domain_models.ExecutionResult
+
 from text2x.providers.base import QueryProvider
 
 logger = logging.getLogger(__name__)
@@ -169,14 +180,29 @@ class OrchestratorAgent(BaseAgent):
             if should_terminate:
                 break
 
+            # Check if clarification is needed DURING iteration (not after)
+            # Per design.md 15.3: clarify = confidence < 0.6 AND iterations < 5
+            # If confidence is very low, no amount of iteration will help without user input
+            if (
+                query_result.confidence_score < self.clarification_threshold
+                and iteration < self.max_iterations
+            ):
+                logger.info(
+                    f"Low confidence ({query_result.confidence_score:.3f} < {self.clarification_threshold}) "
+                    f"on iteration {iteration}, requesting clarification instead of continuing"
+                )
+                # Break out of loop early - we'll generate clarification question below
+                break
+
             # Prepare feedback for next iteration
             validation_feedback = validation_result
 
-        # Check if clarification is needed
+        # Check if clarification is needed (comprehensive check after loop)
         needs_clarification, clarification_question = await self._check_clarification_needed(
             user_query=user_query,
             query_result=query_result,
-            schema_context=schema_context
+            schema_context=schema_context,
+            iteration=iteration
         )
 
         # Build query response
@@ -395,10 +421,16 @@ class OrchestratorAgent(BaseAgent):
             return True, "max_iterations_reached"
 
         # Primary termination criteria: confidence >= 0.85 AND validation passed
-        if (
-            query_result.confidence_score >= self.confidence_threshold
-            and query_result.validation_result.validation_status == ValidationStatus.PASSED
-        ):
+        confidence_check = query_result.confidence_score >= self.confidence_threshold
+        # Compare enum values (strings) instead of instances to avoid issues with dynamic module loading
+        validation_check = query_result.validation_result.validation_status.value == "passed"
+
+        logger.debug(
+            f"Termination check: confidence={query_result.confidence_score:.3f} >= {self.confidence_threshold}? {confidence_check}, "
+            f"validation={query_result.validation_result.validation_status.value} == 'passed'? {validation_check}"
+        )
+
+        if confidence_check and validation_check:
             logger.info(
                 f"Termination criteria met: confidence={query_result.confidence_score:.3f} >= "
                 f"{self.confidence_threshold}, validation=PASSED"
@@ -419,7 +451,8 @@ class OrchestratorAgent(BaseAgent):
         self,
         user_query: str,
         query_result: QueryResult,
-        schema_context: SchemaContext
+        schema_context: SchemaContext,
+        iteration: int
     ) -> tuple[bool, Optional[str]]:
         """
         Determine if user clarification is needed based on multiple factors:
@@ -430,6 +463,7 @@ class OrchestratorAgent(BaseAgent):
         4. Multiple possible interpretations
 
         This implements the clarification flow for handling vague/ambiguous queries.
+        Per design.md 15.3: clarify = confidence < 0.6 AND iterations < 5
         """
         reasons = []
 

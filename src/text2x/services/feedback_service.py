@@ -134,10 +134,17 @@ class FeedbackService:
             category: Feedback category
             feedback_text: Optional feedback text
         """
+        from sqlalchemy.orm import selectinload
+
         db = get_db()
         async with db.session() as session:
             # Fetch the turn to get confidence score and query details
-            stmt = select(ConversationTurn).where(ConversationTurn.id == turn_id)
+            # Eagerly load conversation to avoid lazy-loading issues
+            stmt = (
+                select(ConversationTurn)
+                .where(ConversationTurn.id == turn_id)
+                .options(selectinload(ConversationTurn.conversation))
+            )
             result = await session.execute(stmt)
             turn = result.scalar_one_or_none()
 

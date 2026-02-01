@@ -252,9 +252,15 @@ class ConversationTurnRepository:
         Returns:
             The turn if found, None otherwise
         """
+        from sqlalchemy.orm import selectinload
+
         db = get_db()
         async with db.session() as session:
-            stmt = select(ConversationTurn).where(ConversationTurn.id == turn_id)
+            stmt = (
+                select(ConversationTurn)
+                .where(ConversationTurn.id == turn_id)
+                .options(selectinload(ConversationTurn.conversation))
+            )
             result = await session.execute(stmt)
             return result.scalar_one_or_none()
 
