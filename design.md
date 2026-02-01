@@ -1038,10 +1038,17 @@ This section defines the key user flows that the system must support end-to-end.
 4. Super Admins can list, view, update, and delete users
 5. Users can view and update their own profile
 
-**Current Implementation Note:**
-The current system uses **external user_id (string)** from authentication providers (e.g., Auth0, Cognito). This scenario documents what would be needed for **internal user management** if implemented in the future.
+**Default Super Admin:**
+The system automatically creates a default super admin on first startup:
+- Email: admin@text2dsl.com
+- Password: Admin123!
+- Role: super_admin
+- This account can be used immediately for system administration
 
-**API Endpoints (Future):**
+**Current Implementation:**
+The system now includes **internal user management** with authentication via JWT tokens. Users are stored in the database with hashed passwords (bcrypt).
+
+**API Endpoints:**
 - `POST /api/v1/admin/users` - Create user (super admin only)
 - `GET /api/v1/admin/users` - List users (super admin only)
 - `GET /api/v1/admin/users/{id}` - Get user (super admin or self)
@@ -1049,8 +1056,10 @@ The current system uses **external user_id (string)** from authentication provid
 - `DELETE /api/v1/admin/users/{id}` - Delete user (super admin only)
 - `POST /api/v1/users/register` - Self-registration (if enabled)
 - `GET /api/v1/users/me` - Get current user profile
+- `POST /api/v1/auth/login` - Login with email/password
+- `POST /api/v1/auth/refresh` - Refresh access token
 
-**Data Model (Future):**
+**Data Model:**
 ```python
 class UserRole(str, Enum):
     SUPER_ADMIN = "super_admin"
@@ -1162,12 +1171,19 @@ sequenceDiagram
 3. Workspace Admin is immediately granted access
 4. Workspace Admin creates Provider and Connection (steps 4-8 same as primary flow)
 
-**API Endpoints Required:**
+**Multiple Roles Per User:**
+- A single user can have multiple roles in the same workspace
+- For example, a user can be both ADMIN and MEMBER
+- Each role is stored as a separate record in the workspace_admins table
+- Unique constraint: (workspace_id, user_id, role) - prevents duplicate role assignments
+- When removing a user, all their roles in the workspace are removed
+
+**API Endpoints:**
 - `POST /api/v1/admin/workspaces` - Create workspace (super admin)
 - `POST /api/v1/admin/workspaces/{id}/admins` - Invite admin (invitation-based)
-- `POST /api/v1/admin/workspaces/{id}/admins/assign` - Direct assignment (no invitation)
+- `POST /api/v1/admin/workspaces/{id}/admins/assign` - Direct assignment (no invitation) ✨ NEW
 - `GET /api/v1/admin/workspaces/{id}/admins` - List workspace admins
-- `DELETE /api/v1/admin/workspaces/{id}/admins/{user_id}` - Remove admin
+- `DELETE /api/v1/admin/workspaces/{id}/admins/{user_id}` - Remove all admin roles for user
 - `POST /api/v1/admin/invitations/{id}/accept` - Accept invitation
 - `GET /api/v1/admin/invitations` - List pending invitations
 - `POST /api/v1/workspaces/{ws}/providers` - Create provider
