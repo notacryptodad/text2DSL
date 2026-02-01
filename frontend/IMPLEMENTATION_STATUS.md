@@ -159,12 +159,17 @@ All frontend features are complete. Remaining work:
 3. ✅ Scenario 4 (Review Queue) - **DONE**
 4. ✅ Scenario 5 (Feedback) - **DONE**
 
+### Recent Enhancements (Added in Latest Commit)
+- ✅ **Feedback submission UI in Chat page** - Thumbs up/down buttons with modal
+- ✅ **Corrected query submission** - Users can provide correct queries
+- ✅ **Feedback comments** - Detailed feedback with comments field
+
 ### Future Enhancements
-- [ ] Add feedback submission UI in Chat page
-- [ ] Add query result data table display
-- [ ] Add export functionality for results
-- [ ] Add advanced filtering in Review queue
+- [ ] Add query result data table display (when execution returns data)
+- [ ] Add export functionality for results (CSV, JSON)
+- [ ] Add advanced filtering in Review queue (date ranges, confidence thresholds)
 - [ ] Add real-time notifications for review queue updates
+- [ ] Add feedback statistics visualization in Chat page
 
 ## Running Tests
 
