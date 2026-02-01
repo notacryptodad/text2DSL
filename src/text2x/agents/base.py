@@ -6,7 +6,21 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import httpx
-from text2x.models import ReasoningTrace
+
+# Import domain model ReasoningTrace (not the DB model)
+import sys
+from pathlib import Path
+import importlib.util
+
+_models_file = Path(__file__).parent.parent / "models.py"
+spec = importlib.util.spec_from_file_location("text2x_domain_models", _models_file)
+if spec and spec.loader:
+    _domain_models = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(_domain_models)
+    ReasoningTrace = _domain_models.ReasoningTrace
+else:
+    # Fallback if dynamic import fails
+    from text2x.models import ReasoningTrace
 
 
 @dataclass

@@ -1105,43 +1105,83 @@ async def delete_connection(
     summary="Test connection",
 )
 async def test_connection(
-    workspace_id: UUID, 
-    provider_id: UUID, 
+    workspace_id: UUID,
+    provider_id: UUID,
     connection_id: UUID
 ) -> ConnectionTestResult:
     """
     Test a connection to verify connectivity.
-    
+
     This will attempt to connect to the database and run a simple
-    health check query.
+    health check query, then update the connection status.
     """
     try:
         logger.info(f"Testing connection {connection_id}")
-        
-        # TODO: Actually test the connection
-        # - Get connection details
-        # - Create provider instance
-        # - Run health check query
-        # - Update connection status in database
-        
-        return ConnectionTestResult(
-            success=True,
-            message="Connection successful",
-            latency_ms=45.2,
-        )
-        
+
+        async with await get_session() as session:
+            # Fetch connection with provider relationship
+            stmt = (
+                select(Connection)
+                .options(selectinload(Connection.provider))
+                .where(
+                    Connection.id == connection_id,
+                    Connection.provider_id == provider_id,
+                )
+            )
+            result = await session.execute(stmt)
+            connection = result.scalar_one_or_none()
+
+            if not connection:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Connection {connection_id} not found",
+                    ).model_dump(),
+                )
+
+            # Verify provider belongs to workspace
+            if connection.provider.workspace_id != workspace_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Connection not found in workspace {workspace_id}",
+                    ).model_dump(),
+                )
+
+            # Test the connection using service
+            from text2x.services.connection_service import ConnectionService
+
+            test_result = await ConnectionService.test_connection(connection)
+
+            # Update connection status in database
+            connection.status = test_result.status
+            connection.last_health_check = datetime.utcnow()
+            connection.status_message = test_result.message if not test_result.success else None
+
+            await session.commit()
+
+            return ConnectionTestResult(
+                success=test_result.success,
+                message=test_result.message,
+                latency_ms=test_result.latency_ms,
+            )
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error testing connection: {e}", exc_info=True)
         return ConnectionTestResult(
             success=False,
-            message=f"Connection failed: {str(e)}",
+            message=f"Connection test failed: {str(e)}",
             latency_ms=None,
         )
 
 
 @router.post(
     "/{workspace_id}/providers/{provider_id}/connections/{connection_id}/schema/refresh",
-    status_code=status.HTTP_202_ACCEPTED,
+    status_code=status.HTTP_200_OK,
     summary="Refresh connection schema",
 )
 async def refresh_connection_schema(
@@ -1151,18 +1191,74 @@ async def refresh_connection_schema(
 ) -> dict[str, str]:
     """
     Trigger schema refresh for a connection.
-    
+
     This will re-introspect the database schema and update the cache.
     """
     try:
         logger.info(f"Triggering schema refresh for connection {connection_id}")
-        
-        return {
-            "status": "accepted",
-            "message": f"Schema refresh initiated for connection {connection_id}",
-            "connection_id": str(connection_id),
-        }
-        
+
+        async with await get_session() as session:
+            # Fetch connection with provider relationship
+            stmt = (
+                select(Connection)
+                .options(selectinload(Connection.provider))
+                .where(
+                    Connection.id == connection_id,
+                    Connection.provider_id == provider_id,
+                )
+            )
+            result = await session.execute(stmt)
+            connection = result.scalar_one_or_none()
+
+            if not connection:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Connection {connection_id} not found",
+                    ).model_dump(),
+                )
+
+            # Verify provider belongs to workspace
+            if connection.provider.workspace_id != workspace_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Connection not found in workspace {workspace_id}",
+                    ).model_dump(),
+                )
+
+            # Introspect schema using service
+            from text2x.services.connection_service import ConnectionService
+
+            introspection_result = await ConnectionService.introspect_schema(connection)
+
+            if introspection_result.success:
+                # Update connection with schema cache info
+                # In a production system, you'd store the schema in Redis or similar
+                # For now, just update the timestamp and store a cache key
+                connection.schema_cache_key = f"schema:{connection_id}"
+                connection.schema_last_refreshed = datetime.utcnow()
+
+                await session.commit()
+
+                return {
+                    "status": "success",
+                    "message": f"Schema refreshed successfully: {introspection_result.table_count} tables found",
+                    "connection_id": str(connection_id),
+                    "table_count": introspection_result.table_count,
+                    "introspection_time_ms": introspection_result.introspection_time_ms,
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Schema refresh failed: {introspection_result.error}",
+                    "connection_id": str(connection_id),
+                }
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error triggering schema refresh: {e}", exc_info=True)
         raise HTTPException(

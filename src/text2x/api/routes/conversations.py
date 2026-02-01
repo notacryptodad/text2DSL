@@ -13,11 +13,13 @@ from text2x.api.models import (
     ConversationStatus,
     ConversationTurnResponse,
     ErrorResponse,
-    FeedbackRequest,
     ValidationStatus,
 )
+from text2x.api.routes.feedback import SubmitFeedbackRequest, FeedbackResponse
 from text2x.models.conversation import Conversation, ConversationTurn
+from text2x.models.feedback import FeedbackCategory, FeedbackRating
 from text2x.models.rag import RAGExample, ExampleStatus
+from text2x.services.feedback_service import FeedbackService
 
 logger = logging.getLogger(__name__)
 
@@ -230,153 +232,119 @@ async def get_conversation_turns(
 
 
 @router.post(
-    "/{conversation_id}/feedback",
-    status_code=status.HTTP_204_NO_CONTENT,
+    "/{conversation_id}/turns/{turn_id}/feedback",
+    response_model=FeedbackResponse,
+    status_code=status.HTTP_201_CREATED,
     summary="Submit user feedback",
-    description="Submit feedback for a conversation turn, optionally with corrected query",
+    description="Submit thumbs up/down feedback for a generated query",
 )
 async def submit_feedback(
     conversation_id: UUID,
-    feedback: FeedbackRequest,
-) -> None:
+    turn_id: UUID,
+    request: SubmitFeedbackRequest,
+) -> FeedbackResponse:
     """
-    Submit user feedback for a conversation/turn.
+    Submit user feedback on a generated query.
 
-    This endpoint processes user feedback including:
-    - Satisfaction rating (1-5)
-    - Correctness flag for generated query
-    - Optional corrected query (if original was incorrect)
-    - Optional comments
+    This endpoint allows users to provide feedback on generated queries with:
+    - Thumbs up or thumbs down rating
+    - Categorical feedback (e.g., incorrect_result, syntax_error, etc.)
+    - Optional free-text comments
 
-    If a corrected query is provided with is_query_correct=False,
-    the system will:
-    1. Store the feedback in the database
-    2. Create a new RAG example with the corrected query
-    3. Queue the correction for expert review
+    Based on the feedback and confidence score, the system will:
+    - Auto-approve high-confidence queries with thumbs up to RAG
+    - Queue medium-confidence queries for expert review (low priority)
+    - Queue all thumbs-down queries for expert review (high priority)
 
     Args:
         conversation_id: Conversation identifier
-        feedback: User feedback data
+        turn_id: Turn identifier within conversation
+        request: Feedback submission data
+
+    Returns:
+        Created feedback record
 
     Raises:
-        HTTPException: If conversation not found (404) or submission fails (500)
+        HTTPException: If turn not found (404), feedback already exists (409),
+                      or submission fails (500)
     """
     try:
         logger.info(
-            f"Submitting feedback for conversation {conversation_id}, "
-            f"rating={feedback.rating}, correct={feedback.is_query_correct}"
+            f"Submitting feedback for turn {turn_id} in conversation "
+            f"{conversation_id}: rating={request.rating}"
         )
 
-        async with await get_session() as session:
-            # Verify conversation exists
-            stmt = select(Conversation).where(Conversation.id == conversation_id)
-            result = await session.execute(stmt)
-            conversation = result.scalar_one_or_none()
-
-            if not conversation:
-                logger.warning(f"Conversation {conversation_id} not found")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=ErrorResponse(
-                        error="not_found",
-                        message=f"Conversation {conversation_id} not found",
-                    ).model_dump(),
-                )
-
-            # Get the latest turn for this conversation
-            stmt = (
-                select(ConversationTurn)
-                .where(ConversationTurn.conversation_id == conversation_id)
-                .order_by(ConversationTurn.turn_number.desc())
-                .limit(1)
+        # Convert string rating to enum
+        try:
+            rating = FeedbackRating(request.rating)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse(
+                    error="invalid_rating",
+                    message=f"Invalid rating: {request.rating}. Must be 'up' or 'down'",
+                ).model_dump(),
             )
-            result = await session.execute(stmt)
-            latest_turn = result.scalar_one_or_none()
 
-            if not latest_turn:
-                logger.warning(
-                    f"No turns found for conversation {conversation_id}"
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=ErrorResponse(
-                        error="not_found",
-                        message="No turns found for this conversation",
-                    ).model_dump(),
-                )
-
-            # Store feedback in metadata (could be a separate table in production)
-            feedback_data = {
-                "rating": feedback.rating,
-                "is_query_correct": feedback.is_query_correct,
-                "comments": feedback.comments,
-                "corrected_query": feedback.corrected_query,
-            }
-
-            # Update turn metadata to include feedback
-            if not latest_turn.reasoning_trace:
-                latest_turn.reasoning_trace = {}
-
-            if isinstance(latest_turn.reasoning_trace, dict):
-                latest_turn.reasoning_trace["user_feedback"] = feedback_data
-
-            # If corrected query provided and original was incorrect, add to RAG
-            if not feedback.is_query_correct and feedback.corrected_query:
-                logger.info(
-                    "User provided corrected query - creating RAG example "
-                    "for expert review"
-                )
-
-                # Extract tables from schema context if available
-                involved_tables = []
-                if latest_turn.schema_context:
-                    schema_tables = latest_turn.schema_context.get("tables", [])
-                    involved_tables = [
-                        t.get("name") for t in schema_tables if t.get("name")
-                    ]
-
-                # Create RAG example with corrected query
-                rag_example = RAGExample(
-                    provider_id=conversation.provider_id,
-                    natural_language_query=latest_turn.user_input,
-                    generated_query=latest_turn.generated_query,
-                    is_good_example=False,  # Original was incorrect
-                    status=ExampleStatus.PENDING_REVIEW,
-                    involved_tables=involved_tables or ["unknown"],
-                    query_intent="user_correction",
-                    complexity_level="medium",
-                    expert_corrected_query=feedback.corrected_query,
-                    review_notes=f"User feedback: {feedback.comments or 'No comments'}",
-                    source_conversation_id=conversation_id,
-                    metadata={
-                        "original_confidence": latest_turn.confidence_score,
-                        "user_rating": feedback.rating,
-                    },
-                )
-
-                session.add(rag_example)
-
-                logger.info(
-                    f"Created RAG example {rag_example.id} with user-corrected query"
-                )
-
-            await session.commit()
-
-            logger.info(
-                f"Feedback submitted successfully for conversation {conversation_id}"
+        # Convert string category to enum
+        try:
+            category = FeedbackCategory(request.category)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse(
+                    error="invalid_category",
+                    message=f"Invalid category: {request.category}",
+                ).model_dump(),
             )
+
+        # Submit feedback
+        service = FeedbackService()
+        feedback = await service.submit_feedback(
+            turn_id=turn_id,
+            rating=rating,
+            category=category,
+            user_id=request.user_id,
+            feedback_text=request.feedback_text,
+        )
+
+        response = FeedbackResponse(
+            id=str(feedback.id),
+            turn_id=str(feedback.turn_id),
+            conversation_id=str(conversation_id),
+            rating=feedback.rating.value,
+            category=feedback.feedback_category.value,
+            feedback_text=feedback.feedback_text,
+            user_id=feedback.user_id,
+            created_at=feedback.created_at.isoformat() if feedback.created_at else "",
+        )
+
+        logger.info(
+            f"Feedback submitted successfully: {feedback.id}, "
+            f"rating={feedback.rating.value}"
+        )
+        return response
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Error submitting feedback for conversation {conversation_id}: {e}",
-            exc_info=True,
-        )
+        logger.error(f"Error submitting feedback: {e}", exc_info=True)
+
+        # Check if it's an integrity error (duplicate feedback)
+        error_msg = str(e).lower()
+        if "unique" in error_msg or "duplicate" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=ErrorResponse(
+                    error="duplicate_feedback",
+                    message="Feedback already exists for this turn",
+                ).model_dump(),
+            )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
-                error="feedback_error",
+                error="submission_error",
                 message="Failed to submit feedback",
             ).model_dump(),
         )

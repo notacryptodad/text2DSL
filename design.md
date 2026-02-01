@@ -1020,3 +1020,212 @@ observability:
   metrics_namespace: "text2x"
   log_level: "INFO"
 ```
+
+---
+
+## 15. User Scenarios & Workflows
+
+This section defines the key user flows that the system must support end-to-end.
+
+### 15.1 Scenario 1: Admin Workspace Setup
+
+**Actors:** Super Admin, Workspace Admin
+
+**Flow:**
+1. Super Admin creates a new workspace
+2. Super Admin invites Workspace Admin (by email/user_id)
+3. Workspace Admin accepts invitation
+4. Workspace Admin creates Provider (e.g., PostgreSQL)
+5. Workspace Admin adds Connection with credentials
+6. Workspace Admin tests connection
+7. Workspace Admin triggers schema refresh
+8. System caches schema in Redis
+
+**API Endpoints Required:**
+- `POST /api/v1/admin/workspaces` - Create workspace (super admin)
+- `POST /api/v1/admin/workspaces/{id}/admins` - Invite admin
+- `POST /api/v1/admin/invitations/{id}/accept` - Accept invitation
+- `POST /api/v1/workspaces/{ws}/providers` - Create provider
+- `POST /api/v1/workspaces/{ws}/providers/{p}/connections` - Add connection
+- `POST /api/v1/workspaces/{ws}/providers/{p}/connections/{c}/test` - Test
+- `POST /api/v1/workspaces/{ws}/providers/{p}/connections/{c}/schema/refresh` - Refresh
+
+**Success Criteria:**
+- Workspace created with proper isolation
+- Admin can manage only their workspace
+- Connection test returns success/failure with details
+- Schema cached and queryable
+
+---
+
+### 15.2 Scenario 2: Expert Schema Annotation
+
+**Actors:** Expert
+
+**Flow:**
+1. Expert views schema for a connection
+2. Expert requests auto-annotation for a table
+3. LLM analyzes schema and suggests annotations
+4. Expert reviews suggestions in multi-turn chat
+5. Expert can ask follow-up questions (e.g., "What values does status have?")
+6. LLM uses tools (sample_data, column_stats) to answer
+7. Expert approves/edits and saves annotations
+
+**API Endpoints Required:**
+- `GET /api/v1/workspaces/{ws}/connections/{c}/schema` - Get schema
+- `POST /api/v1/workspaces/{ws}/connections/{c}/schema/auto-annotate` - Auto-annotate
+- `POST /api/v1/workspaces/{ws}/annotations/chat` - Multi-turn chat
+- `GET /api/v1/workspaces/{ws}/annotations` - List annotations
+- `POST /api/v1/workspaces/{ws}/annotations` - Save annotation
+- `PUT /api/v1/workspaces/{ws}/annotations/{id}` - Update annotation
+
+**Tools Available to Annotation Agent:**
+- `sample_data(table, column, limit)` - Get sample values
+- `column_stats(table, column)` - Get min/max/distinct count
+- `find_relationships(table)` - Find foreign keys
+- `save_annotation(target, description, terms)` - Save annotation
+
+**Success Criteria:**
+- LLM generates meaningful annotations from schema
+- Multi-turn conversation maintains context
+- Tool calls return accurate data
+- Annotations saved to database
+
+---
+
+### 15.3 Scenario 3: User Query Generation
+
+**Actors:** User
+
+**Flow:**
+1. User selects workspace, provider, and connection
+2. User submits natural language query
+3. Orchestrator dispatches to agents in parallel:
+   - Schema Agent: retrieves relevant schema + annotations
+   - RAG Agent: finds similar approved examples
+4. Query Builder generates DSL with confidence score
+5. Validator checks syntax and executes test query
+6. If confidence >= 0.85 AND validation passed → return result
+7. If confidence < 0.6 → ask user for clarification
+8. Loop until termination criteria met or max iterations
+
+**API Endpoints Required:**
+- `POST /api/v1/query` - Submit query (main endpoint)
+- `GET /api/v1/conversations/{id}` - Get conversation
+- `POST /api/v1/conversations/{id}/turns` - Continue conversation
+
+**Termination Criteria:**
+```python
+terminate = (confidence >= 0.85 AND validation_passed) OR iterations >= 5
+clarify = confidence < 0.6 AND iterations < 5
+```
+
+**Success Criteria:**
+- Query generated with >= 95% accuracy
+- Clarification requested for vague queries
+- Full reasoning trace available
+- Audit log created
+
+---
+
+### 15.4 Scenario 4: Expert Review Queue
+
+**Actors:** Expert
+
+**Flow:**
+1. System auto-queues items for review:
+   - Low confidence queries (< 0.7)
+   - Validation failures
+   - User thumbs-down feedback
+2. Expert views review queue
+3. Expert reviews item (sees NL query, generated DSL, context)
+4. Expert decides:
+   - APPROVE: Add to RAG as good example
+   - REJECT: Add to RAG as bad example (to avoid)
+   - CORRECT: Fix the DSL, then approve
+5. System updates RAG index immediately
+
+**API Endpoints Required:**
+- `GET /api/v1/review/queue` - Get pending reviews
+- `GET /api/v1/review/queue/{id}` - Get review item details
+- `PUT /api/v1/review/queue/{id}` - Submit decision
+- `GET /api/v1/review/stats` - Review statistics
+
+**Review Triggers (Auto-Queue):**
+| Trigger | Priority |
+|---------|----------|
+| Validation failure | High |
+| User thumbs-down | High |
+| Confidence < 0.7 | Medium |
+| Multiple clarifications | Low |
+
+**Success Criteria:**
+- Items auto-queued based on triggers
+- Expert can approve/reject/correct
+- RAG index updated in real-time
+- Review stats tracked
+
+---
+
+### 15.5 Scenario 5: User Feedback
+
+**Actors:** User
+
+**Flow:**
+1. User receives generated DSL
+2. User clicks thumbs-up or thumbs-down
+3. If thumbs-down, optional: select category + add comment
+4. System records feedback
+5. Auto-actions based on feedback:
+   - 👍 + high confidence → auto-approve to RAG
+   - 👍 + medium confidence → queue for review (low priority)
+   - 👎 → queue for review (high priority)
+
+**API Endpoints Required:**
+- `POST /api/v1/conversations/{c}/turns/{t}/feedback` - Submit feedback
+- `GET /api/v1/feedback/stats` - Feedback statistics
+
+**Feedback Categories:**
+- wrong_table
+- wrong_columns
+- wrong_filter
+- wrong_aggregation
+- syntax_error
+- incomplete
+- other
+
+**Success Criteria:**
+- Feedback recorded with turn linkage
+- Auto-queue triggered for negative feedback
+- Stats available for monitoring
+
+---
+
+### 15.6 Implementation Status
+
+| Scenario | Models | Repositories | API Routes | Services | Agents | Tests |
+|----------|--------|--------------|------------|----------|--------|-------|
+| 1. Admin Setup | ✅ | ✅ | ✅ | ✅ | N/A | ✅ |
+| 2. Schema Annotation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 3. Query Generation | ✅ | ✅ | ⚠️ Partial | ⚠️ Partial | ⚠️ Partial | ⚠️ |
+| 4. Review Queue | ✅ | ✅ | ⚠️ Partial | ✅ | N/A | ⚠️ Partial |
+| 5. User Feedback | ✅ | ✅ | ✅ | ✅ | N/A | ✅ |
+
+**Legend:** ✅ Complete | ⚠️ Partial | ❌ Not Started
+
+**Recent Updates (Phase 2):**
+- ✅ Completed `src/text2x/api/routes/admin.py` with all admin endpoints
+- ✅ Completed `src/text2x/services/connection_service.py` with connection testing and schema introspection
+- ✅ Updated `src/text2x/api/routes/workspaces.py` with working connection test and schema refresh
+- ✅ **Scenario 2 Complete:** Schema Annotation flow fully implemented with:
+  - New endpoints: GET `/workspaces/{ws}/connections/{c}/schema` and POST `/workspaces/{ws}/connections/{c}/schema/auto-annotate`
+  - New service: `SchemaService` with Redis caching, schema introspection, and refresh capabilities
+  - Updated `AnnotationAgent` with working tools (sample_data, column_stats, save_annotation)
+  - Comprehensive tests: `test_annotation_flow.py` with 10 end-to-end tests (all passing)
+- ✅ Created `tests/test_admin_api.py` with comprehensive integration tests
+- ✅ Registered admin router in main application
+- ✅ **Scenario 5 Complete:** User Feedback flow fully implemented with:
+  - New service: `FeedbackService` with auto-queue logic (thumbs_up + confidence >= 0.9 → auto_approve, thumbs_up + confidence < 0.9 → queue low priority, thumbs_down → queue high priority)
+  - New endpoints: POST `/conversations/{c}/turns/{t}/feedback`, GET `/feedback/stats`, GET `/feedback/recent`
+  - Integrated with review queue via RAG example creation/updates
+  - Comprehensive tests: `test_feedback_flow.py` with end-to-end coverage of auto-queue logic, statistics, and edge cases

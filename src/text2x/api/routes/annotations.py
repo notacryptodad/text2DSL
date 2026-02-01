@@ -9,9 +9,10 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from text2x.agents.annotation_agent import AnnotationAgent
 from text2x.agents.base import LLMConfig
-from text2x.api.models import ErrorResponse
+from text2x.api.models import ErrorResponse, TableInfo
 from text2x.config import settings
 from text2x.repositories.annotation import SchemaAnnotationRepository
+from text2x.services.schema_service import SchemaService
 from text2x.utils.observability import async_log_context
 
 logger = logging.getLogger(__name__)
@@ -344,5 +345,259 @@ async def get_conversation_history(conversation_id: UUID) -> List[ConversationMe
             detail=ErrorResponse(
                 error="fetch_error",
                 message="Failed to fetch conversation history",
+            ).model_dump(),
+        )
+
+
+# Schema endpoints for Scenario 2
+class SchemaResponse(BaseModel):
+    """Response model for schema endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    connection_id: UUID = Field(..., description="Connection ID")
+    provider_type: str = Field(..., description="Provider type (e.g., postgresql)")
+    tables: List[TableInfo] = Field(default_factory=list, description="List of tables")
+    table_count: int = Field(..., ge=0, description="Number of tables")
+    last_refreshed: Optional[str] = Field(None, description="Last refresh timestamp")
+
+
+class AutoAnnotateRequest(BaseModel):
+    """Request model for auto-annotation endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    table_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Name of the table to auto-annotate"
+    )
+    include_columns: bool = Field(
+        default=True,
+        description="Whether to generate annotations for columns"
+    )
+
+
+class AutoAnnotateResponse(BaseModel):
+    """Response model for auto-annotation endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_id: UUID = Field(..., description="Conversation ID for follow-up")
+    table_name: str = Field(..., description="Table that was annotated")
+    suggestions: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Suggested annotations"
+    )
+    message: str = Field(..., description="Status message")
+
+
+@router.get(
+    "/workspaces/{workspace_id}/connections/{connection_id}/schema",
+    response_model=SchemaResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get connection schema",
+    description="Retrieve the full database schema for a connection",
+)
+async def get_connection_schema(
+    workspace_id: UUID,
+    connection_id: UUID
+) -> SchemaResponse:
+    """
+    Get the complete database schema for a connection.
+
+    This endpoint retrieves the schema from cache if available,
+    or introspects the database if needed.
+
+    Args:
+        workspace_id: UUID of the workspace
+        connection_id: UUID of the connection
+
+    Returns:
+        Schema information including tables, columns, and relationships
+
+    Raises:
+        HTTPException: If connection not found or schema retrieval fails
+    """
+    try:
+        logger.info(
+            f"Fetching schema for connection {connection_id} "
+            f"in workspace {workspace_id}"
+        )
+
+        # Create schema service
+        schema_service = SchemaService()
+
+        # Get schema
+        schema = await schema_service.get_schema(connection_id)
+
+        if not schema:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorResponse(
+                    error="not_found",
+                    message=f"Connection {connection_id} not found or schema unavailable",
+                ).model_dump(),
+            )
+
+        # Convert to response format
+        tables = [
+            TableInfo(
+                name=table.name,
+                schema=table.schema,
+                columns=[
+                    {
+                        "name": col.name,
+                        "type": col.type,
+                        "nullable": col.nullable,
+                        "primary_key": col.primary_key,
+                        "unique": col.unique,
+                    }
+                    for col in table.columns
+                ],
+                primary_keys=[col.name for col in table.columns if col.primary_key],
+                foreign_keys=[
+                    {
+                        "column": ",".join(fk.constrained_columns),
+                        "references_table": fk.referred_table,
+                        "references_column": ",".join(fk.referred_columns),
+                    }
+                    for fk in table.foreign_keys
+                ],
+                row_count=table.row_count,
+                description=table.comment,
+            )
+            for table in schema.tables
+        ]
+
+        response = SchemaResponse(
+            connection_id=connection_id,
+            provider_type=schema.metadata.get("provider_type", "unknown"),
+            tables=tables,
+            table_count=len(tables),
+            last_refreshed=schema.metadata.get("last_refreshed"),
+        )
+
+        logger.info(
+            f"Retrieved schema for connection {connection_id}: "
+            f"{response.table_count} tables"
+        )
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching schema: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="fetch_error",
+                message="Failed to fetch connection schema",
+                details={"error": str(e)} if settings.debug else None,
+            ).model_dump(),
+        )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/connections/{connection_id}/schema/auto-annotate",
+    response_model=AutoAnnotateResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Auto-annotate table schema",
+    description="Use LLM to automatically generate schema annotations for a table",
+)
+async def auto_annotate_table(
+    workspace_id: UUID,
+    connection_id: UUID,
+    request: AutoAnnotateRequest
+) -> AutoAnnotateResponse:
+    """
+    Automatically generate schema annotations for a table using LLM.
+
+    This endpoint:
+    1. Retrieves the table schema
+    2. Samples data from the table
+    3. Uses LLM to suggest annotations
+    4. Returns suggestions in a conversation context for expert review
+
+    Args:
+        workspace_id: UUID of the workspace
+        connection_id: UUID of the connection
+        request: Auto-annotation request with table name
+
+    Returns:
+        Suggested annotations and conversation ID for follow-up
+
+    Raises:
+        HTTPException: If table not found or annotation fails
+    """
+    try:
+        logger.info(
+            f"Auto-annotating table {request.table_name} for connection {connection_id}"
+        )
+
+        # Create conversation ID for this annotation session
+        conversation_id = uuid4()
+
+        # Get or create agent for this conversation
+        agent = _get_or_create_agent(conversation_id, str(connection_id))
+
+        # Build prompt for auto-annotation
+        prompt = f"""I need help annotating the table '{request.table_name}'.
+
+Please:
+1. Sample some data from this table to understand its structure
+2. Analyze the columns and their data types
+3. Suggest meaningful annotations including:
+   - Table description
+   - Column descriptions
+   - Business terms (alternative names)
+   - Any patterns or relationships you notice
+
+Let's start by sampling data from the table."""
+
+        # Process the request
+        result = await agent.process({
+            "user_message": prompt,
+            "provider_id": str(connection_id),
+            "user_id": "system",
+            "reset_conversation": True,
+        })
+
+        # Extract suggestions from response
+        # In a real implementation, we'd parse the LLM response more carefully
+        suggestions = {
+            "table_name": request.table_name,
+            "llm_response": result["response"],
+            "tool_calls": result.get("tool_calls", []),
+        }
+
+        response = AutoAnnotateResponse(
+            conversation_id=conversation_id,
+            table_name=request.table_name,
+            suggestions=suggestions,
+            message=(
+                f"Auto-annotation started for table '{request.table_name}'. "
+                f"Continue the conversation using conversation_id {conversation_id} "
+                "to review and refine the suggestions."
+            ),
+        )
+
+        logger.info(
+            f"Auto-annotation completed for table {request.table_name}: "
+            f"conversation_id={conversation_id}"
+        )
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error in auto-annotation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="annotation_error",
+                message="Failed to auto-annotate table",
+                details={"error": str(e)} if settings.debug else None,
             ).model_dump(),
         )
