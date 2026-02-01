@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from text2x.api.app import app_state
+from text2x.api.state import app_state
 from text2x.api.models import ErrorResponse
 from text2x.models.admin import AdminRole, WorkspaceAdmin
 from text2x.models.workspace import Workspace

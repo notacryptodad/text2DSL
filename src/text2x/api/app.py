@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from text2x.api.models import ErrorResponse, HealthCheckResponse
+from text2x.api.state import app_state
 from text2x.config import settings
 from text2x.utils.observability import setup_json_logging, get_correlation_id
 
@@ -24,20 +25,6 @@ else:
     )
 
 logger = logging.getLogger(__name__)
-
-
-# Global state for database and other resources
-class AppState:
-    """Application state container."""
-
-    def __init__(self) -> None:
-        self.db_engine = None
-        self.redis_client = None
-        self.opensearch_client = None
-        self.start_time = time.time()
-
-
-app_state = AppState()
 
 
 @asynccontextmanager

@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Response, status
 
-from text2x.api.app import app_state
+from text2x.api.state import app_state
 from text2x.config import settings
 
 logger = logging.getLogger(__name__)

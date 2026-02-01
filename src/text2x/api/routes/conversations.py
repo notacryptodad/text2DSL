@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from text2x.api.app import app_state
+from text2x.api.state import app_state
 from text2x.api.models import (
     ConversationResponse,
     ConversationStatus,

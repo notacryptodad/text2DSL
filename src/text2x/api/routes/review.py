@@ -10,7 +10,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from text2x.api.app import app_state
+from text2x.api.state import app_state
 from text2x.api.auth import User, get_current_user
 from text2x.api.models import (
     ErrorResponse,
