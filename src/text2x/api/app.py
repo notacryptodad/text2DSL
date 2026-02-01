@@ -50,6 +50,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await initialize_opensearch()
         logger.info("OpenSearch initialized successfully")
 
+        # Initialize Orchestrator
+        await initialize_orchestrator()
+        logger.info("Orchestrator initialized successfully")
+
         logger.info(
             f"Text2DSL API started successfully on {settings.api_host}:{settings.api_port}"
         )
@@ -153,6 +157,78 @@ async def initialize_opensearch() -> None:
 
     except Exception as e:
         logger.error(f"Failed to initialize OpenSearch: {e}")
+        raise
+
+
+async def initialize_orchestrator() -> None:
+    """Initialize the global orchestrator agent."""
+    from typing import List
+    from text2x.agents.base import LLMConfig
+    from text2x.agents.orchestrator import OrchestratorAgent
+    from text2x.api.routes.query import set_orchestrator
+    from text2x.providers.base import (
+        QueryProvider,
+        ProviderCapability,
+        SchemaDefinition,
+        ValidationResult,
+    )
+
+    try:
+        # Create LLM config from settings
+        llm_config = LLMConfig(
+            model=settings.llm_model,
+            api_base="",  # Will be handled by provider-specific logic
+            api_key=None,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+            timeout=float(settings.llm_timeout),
+        )
+
+        # Create a default/mock provider for initialization
+        # Note: In production, this should be replaced with actual provider lookup per request
+        class DefaultProvider(QueryProvider):
+            """Default provider for orchestrator initialization."""
+
+            def get_provider_id(self) -> str:
+                return "default"
+
+            def get_query_language(self) -> str:
+                return "SQL"
+
+            def get_capabilities(self) -> List[ProviderCapability]:
+                return [
+                    ProviderCapability.SCHEMA_INTROSPECTION,
+                    ProviderCapability.QUERY_VALIDATION,
+                ]
+
+            async def get_schema(self) -> SchemaDefinition:
+                return SchemaDefinition(tables=[], relationships=[])
+
+            async def validate_syntax(self, query: str) -> ValidationResult:
+                return ValidationResult(valid=True)
+
+        provider = DefaultProvider()
+
+        # Create orchestrator with config from settings
+        orchestrator = OrchestratorAgent(
+            llm_config=llm_config,
+            provider=provider,
+            opensearch_client=app_state.opensearch_client,
+            max_iterations=settings.max_iterations,
+            confidence_threshold=settings.confidence_threshold,
+            clarification_threshold=settings.low_confidence_threshold,
+        )
+
+        # Set the global orchestrator
+        set_orchestrator(orchestrator)
+
+        logger.info(
+            f"Orchestrator initialized with max_iterations={settings.max_iterations}, "
+            f"confidence_threshold={settings.confidence_threshold}"
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to initialize orchestrator: {e}")
         raise
 
 
