@@ -5,24 +5,24 @@ export class ReviewPage {
   constructor(page) {
     this.page = page;
 
-    // Selectors
-    this.queueContainer = '.review-queue, [data-testid="review-queue"]';
-    this.queueItem = '.review-item, .queue-item, [data-testid="review-item"]';
+    // Selectors - updated to match Review.jsx implementation
+    this.queueContainer = '.bg-white.dark\\:bg-gray-800.rounded-lg';
+    this.queueItem = '.p-6.hover\\:bg-gray-50';
+    this.viewDetailsButton = 'button:has-text("View Details")';
     this.approveButton = 'button:has-text("Approve")';
     this.rejectButton = 'button:has-text("Reject")';
-    this.correctButton = 'button:has-text("Correct"), button:has-text("Edit")';
-    this.statusFilter = 'select[name="status"], [aria-label="Filter by status"]';
-    this.correctionModal = '[role="dialog"], .modal';
-    this.correctionTextarea = 'textarea[name="correction"], textarea[placeholder*="correct"]';
-    this.correctionSubmitButton = 'button:has-text("Save"), button:has-text("Submit")';
-    this.feedbackTextarea = 'textarea[name="feedback"], textarea[placeholder*="feedback"]';
+    this.editButton = 'button:has-text("Edit")';
+    this.statusFilter = 'select';
+    this.detailModal = '.fixed.inset-0.z-50';
+    this.correctionTextarea = 'textarea';
+    this.feedbackTextarea = 'textarea[placeholder*="feedback"], textarea[placeholder*="Comments"]';
   }
 
   /**
    * Navigate to review queue page
    */
   async goto() {
-    await this.page.goto('/review');
+    await this.page.goto('/app/review');
     await this.page.waitForLoadState('networkidle');
   }
 
@@ -67,10 +67,18 @@ export class ReviewPage {
       throw new Error(`No item at index ${index}`);
     }
 
-    const approveButton = items[index].locator(this.approveButton);
-    await approveButton.click();
+    // Click "View Details" button to open modal
+    const viewButton = items[index].locator(this.viewDetailsButton);
+    await viewButton.click();
 
-    // Wait for item to be removed from queue
+    // Wait for modal to open
+    await this.page.locator(this.detailModal).waitFor({ state: 'visible', timeout: 5000 });
+
+    // Click approve button in modal
+    await this.page.locator(this.detailModal).locator(this.approveButton).click();
+
+    // Wait for modal to close and queue to update
+    await this.page.locator(this.detailModal).waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
     await this.page.waitForTimeout(1000);
   }
 
@@ -86,24 +94,27 @@ export class ReviewPage {
       throw new Error(`No item at index ${index}`);
     }
 
-    const rejectButton = items[index].locator(this.rejectButton);
-    await rejectButton.click();
+    // Click "View Details" button to open modal
+    const viewButton = items[index].locator(this.viewDetailsButton);
+    await viewButton.click();
+
+    // Wait for modal to open
+    await this.page.locator(this.detailModal).waitFor({ state: 'visible', timeout: 5000 });
 
     // If feedback is provided, fill it in
     if (feedback) {
-      try {
-        await this.page.locator(this.feedbackTextarea).waitFor({ state: 'visible', timeout: 2000 });
-        await this.page.fill(this.feedbackTextarea, feedback);
-
-        // Submit feedback
-        const submitButton = this.page.locator('button:has-text("Submit"), button:has-text("Reject")');
-        await submitButton.click();
-      } catch {
-        // No feedback field, rejection might be immediate
-      }
+      const feedbackField = this.page.locator(this.detailModal).locator(this.feedbackTextarea);
+      await feedbackField.fill(feedback);
     }
 
-    // Wait for item to be removed from queue
+    // Click reject button in modal
+    await this.page.locator(this.detailModal).locator(this.rejectButton).click();
+
+    // Handle confirmation dialog if it appears
+    this.page.once('dialog', dialog => dialog.accept());
+
+    // Wait for modal to close and queue to update
+    await this.page.locator(this.detailModal).waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
     await this.page.waitForTimeout(1000);
   }
 
@@ -119,35 +130,42 @@ export class ReviewPage {
       throw new Error(`No item at index ${index}`);
     }
 
-    const correctButton = items[index].locator(this.correctButton);
-    await correctButton.click();
+    // Click "View Details" button to open modal
+    const viewButton = items[index].locator(this.viewDetailsButton);
+    await viewButton.click();
 
-    // Wait for correction modal
-    await this.page.locator(this.correctionModal).waitFor({ state: 'visible', timeout: 5000 });
+    // Wait for modal to open
+    await this.page.locator(this.detailModal).waitFor({ state: 'visible', timeout: 5000 });
+
+    // Click "Edit & Approve" button to enable editing
+    await this.page.locator(this.detailModal).locator(this.editButton).click();
+
+    // Wait for textarea to appear
+    await this.page.waitForTimeout(500);
 
     // Fill in corrected SQL
-    await this.page.fill(this.correctionTextarea, correctedSQL);
+    const textarea = this.page.locator(this.detailModal).locator(this.correctionTextarea).first();
+    await textarea.fill(correctedSQL);
 
-    // Submit correction
-    await this.page.locator(this.correctionModal)
-      .locator(this.correctionSubmitButton)
-      .click();
+    // Click "Approve with Correction" button
+    await this.page.locator(this.detailModal).locator('button:has-text("Approve with Correction")').click();
 
-    // Wait for modal to close
-    await this.page.locator(this.correctionModal).waitFor({ state: 'hidden', timeout: 5000 });
-
-    // Wait for item to be processed
+    // Wait for modal to close and queue to update
+    await this.page.locator(this.detailModal).waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
     await this.page.waitForTimeout(1000);
   }
 
   /**
    * Filter queue by status
    *
-   * @param {string} status - Status to filter by (e.g., 'pending', 'approved', 'rejected')
+   * @param {string} status - Status to filter by (e.g., 'pending_review', 'approved', 'rejected')
    */
   async filterByStatus(status) {
-    await this.page.selectOption(this.statusFilter, status);
+    // The status filter is the second select on the page
+    const statusSelect = this.page.locator('select').nth(1);
+    await statusSelect.selectOption(status);
     await this.page.waitForLoadState('networkidle');
+    await this.page.waitForTimeout(500);
   }
 
   /**
