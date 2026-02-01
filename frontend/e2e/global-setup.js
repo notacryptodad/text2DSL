@@ -87,7 +87,7 @@ async function globalSetup() {
 async function waitForBackend(page, maxRetries = 30) {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const response = await page.request.get('http://localhost:8000/api/v1/health', {
+      const response = await page.request.get('http://localhost:8000/health', {
         timeout: 5000,
       });
 

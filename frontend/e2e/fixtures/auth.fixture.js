@@ -6,25 +6,25 @@ import { test as base } from '@playwright/test';
  */
 export const TEST_USERS = {
   super_admin: {
-    email: 'super@text2dsl.local',
+    email: 'super@text2dsl.test',
     password: 'SuperAdmin123!',
     role: 'super_admin',
     name: 'Super Admin',
   },
   admin: {
-    email: 'admin@text2dsl.local',
+    email: 'admin@text2dsl.test',
     password: 'Admin123!',
     role: 'admin',
     name: 'Admin User',
   },
   expert: {
-    email: 'expert@text2dsl.local',
+    email: 'expert@text2dsl.test',
     password: 'Expert123!',
     role: 'expert',
     name: 'Expert User',
   },
   user: {
-    email: 'user@text2dsl.local',
+    email: 'user@text2dsl.test',
     password: 'User123!',
     role: 'user',
     name: 'Regular User',
@@ -122,7 +122,7 @@ export async function registerViaAPI(page, userData) {
     data: {
       email: userData.email,
       password: userData.password,
-      full_name: userData.name || 'Test User',
+      name: userData.name || 'Test User',
     },
   });
 
