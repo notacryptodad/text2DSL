@@ -6,25 +6,25 @@ import { test as base } from '@playwright/test';
  */
 export const TEST_USERS = {
   super_admin: {
-    email: 'super@text2dsl.test',
+    email: 'super.admin@example.com',
     password: 'SuperAdmin123!',
     role: 'super_admin',
     name: 'Super Admin',
   },
   admin: {
-    email: 'admin@text2dsl.test',
+    email: 'admin.user@example.com',
     password: 'Admin123!',
     role: 'admin',
     name: 'Admin User',
   },
   expert: {
-    email: 'expert@text2dsl.test',
+    email: 'expert.user@example.com',
     password: 'Expert123!',
     role: 'expert',
     name: 'Expert User',
   },
   user: {
-    email: 'user@text2dsl.test',
+    email: 'regular.user@example.com',
     password: 'User123!',
     role: 'user',
     name: 'Regular User',
