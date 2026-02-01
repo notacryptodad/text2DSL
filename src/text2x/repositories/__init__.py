@@ -8,9 +8,11 @@ from .conversation import ConversationRepository, ConversationTurnRepository
 from .feedback import FeedbackRepository
 from .provider import ProviderRepository
 from .rag import RAGExampleRepository
+from .user import UserRepository
 from .workspace import WorkspaceRepository
 
 __all__ = [
+    "UserRepository",
     "ConnectionRepository",
     "ProviderRepository",
     "WorkspaceRepository",
