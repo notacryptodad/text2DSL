@@ -1077,17 +1077,40 @@ async def update_connection(
     summary="Delete connection",
 )
 async def delete_connection(
-    workspace_id: UUID, 
-    provider_id: UUID, 
+    workspace_id: UUID,
+    provider_id: UUID,
     connection_id: UUID
 ) -> None:
     """
     Delete a connection.
     """
     try:
-        logger.info(f"Deleting connection {connection_id}")
-        # TODO: Delete from database
-        
+        logger.info(f"Deleting connection {connection_id} from provider {provider_id}")
+
+        async with await get_session() as session:
+            # Check if connection exists and belongs to this provider
+            stmt = select(Connection).where(
+                Connection.id == connection_id,
+                Connection.provider_id == provider_id
+            )
+            result = await session.execute(stmt)
+            connection = result.scalar_one_or_none()
+
+            if not connection:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Connection {connection_id} not found in provider {provider_id}",
+                    ).model_dump(),
+                )
+
+            # Delete connection
+            await session.delete(connection)
+            await session.commit()
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting connection: {e}", exc_info=True)
         raise HTTPException(
