@@ -1056,6 +1056,74 @@ This section defines the key user flows that the system must support end-to-end.
 - Connection test returns success/failure with details
 - Schema cached and queryable
 
+**Sequence Diagram:**
+
+```mermaid
+sequenceDiagram
+    actor SA as Super Admin
+    actor WA as Workspace Admin
+    participant API as API Service
+    participant DB as PostgreSQL
+    participant Redis as Redis Cache
+    participant Target as Target Database
+
+    Note over SA,Target: Phase 1: Workspace Creation
+    SA->>+API: POST /api/v1/admin/workspaces
+    API->>+DB: Create workspace record
+    DB-->>-API: workspace_id
+    API-->>-SA: Workspace created
+
+    Note over SA,Target: Phase 2: Admin Invitation
+    SA->>+API: POST /api/v1/admin/workspaces/{id}/admins
+    API->>+DB: Create invitation record
+    DB-->>-API: invitation_id
+    API-->>SA: Email sent to admin
+    API-->>-SA: Invitation created
+
+    WA->>+API: POST /api/v1/admin/invitations/{id}/accept
+    API->>+DB: Update invitation status
+    API->>DB: Link user to workspace
+    DB-->>-API: Success
+    API-->>-WA: Invitation accepted
+
+    Note over SA,Target: Phase 3: Provider Configuration
+    WA->>+API: POST /api/v1/workspaces/{ws}/providers
+    API->>+DB: Create provider (type: postgresql)
+    DB-->>-API: provider_id
+    API-->>-WA: Provider created
+
+    Note over SA,Target: Phase 4: Connection Setup
+    WA->>+API: POST /api/v1/workspaces/{ws}/providers/{p}/connections
+    Note right of API: Credentials encrypted
+    API->>+DB: Create connection record
+    DB-->>-API: connection_id
+    API-->>-WA: Connection created (status: pending)
+
+    Note over SA,Target: Phase 5: Connection Test
+    WA->>+API: POST /api/v1/.../connections/{c}/test
+    API->>+Target: Test connection
+    alt Connection Success
+        Target-->>-API: Connected
+        API->>+DB: Update status: connected
+        DB-->>-API: Success
+        API-->>WA: Connection successful
+    else Connection Failure
+        Target-->>API: Connection error
+        API->>DB: Update status: error
+        API-->>WA: Connection failed + error details
+    end
+
+    Note over SA,Target: Phase 6: Schema Refresh
+    WA->>+API: POST /api/v1/.../connections/{c}/schema/refresh
+    API->>+Target: Introspect schema
+    Target-->>-API: Schema metadata (tables, columns, types)
+    API->>+Redis: Cache schema (TTL: 1 hour)
+    Redis-->>-API: Cached
+    API->>+DB: Update schema_last_refreshed
+    DB-->>-API: Updated
+    API-->>-WA: Schema cached (table count, column count)
+```
+
 ---
 
 ### 15.2 Scenario 2: Expert Schema Annotation
@@ -1091,6 +1159,85 @@ This section defines the key user flows that the system must support end-to-end.
 - Tool calls return accurate data
 - Annotations saved to database
 
+**Sequence Diagram:**
+
+```mermaid
+sequenceDiagram
+    actor Expert
+    participant API as API Service
+    participant Schema as SchemaService
+    participant Agent as AnnotationAgent
+    participant LLM as Bedrock (Claude)
+    participant DB as PostgreSQL
+    participant Redis as Redis Cache
+    participant Target as Target Database
+
+    Note over Expert,Target: Phase 1: View Schema
+    Expert->>+API: GET /workspaces/{ws}/connections/{c}/schema
+    API->>+Schema: get_schema(connection_id)
+    Schema->>+Redis: Check cache
+    alt Cache Hit
+        Redis-->>-Schema: Cached schema
+    else Cache Miss
+        Schema->>+Target: Introspect schema
+        Target-->>-Schema: Tables, columns, types
+        Schema->>Redis: Cache schema
+    end
+    Schema-->>-API: Schema metadata
+    API-->>-Expert: Schema with tables/columns
+
+    Note over Expert,Target: Phase 2: Request Auto-Annotation
+    Expert->>+API: POST /workspaces/{ws}/connections/{c}/schema/auto-annotate
+    Note right of API: {table: "orders"}
+    API->>+Agent: start_annotation_session(table)
+    Agent->>+Schema: get_table_schema(orders)
+    Schema-->>-Agent: Table structure
+    Agent->>+LLM: Analyze schema and suggest annotations
+    Note right of LLM: Prompt: "Analyze this table structure..."
+    LLM-->>-Agent: Suggested annotations
+    Agent-->>-API: session_id, suggestions
+    API-->>-Expert: Auto-annotation suggestions
+
+    Note over Expert,Target: Phase 3: Multi-Turn Chat
+    Expert->>+API: POST /workspaces/{ws}/annotations/chat
+    Note right of API: {session_id, message: "What values does status have?"}
+    API->>+Agent: process_message(session_id, message)
+    Agent->>+LLM: Determine intent, select tool
+    LLM-->>-Agent: Use sample_data tool
+    Agent->>Agent: sample_data(orders, status, 100)
+    Agent->>+Target: SELECT DISTINCT status FROM orders LIMIT 100
+    Target-->>-Agent: ["pending", "processing", "shipped", "delivered"]
+    Agent->>+LLM: Format response with data
+    LLM-->>-Agent: "The status column has 4 values: pending..."
+    Agent-->>-API: Response
+    API-->>-Expert: Answer with sample data
+
+    Note over Expert,Target: Phase 4: Follow-up Questions
+    Expert->>+API: POST /workspaces/{ws}/annotations/chat
+    Note right of API: {session_id, message: "What's the date range?"}
+    API->>+Agent: process_message(session_id, message)
+    Agent->>+LLM: Select tool
+    LLM-->>-Agent: Use column_stats tool
+    Agent->>Agent: column_stats(orders, created_at)
+    Agent->>+Target: SELECT MIN(created_at), MAX(created_at) FROM orders
+    Target-->>-Agent: min: 2023-01-01, max: 2026-01-31
+    Agent->>+LLM: Format response
+    LLM-->>-Agent: "Date range: Jan 2023 to Jan 2026"
+    Agent-->>-API: Response
+    API-->>-Expert: Date range info
+
+    Note over Expert,Target: Phase 5: Save Annotations
+    Expert->>+API: POST /workspaces/{ws}/annotations
+    Note right of API: Approve/edit final annotations
+    API->>+DB: Insert annotation records
+    DB-->>-API: annotation_ids
+    API->>+Redis: Invalidate schema cache
+    Redis-->>-API: Cache cleared
+    API-->>-Expert: Annotations saved
+
+    Note over Expert,Target: Future queries will use these annotations
+```
+
 ---
 
 ### 15.3 Scenario 3: User Query Generation
@@ -1125,6 +1272,99 @@ clarify = confidence < 0.6 AND iterations < 5
 - Clarification requested for vague queries
 - Full reasoning trace available
 - Audit log created
+
+**Sequence Diagram:**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant API as API Service
+    participant Orch as Orchestrator
+    participant Schema as SchemaAgent
+    participant RAG as RAGAgent
+    participant Builder as QueryBuilderAgent
+    participant Val as ValidatorAgent
+    participant LLM as Bedrock (Claude)
+    participant Redis as Redis Cache
+    participant OpenSearch as OpenSearch (RAG)
+    participant Target as Target Database
+    participant DB as PostgreSQL
+
+    Note over User,DB: Phase 1: Query Submission
+    User->>+API: POST /api/v1/query
+    Note right of API: {connection_id, query: "orders last month > $1000"}
+    API->>+Orch: process_query(request)
+    Orch->>+DB: Create conversation + turn
+    DB-->>-Orch: conversation_id, turn_id
+
+    Note over User,DB: Phase 2: Parallel Context Gathering
+    par Schema Agent
+        Orch->>+Schema: get_schema_context(query)
+        Schema->>+Redis: get_cached_schema(connection_id)
+        Redis-->>-Schema: Schema metadata
+        Schema->>+LLM: Identify relevant tables/columns
+        Note right of LLM: "Which tables for 'orders last month'?"
+        LLM-->>-Schema: Tables: orders, customers
+        Schema->>Redis: get_annotations(orders, customers)
+        Redis-->>Schema: Annotations
+        Schema-->>-Orch: SchemaContext (tables, relationships, annotations)
+    and RAG Agent
+        Orch->>+RAG: search_examples(query, schema_context)
+        RAG->>+LLM: Generate search strategies
+        LLM-->>-RAG: Keywords + intent
+        RAG->>+OpenSearch: Hybrid search (embedding + keyword)
+        OpenSearch-->>-RAG: Similar examples (scored)
+        RAG->>RAG: Rank and filter (min_similarity: 0.7)
+        RAG-->>-Orch: Top 5 examples
+    end
+
+    Note over User,DB: Phase 3: Query Generation (Iteration 1)
+    Orch->>+Builder: generate_query(nl_query, schema, examples)
+    Builder->>+LLM: Generate SQL with context
+    Note right of LLM: Schema + Examples + NL Query
+    LLM-->>-Builder: Generated SQL + reasoning
+    Builder->>Builder: calculate_confidence()
+    Note right of Builder: Confidence: 0.87
+    Builder-->>-Orch: QueryResult (sql, confidence: 0.87)
+
+    Note over User,DB: Phase 4: Validation
+    Orch->>+Val: validate_query(sql, connection)
+    Val->>Val: Check syntax (sqlparse)
+    Val->>+Target: EXPLAIN query
+    Target-->>-Val: Execution plan
+    Val->>+Target: Execute with LIMIT 100
+    Target-->>-Val: 47 rows returned
+    Val->>Val: Analyze results
+    Val-->>-Orch: ValidationResult (passed: true)
+
+    Note over User,DB: Phase 5: Termination Check
+    Orch->>Orch: Check termination criteria
+    Note right of Orch: confidence (0.87) >= 0.85 ✓<br/>validation passed ✓<br/>→ TERMINATE
+
+    Orch->>+DB: Save audit log
+    Note right of DB: Turn, query, confidence,<br/>validation, tokens, cost
+    DB-->>-Orch: Saved
+    Orch-->>-API: QueryResponse (sql, confidence, result)
+    API-->>-User: Generated SQL + execution results
+
+    Note over User,DB: Alternative Flow: Clarification Needed
+    alt Low Confidence (< 0.6)
+        Orch->>+LLM: Generate clarification question
+        LLM-->>-Orch: "Did you mean 'total_amount' or 'item_count'?"
+        Orch-->>API: needs_clarification: true
+        API-->>User: Clarification question
+        User->>API: Answer: "total_amount"
+        API->>Orch: Continue with clarification
+        Note right of Orch: Loop back to Phase 3
+    end
+
+    Note over User,DB: Alternative Flow: Validation Failed
+    alt Validation Failed
+        Val-->>Orch: ValidationResult (passed: false, error)
+        Orch->>Builder: retry_with_feedback(error)
+        Note right of Orch: Loop back to Phase 3<br/>(max 5 iterations)
+    end
+```
 
 ---
 
@@ -1165,6 +1405,121 @@ clarify = confidence < 0.6 AND iterations < 5
 - RAG index updated in real-time
 - Review stats tracked
 
+**Sequence Diagram:**
+
+```mermaid
+sequenceDiagram
+    actor Expert
+    participant API as API Service
+    participant Review as ReviewService
+    participant RAG as RAGService
+    participant Embeddings as Bedrock Embeddings
+    participant OpenSearch as OpenSearch
+    participant DB as PostgreSQL
+    participant SQS as SQS Queue
+
+    Note over Expert,SQS: Background: Auto-Queue Trigger
+    participant System as System Event
+    alt Trigger: Validation Failure
+        System->>+DB: Create review queue item
+        Note right of DB: priority: high<br/>reason: validation_failure
+        DB-->>-System: queue_item_id
+        System->>SQS: Enqueue notification
+    else Trigger: User Thumbs Down
+        System->>+DB: Create review queue item
+        Note right of DB: priority: high<br/>reason: negative_feedback
+        DB-->>-System: queue_item_id
+        System->>SQS: Enqueue notification
+    else Trigger: Low Confidence (< 0.7)
+        System->>+DB: Create review queue item
+        Note right of DB: priority: medium<br/>reason: low_confidence
+        DB-->>-System: queue_item_id
+        System->>SQS: Enqueue notification
+    end
+
+    Note over Expert,SQS: Phase 1: View Queue
+    Expert->>+API: GET /api/v1/review/queue
+    Note right of API: ?status=pending&sort=priority
+    API->>+DB: Query review queue
+    DB-->>-API: Queue items (sorted by priority)
+    API-->>-Expert: Review queue dashboard
+    Note right of Expert: Items with:<br/>- NL query<br/>- Generated DSL<br/>- Reason<br/>- Priority
+
+    Note over Expert,SQS: Phase 2: View Item Details
+    Expert->>+API: GET /api/v1/review/queue/{id}
+    API->>+DB: Get review item + context
+    DB-->>-API: Full item details
+    Note right of API: Includes:<br/>- Original conversation<br/>- Schema used<br/>- RAG examples<br/>- Validation errors
+    API-->>-Expert: Detailed review item
+
+    Note over Expert,SQS: Phase 3: Expert Decision - APPROVE
+    alt Action: APPROVE
+        Expert->>+API: PUT /api/v1/review/queue/{id}
+        Note right of API: {action: "approve"}
+        API->>+Review: process_approval(item_id)
+        Review->>+DB: Get original query data
+        DB-->>-Review: NL query, DSL, connection
+        Review->>+RAG: add_good_example(nl_query, dsl)
+        RAG->>+Embeddings: Generate embedding
+        Embeddings-->>-RAG: Vector embedding
+        RAG->>+OpenSearch: Index example (good)
+        OpenSearch-->>-RAG: Indexed
+        RAG->>+DB: Save RAG example
+        Note right of DB: is_good_example: true<br/>status: approved
+        DB-->>-RAG: example_id
+        RAG-->>-Review: Example added
+        Review->>+DB: Update queue item status: approved
+        DB-->>-Review: Updated
+        Review-->>-API: Success
+        API-->>-Expert: Item approved, RAG updated
+
+    Note over Expert,SQS: Phase 4: Expert Decision - REJECT
+    else Action: REJECT
+        Expert->>+API: PUT /api/v1/review/queue/{id}
+        Note right of API: {action: "reject"}
+        API->>+Review: process_rejection(item_id)
+        Review->>+RAG: add_bad_example(nl_query, dsl)
+        RAG->>+Embeddings: Generate embedding
+        Embeddings-->>-RAG: Vector embedding
+        RAG->>+OpenSearch: Index example (bad)
+        Note right of OpenSearch: Marked as anti-pattern
+        OpenSearch-->>-RAG: Indexed
+        RAG->>+DB: Save RAG example
+        Note right of DB: is_good_example: false<br/>status: approved
+        DB-->>-RAG: example_id
+        RAG-->>-Review: Bad example added
+        Review->>+DB: Update queue item status: rejected
+        DB-->>-Review: Updated
+        Review-->>-API: Success
+        API-->>-Expert: Item rejected, added to anti-patterns
+
+    Note over Expert,SQS: Phase 5: Expert Decision - CORRECT
+    else Action: CORRECT
+        Expert->>+API: PUT /api/v1/review/queue/{id}
+        Note right of API: {action: "correct",<br/>corrected_query: "..."}
+        API->>+Review: process_correction(item_id, corrected_query)
+        Review->>+RAG: add_good_example(nl_query, corrected_query)
+        RAG->>+Embeddings: Generate embedding
+        Embeddings-->>-RAG: Vector embedding
+        RAG->>+OpenSearch: Index corrected example
+        OpenSearch-->>-RAG: Indexed
+        RAG->>+DB: Save RAG example
+        Note right of DB: is_good_example: true<br/>expert_corrected_query: "..."<br/>status: approved
+        DB-->>-RAG: example_id
+        RAG-->>-Review: Corrected example added
+        Review->>+DB: Update queue item status: corrected
+        DB-->>-Review: Updated
+        Review-->>-API: Success
+        API-->>-Expert: Item corrected, RAG updated
+    end
+
+    Note over Expert,SQS: Phase 6: View Statistics
+    Expert->>+API: GET /api/v1/review/stats
+    API->>+DB: Query review metrics
+    DB-->>-API: Stats (pending, approved, rejected, avg time)
+    API-->>-Expert: Review statistics dashboard
+```
+
 ---
 
 ### 15.5 Scenario 5: User Feedback
@@ -1198,6 +1553,100 @@ clarify = confidence < 0.6 AND iterations < 5
 - Feedback recorded with turn linkage
 - Auto-queue triggered for negative feedback
 - Stats available for monitoring
+
+**Sequence Diagram:**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant API as API Service
+    participant Feedback as FeedbackService
+    participant RAG as RAGService
+    participant Review as ReviewService
+    participant Embeddings as Bedrock Embeddings
+    participant OpenSearch as OpenSearch
+    participant DB as PostgreSQL
+
+    Note over User,DB: Phase 1: User Receives Result
+    User->>User: Views generated DSL
+    Note right of User: Query executed successfully
+
+    Note over User,DB: Phase 2: Submit Positive Feedback
+    alt Action: Thumbs Up
+        User->>+API: POST /api/v1/conversations/{c}/turns/{t}/feedback
+        Note right of API: {rating: "thumbs_up"}
+        API->>+Feedback: process_feedback(turn_id, rating)
+        Feedback->>+DB: Get turn details
+        DB-->>-Feedback: Turn (query, dsl, confidence: 0.92)
+        Feedback->>+DB: Create feedback record
+        Note right of DB: rating: thumbs_up<br/>timestamp
+        DB-->>-Feedback: feedback_id
+
+        Feedback->>Feedback: Check auto-queue rules
+        Note right of Feedback: confidence >= 0.9 → auto_approve
+
+        alt High Confidence (>= 0.9)
+            Feedback->>+RAG: auto_approve_example(nl_query, dsl)
+            RAG->>+Embeddings: Generate embedding
+            Embeddings-->>-RAG: Vector embedding
+            RAG->>+OpenSearch: Index as good example
+            OpenSearch-->>-RAG: Indexed
+            RAG->>+DB: Save RAG example
+            Note right of DB: is_good_example: true<br/>status: auto_approved<br/>source: user_feedback
+            DB-->>-RAG: example_id
+            RAG-->>-Feedback: Auto-approved
+            Note right of Feedback: No review needed
+        else Medium Confidence (< 0.9)
+            Feedback->>+Review: queue_for_review(turn_id, priority: low)
+            Review->>+DB: Create review queue item
+            Note right of DB: reason: positive_feedback<br/>priority: low
+            DB-->>-Review: queue_item_id
+            Review-->>-Feedback: Queued for review
+            Note right of Feedback: Expert will verify
+        end
+
+        Feedback-->>-API: Feedback recorded
+        API-->>-User: Thank you! (auto-approved / queued)
+
+    Note over User,DB: Phase 3: Submit Negative Feedback
+    else Action: Thumbs Down
+        User->>+API: POST /api/v1/conversations/{c}/turns/{t}/feedback
+        Note right of API: {rating: "thumbs_down",<br/>category: "wrong_columns",<br/>comment: "Missing customer name"}
+        API->>+Feedback: process_feedback(turn_id, rating, details)
+        Feedback->>+DB: Get turn details
+        DB-->>-Feedback: Turn details
+        Feedback->>+DB: Create feedback record
+        Note right of DB: rating: thumbs_down<br/>category: wrong_columns<br/>comment: "..."
+        DB-->>-Feedback: feedback_id
+
+        Feedback->>Feedback: Auto-queue rule: thumbs_down → high priority
+        Feedback->>+Review: queue_for_review(turn_id, priority: high)
+        Review->>+DB: Create review queue item
+        Note right of DB: reason: negative_feedback<br/>priority: high<br/>category: wrong_columns
+        DB-->>-Review: queue_item_id
+        Review-->>-Feedback: Queued for review
+
+        Feedback-->>-API: Feedback recorded + queued
+        API-->>-User: Thank you! Expert will review.
+    end
+
+    Note over User,DB: Phase 4: View Feedback Stats
+    User->>+API: GET /api/v1/feedback/stats
+    Note right of API: Admin/Analytics view
+    API->>+DB: Query feedback aggregates
+    Note right of DB: COUNT by rating<br/>GROUP BY category<br/>AVG confidence by rating
+    DB-->>-API: Statistics
+    Note right of API: Response:<br/>- thumbs_up: 847<br/>- thumbs_down: 23<br/>- satisfaction: 97.3%<br/>- top issues
+    API-->>-User: Feedback statistics
+
+    Note over User,DB: Phase 5: View Recent Feedback
+    User->>+API: GET /api/v1/feedback/recent
+    API->>+DB: Query recent feedback
+    Note right of DB: ORDER BY created_at DESC<br/>LIMIT 50
+    DB-->>-API: Recent feedback items
+    API-->>-User: Recent feedback list
+    Note right of User: Shows:<br/>- Turn details<br/>- Rating<br/>- Category<br/>- Status (auto-approved/queued)
+```
 
 ---
 
