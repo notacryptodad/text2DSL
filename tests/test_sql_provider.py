@@ -10,17 +10,11 @@ from text2x.providers import (
     create_sql_provider,
     ProviderCapability,
 )
+from tests.config import TEST_POSTGRES_CONFIG
 
 
-# Test connection configuration
-TEST_CONFIG = SQLConnectionConfig(
-    host="localhost",
-    port=5432,
-    database="text2x",
-    username="text2x",
-    password="text2x",
-    dialect="postgresql",
-)
+# Test connection configuration - uses test containers (docker-compose.test.yml)
+TEST_CONFIG = SQLConnectionConfig(**TEST_POSTGRES_CONFIG)
 
 
 @pytest_asyncio.fixture

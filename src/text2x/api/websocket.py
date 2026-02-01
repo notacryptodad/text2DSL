@@ -216,7 +216,7 @@ async def send_event(
     )
 
     try:
-        await websocket.send_json(event.model_dump(exclude_none=True))
+        await websocket.send_json(event.model_dump(mode="json", exclude_none=True))
     except Exception as e:
         logger.error(f"Failed to send WebSocket event: {e}", exc_info=True)
         raise

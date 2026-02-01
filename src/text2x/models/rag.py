@@ -79,8 +79,8 @@ class RAGExample(Base, UUIDMixin, TimestampMixin):
         index=True,
     )
     
-    # Additional metadata stored as JSON
-    metadata = Column(JSON, nullable=True)
+    # Additional metadata stored as JSON (named extra_metadata to avoid SQLAlchemy reserved 'metadata')
+    extra_metadata = Column("metadata", JSON, nullable=True)
     
     # Note: Question embeddings are stored in OpenSearch/vector DB
     # This field just tracks if embeddings have been generated

@@ -159,15 +159,15 @@ async def get_review_queue(
                     reason = "user_reported"
                 elif not example.is_good_example:
                     reason = "validation_failed"
-                elif example.metadata and example.metadata.get("original_confidence"):
-                    conf = example.metadata["original_confidence"]
+                elif example.extra_metadata and example.extra_metadata.get("original_confidence"):
+                    conf = example.extra_metadata["original_confidence"]
                     if conf < 0.7:
                         reason = "low_confidence"
 
                 # Get confidence score from metadata or use default
                 confidence_score = 0.0
-                if example.metadata and "original_confidence" in example.metadata:
-                    confidence_score = example.metadata["original_confidence"]
+                if example.extra_metadata and "original_confidence" in example.extra_metadata:
+                    confidence_score = example.extra_metadata["original_confidence"]
 
                 # Determine validation status
                 validation = ValidationStatus.UNKNOWN

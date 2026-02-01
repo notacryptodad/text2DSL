@@ -92,8 +92,8 @@ class AuditLog(Base, UUIDMixin, TimestampMixin):
     query_builder_latency_ms = Column(Integer, nullable=True)
     validator_latency_ms = Column(Integer, nullable=True)
     
-    # Additional metadata
-    metadata = Column(JSON, nullable=True)
+    # Additional metadata (named extra_metadata to avoid SQLAlchemy reserved 'metadata')
+    extra_metadata = Column("metadata", JSON, nullable=True)
     
     # Relationships
     conversation = relationship("Conversation", back_populates="audit_logs")

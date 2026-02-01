@@ -1,8 +1,14 @@
 version: '3.8'
 
+# Backend Infrastructure - Required for running the Text2DSL API server
+# Start with: docker compose up -d
+# Stop with: docker compose down
+
 services:
+  # Backend storage for conversations, audit logs, expert review queue
   postgres:
     image: postgres:16-alpine
+    container_name: text2dsl-postgres
     environment:
       POSTGRES_USER: text2x
       POSTGRES_PASSWORD: text2x
@@ -11,16 +17,30 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U text2x"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # Cache layer for schema cache, sessions
   redis:
     image: redis:7-alpine
+    container_name: text2dsl-redis
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # RAG store for good/bad query examples
   opensearch:
     image: opensearchproject/opensearch:2.11.1
+    container_name: text2dsl-opensearch
     environment:
       - discovery.type=single-node
       - plugins.security.disabled=true
@@ -29,18 +49,13 @@ services:
       - "9200:9200"
     volumes:
       - opensearch_data:/usr/share/opensearch/data
-
-  mongodb:
-    image: mongo:7.0
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    environment:
-      - MONGO_INITDB_DATABASE=text2x_test
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
 volumes:
   postgres_data:
   redis_data:
   opensearch_data:
-  mongodb_data:

@@ -11,13 +11,11 @@ from text2x.providers import (
     create_nosql_provider,
     ProviderCapability,
 )
+from tests.config import TEST_MONGODB_CONFIG
 
 
-# Test connection configuration
-TEST_CONFIG = MongoDBConnectionConfig(
-    connection_string="mongodb://localhost:27017",
-    database="text2x_test",
-)
+# Test connection configuration - uses test containers (docker-compose.test.yml)
+TEST_CONFIG = MongoDBConnectionConfig(**TEST_MONGODB_CONFIG)
 
 
 @pytest_asyncio.fixture

@@ -94,92 +94,92 @@ async def process_query(request: QueryRequest) -> QueryResponse:
                 else settings.enable_execution
             )
 
-        # TODO: Integrate with actual orchestrator
-        # from text2x.agents.orchestrator import QueryOrchestrator
-        # orchestrator = QueryOrchestrator()
-        # result = await orchestrator.process_query(
-        #     provider_id=request.provider_id,
-        #     query=request.query,
-        #     conversation_id=conversation_id,
-        #     max_iterations=max_iterations,
-        #     confidence_threshold=confidence_threshold,
-        #     enable_execution=enable_execution,
-        #     trace_level=request.options.trace_level,
-        # )
+            # TODO: Integrate with actual orchestrator
+            # from text2x.agents.orchestrator import QueryOrchestrator
+            # orchestrator = QueryOrchestrator()
+            # result = await orchestrator.process_query(
+            #     provider_id=request.provider_id,
+            #     query=request.query,
+            #     conversation_id=conversation_id,
+            #     max_iterations=max_iterations,
+            #     confidence_threshold=confidence_threshold,
+            #     enable_execution=enable_execution,
+            #     trace_level=request.options.trace_level,
+            # )
 
-        # Mock response for now (replace with actual orchestrator integration)
-        from text2x.api.models import (
-            AgentTrace,
-            ExecutionResult,
-            ReasoningTrace,
-            ValidationResult,
-        )
+            # Mock response for now (replace with actual orchestrator integration)
+            from text2x.api.models import (
+                AgentTrace,
+                ExecutionResult,
+                ReasoningTrace,
+                ValidationResult,
+            )
 
-        mock_response = QueryResponse(
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            generated_query="SELECT * FROM users WHERE age > 18",
-            confidence_score=0.92,
-            validation_status=ValidationStatus.VALID,
-            validation_result=ValidationResult(
-                status=ValidationStatus.VALID,
-                errors=[],
-                warnings=[],
-                suggestions=["Consider adding LIMIT clause for large result sets"],
-            ),
-            execution_result=(
-                ExecutionResult(
-                    success=True,
-                    row_count=150,
-                    data=None,  # Actual data would be included if needed
-                    execution_time_ms=45,
-                )
-                if enable_execution
-                else None
-            ),
-            reasoning_trace=(
-                ReasoningTrace(
-                    schema_agent=AgentTrace(
-                        agent_name="SchemaExpert",
-                        latency_ms=250,
-                        tokens_input=500,
-                        tokens_output=800,
-                        details={"tables_analyzed": ["users"]},
-                    ),
-                    rag_agent=AgentTrace(
-                        agent_name="RAGRetrieval",
-                        latency_ms=150,
-                        tokens_input=300,
-                        tokens_output=0,
-                        details={"examples_retrieved": 5, "top_similarity": 0.87},
-                    ),
-                    query_builder_agent=AgentTrace(
-                        agent_name="QueryBuilder",
-                        latency_ms=800,
-                        tokens_input=2000,
-                        tokens_output=150,
-                        iterations=1,
-                        details={"query_type": "filter"},
-                    ),
-                    validator_agent=AgentTrace(
-                        agent_name="Validator",
-                        latency_ms=100,
-                        tokens_input=200,
-                        tokens_output=50,
-                        details={"validation_checks": ["syntax", "schema"]},
-                    ),
-                    orchestrator_latency_ms=1300,
-                    total_tokens_input=3000,
-                    total_tokens_output=1000,
-                    total_cost_usd=0.012,
-                )
-                if request.options.trace_level != "none"
-                else None
-            ),
-            needs_clarification=False,
-            clarification_questions=[],
-            iterations=1,
-        )
+            mock_response = QueryResponse(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                generated_query="SELECT * FROM users WHERE age > 18",
+                confidence_score=0.92,
+                validation_status=ValidationStatus.VALID,
+                validation_result=ValidationResult(
+                    status=ValidationStatus.VALID,
+                    errors=[],
+                    warnings=[],
+                    suggestions=["Consider adding LIMIT clause for large result sets"],
+                ),
+                execution_result=(
+                    ExecutionResult(
+                        success=True,
+                        row_count=150,
+                        data=None,  # Actual data would be included if needed
+                        execution_time_ms=45,
+                    )
+                    if enable_execution
+                    else None
+                ),
+                reasoning_trace=(
+                    ReasoningTrace(
+                        schema_agent=AgentTrace(
+                            agent_name="SchemaExpert",
+                            latency_ms=250,
+                            tokens_input=500,
+                            tokens_output=800,
+                            details={"tables_analyzed": ["users"]},
+                        ),
+                        rag_agent=AgentTrace(
+                            agent_name="RAGRetrieval",
+                            latency_ms=150,
+                            tokens_input=300,
+                            tokens_output=0,
+                            details={"examples_retrieved": 5, "top_similarity": 0.87},
+                        ),
+                        query_builder_agent=AgentTrace(
+                            agent_name="QueryBuilder",
+                            latency_ms=800,
+                            tokens_input=2000,
+                            tokens_output=150,
+                            iterations=1,
+                            details={"query_type": "filter"},
+                        ),
+                        validator_agent=AgentTrace(
+                            agent_name="Validator",
+                            latency_ms=100,
+                            tokens_input=200,
+                            tokens_output=50,
+                            details={"validation_checks": ["syntax", "schema"]},
+                        ),
+                        orchestrator_latency_ms=1300,
+                        total_tokens_input=3000,
+                        total_tokens_output=1000,
+                        total_cost_usd=0.012,
+                    )
+                    if request.options.trace_level != "none"
+                    else None
+                ),
+                needs_clarification=False,
+                clarification_questions=[],
+                iterations=1,
+            )
 
             logger.info(
                 f"Query processed successfully: turn_id={turn_id}, "
