@@ -26,7 +26,7 @@ export class ChatPage {
    * Navigate to chat page
    */
   async goto() {
-    await this.page.goto('/chat');
+    await this.page.goto('/app');
     await this.page.waitForLoadState('networkidle');
   }
 
