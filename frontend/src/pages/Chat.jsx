@@ -116,6 +116,7 @@ function Chat() {
           trace: result.reasoning_trace,
           providerId: selectedProvider.id,
           iterations: result.iterations,
+          turnId: result.turn_id,
           timestamp: new Date(),
         })
         break
@@ -250,7 +251,11 @@ function Chat() {
                 ) : (
                   <>
                     {messages.map((message) => (
-                      <ChatMessage key={message.id} message={message} />
+                      <ChatMessage
+                        key={message.id}
+                        message={message}
+                        conversationId={conversationId}
+                      />
                     ))}
                     <div ref={messagesEndRef} />
                   </>
