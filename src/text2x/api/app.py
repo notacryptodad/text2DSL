@@ -38,6 +38,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await initialize_database()
         logger.info("Database initialized successfully")
 
+        # Seed default super admin
+        await seed_default_admin()
+        logger.info("Default super admin seeded")
+
         # Initialize Redis
         await initialize_redis()
         logger.info("Redis initialized successfully")
@@ -150,6 +154,56 @@ async def initialize_opensearch() -> None:
     except Exception as e:
         logger.error(f"Failed to initialize OpenSearch: {e}")
         raise
+
+
+async def seed_default_admin() -> None:
+    """Seed default super admin user on startup."""
+    from text2x.api.auth import get_password_hash
+    from text2x.models.base import get_db
+    from text2x.models.user import User, UserRole
+    from text2x.repositories.user import UserRepository
+
+    DEFAULT_ADMIN = {
+        "email": "admin@text2dsl.com",
+        "password": "Admin123!",
+        "name": "System Administrator",
+        "role": UserRole.SUPER_ADMIN,
+    }
+
+    try:
+        # Check if admin already exists
+        repo = UserRepository()
+        existing_admin = await repo.get_by_email(DEFAULT_ADMIN["email"])
+
+        if existing_admin:
+            logger.debug(f"Default admin already exists: {DEFAULT_ADMIN['email']}")
+            return
+
+        # Create admin user with explicit transaction
+        db = get_db()
+        async with db.session() as session:
+            hashed_password = get_password_hash(DEFAULT_ADMIN["password"])
+
+            admin = User(
+                email=DEFAULT_ADMIN["email"],
+                hashed_password=hashed_password,
+                name=DEFAULT_ADMIN["name"],
+                role=DEFAULT_ADMIN["role"],
+                is_active=True,
+            )
+
+            session.add(admin)
+            await session.commit()
+            await session.refresh(admin)
+
+            logger.info(
+                f"Default super admin created: {admin.email} (ID: {admin.id})"
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to seed default admin: {e}")
+        # Don't raise - allow app to start even if seeding fails
+        # (admin might already exist from previous migration)
 
 
 # Create FastAPI app
