@@ -1027,11 +1027,126 @@ observability:
 
 This section defines the key user flows that the system must support end-to-end.
 
+### 15.0 Scenario 0: User Management
+
+**Actors:** Super Admin, User
+
+**Flow:**
+1. Super Admin can create users manually (internal user management)
+2. Users can self-register (if self-registration is enabled in settings)
+3. Users have roles: super_admin, user (default)
+4. Super Admins can list, view, update, and delete users
+5. Users can view and update their own profile
+
+**Current Implementation Note:**
+The current system uses **external user_id (string)** from authentication providers (e.g., Auth0, Cognito). This scenario documents what would be needed for **internal user management** if implemented in the future.
+
+**API Endpoints (Future):**
+- `POST /api/v1/admin/users` - Create user (super admin only)
+- `GET /api/v1/admin/users` - List users (super admin only)
+- `GET /api/v1/admin/users/{id}` - Get user (super admin or self)
+- `PATCH /api/v1/admin/users/{id}` - Update user (super admin or self)
+- `DELETE /api/v1/admin/users/{id}` - Delete user (super admin only)
+- `POST /api/v1/users/register` - Self-registration (if enabled)
+- `GET /api/v1/users/me` - Get current user profile
+
+**Data Model (Future):**
+```python
+class UserRole(str, Enum):
+    SUPER_ADMIN = "super_admin"
+    USER = "user"
+
+@dataclass
+class User:
+    id: UUID
+    email: str
+    role: UserRole
+    full_name: Optional[str]
+    is_active: bool
+    email_verified: bool
+    created_at: datetime
+    updated_at: datetime
+    last_login_at: Optional[datetime]
+```
+
+**Success Criteria:**
+- Super Admin can create and manage users
+- Users can self-register if enabled
+- Role-based access control enforced
+- Email verification for new users
+
+**Sequence Diagram:**
+
+```mermaid
+sequenceDiagram
+    actor SA as Super Admin
+    actor User as New User
+    participant API as API Service
+    participant DB as PostgreSQL
+    participant Email as Email Service
+
+    Note over SA,Email: Flow 1: Super Admin Creates User
+    SA->>+API: POST /api/v1/admin/users
+    Note right of API: {email, role, full_name}
+    API->>API: Validate email format
+    API->>+DB: Check email uniqueness
+    DB-->>-API: Email available
+    API->>API: Hash temporary password
+    API->>+DB: Create user record
+    Note right of DB: role: user<br/>is_active: true<br/>email_verified: false
+    DB-->>-API: user_id
+    API->>+Email: Send welcome email + verification link
+    Email-->>-API: Email sent
+    API-->>-SA: User created
+
+    Note over SA,Email: Flow 2: User Self-Registration (if enabled)
+    User->>+API: POST /api/v1/users/register
+    Note right of API: {email, password, full_name}
+    API->>API: Check if self-registration enabled
+    alt Self-Registration Disabled
+        API-->>User: 403 Forbidden
+    else Self-Registration Enabled
+        API->>API: Validate password strength
+        API->>+DB: Check email uniqueness
+        DB-->>-API: Email available
+        API->>API: Hash password
+        API->>+DB: Create user record
+        Note right of DB: role: user (default)<br/>is_active: false<br/>email_verified: false
+        DB-->>-API: user_id
+        API->>+Email: Send verification email
+        Email-->>-API: Email sent
+        API-->>-User: Registration successful, check email
+    end
+
+    Note over SA,Email: Flow 3: Email Verification
+    User->>+API: GET /api/v1/users/verify?token={token}
+    API->>API: Validate token
+    API->>+DB: Update user
+    Note right of DB: email_verified: true<br/>is_active: true
+    DB-->>-API: Updated
+    API-->>-User: Email verified, account active
+
+    Note over SA,Email: Flow 4: User Management
+    SA->>+API: GET /api/v1/admin/users
+    Note right of API: ?role=user&is_active=true
+    API->>+DB: Query users with filters
+    DB-->>-API: User list
+    API-->>-SA: Users
+
+    SA->>+API: PATCH /api/v1/admin/users/{id}
+    Note right of API: {role: "super_admin"}
+    API->>+DB: Update user role
+    DB-->>-API: Updated
+    API-->>-SA: User role updated
+```
+
+---
+
 ### 15.1 Scenario 1: Admin Workspace Setup
 
 **Actors:** Super Admin, Workspace Admin
 
-**Flow:**
+**Primary Flow (Invitation-Based):**
 1. Super Admin creates a new workspace
 2. Super Admin invites Workspace Admin (by email/user_id)
 3. Workspace Admin accepts invitation
@@ -1041,10 +1156,20 @@ This section defines the key user flows that the system must support end-to-end.
 7. Workspace Admin triggers schema refresh
 8. System caches schema in Redis
 
+**Alternative Flow (Direct Assignment):**
+1. Super Admin creates a new workspace
+2. Super Admin directly assigns an existing user as Workspace Admin (no invitation needed)
+3. Workspace Admin is immediately granted access
+4. Workspace Admin creates Provider and Connection (steps 4-8 same as primary flow)
+
 **API Endpoints Required:**
 - `POST /api/v1/admin/workspaces` - Create workspace (super admin)
-- `POST /api/v1/admin/workspaces/{id}/admins` - Invite admin
+- `POST /api/v1/admin/workspaces/{id}/admins` - Invite admin (invitation-based)
+- `POST /api/v1/admin/workspaces/{id}/admins/assign` - Direct assignment (no invitation)
+- `GET /api/v1/admin/workspaces/{id}/admins` - List workspace admins
+- `DELETE /api/v1/admin/workspaces/{id}/admins/{user_id}` - Remove admin
 - `POST /api/v1/admin/invitations/{id}/accept` - Accept invitation
+- `GET /api/v1/admin/invitations` - List pending invitations
 - `POST /api/v1/workspaces/{ws}/providers` - Create provider
 - `POST /api/v1/workspaces/{ws}/providers/{p}/connections` - Add connection
 - `POST /api/v1/workspaces/{ws}/providers/{p}/connections/{c}/test` - Test
@@ -1066,6 +1191,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Redis as Redis Cache
     participant Target as Target Database
+    participant Email as Email Service
 
     Note over SA,Target: Phase 1: Workspace Creation
     SA->>+API: POST /api/v1/admin/workspaces
@@ -1073,18 +1199,37 @@ sequenceDiagram
     DB-->>-API: workspace_id
     API-->>-SA: Workspace created
 
-    Note over SA,Target: Phase 2: Admin Invitation
-    SA->>+API: POST /api/v1/admin/workspaces/{id}/admins
-    API->>+DB: Create invitation record
-    DB-->>-API: invitation_id
-    API-->>SA: Email sent to admin
-    API-->>-SA: Invitation created
+    Note over SA,Target: Phase 2a: Admin Assignment (Invitation-Based)
+    alt Flow 1: Invitation-Based
+        SA->>+API: POST /api/v1/admin/workspaces/{id}/admins
+        Note right of API: {email: "admin@example.com"}
+        API->>+DB: Create invitation record
+        Note right of DB: status: pending<br/>expires_at: +7 days
+        DB-->>-API: invitation_id
+        API->>+Email: Send invitation email
+        Email-->>-API: Email sent
+        API-->>-SA: Invitation created
 
-    WA->>+API: POST /api/v1/admin/invitations/{id}/accept
-    API->>+DB: Update invitation status
-    API->>DB: Link user to workspace
-    DB-->>-API: Success
-    API-->>-WA: Invitation accepted
+        WA->>+API: POST /api/v1/admin/invitations/{id}/accept
+        API->>+DB: Update invitation status
+        Note right of DB: status: accepted
+        API->>DB: Link user to workspace as admin
+        DB-->>-API: Success
+        API-->>-WA: Invitation accepted, access granted
+
+    Note over SA,Target: Phase 2b: Admin Assignment (Direct Assignment)
+    else Flow 2: Direct Assignment
+        SA->>+API: POST /api/v1/admin/workspaces/{id}/admins/assign
+        Note right of API: {user_id: "existing-user-id"}
+        API->>+DB: Check if user exists
+        DB-->>-API: User found
+        API->>+DB: Link user to workspace as admin
+        Note right of DB: No invitation record<br/>Immediate access
+        DB-->>-API: Success
+        API->>+Email: Send notification email
+        Email-->>-API: Email sent
+        API-->>-SA: Admin assigned directly
+    end
 
     Note over SA,Target: Phase 3: Provider Configuration
     WA->>+API: POST /api/v1/workspaces/{ws}/providers
@@ -1654,6 +1799,7 @@ sequenceDiagram
 
 | Scenario | Models | Repositories | API Routes | Services | Agents | Tests |
 |----------|--------|--------------|------------|----------|--------|-------|
+| 0. User Management | ⚠️ | ⚠️ | ⚠️ | ⚠️ | N/A | ⚠️ |
 | 1. Admin Setup | ✅ | ✅ | ✅ | ✅ | N/A | ✅ |
 | 2. Schema Annotation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 3. Query Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -1661,6 +1807,10 @@ sequenceDiagram
 | 5. User Feedback | ✅ | ✅ | ✅ | ✅ | N/A | ✅ |
 
 **Legend:** ✅ Complete | ⚠️ Partial | ❌ Not Started
+
+**Scenario Notes:**
+- **Scenario 0 (User Management):** ⚠️ Currently uses external user_id (string) from authentication providers. Full internal user management (user creation, self-registration, role management) is documented but not yet implemented. The system supports RBAC via JWT claims or API keys.
+- **Scenario 1 (Admin Setup):** ✅ Updated with both invitation-based and direct assignment flows. Direct assignment endpoint (`POST /api/v1/admin/workspaces/{id}/admins/assign`) documented for future implementation.
 
 **Additional Components:**
 
