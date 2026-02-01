@@ -48,9 +48,7 @@ function Providers() {
   const fetchProviders = async () => {
     try {
       setLoading(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const params = new URLSearchParams()
       if (selectedWorkspace) {
@@ -73,9 +71,7 @@ function Providers() {
 
   const fetchWorkspaces = async () => {
     try {
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/admin/workspaces`)
       if (response.ok) {
@@ -97,9 +93,7 @@ function Providers() {
 
     try {
       setSubmitting(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/admin/providers`, {
         method: 'POST',

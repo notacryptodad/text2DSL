@@ -88,9 +88,7 @@ function Review() {
         params.append('status_filter', selectedStatus)
       }
 
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/review/queue?${params}`)
       if (!response.ok) {
@@ -112,9 +110,7 @@ function Review() {
 
   const fetchStats = async () => {
     try {
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/review/stats`)
       if (response.ok) {
@@ -128,9 +124,7 @@ function Review() {
 
   const handleViewDetails = async (item) => {
     try {
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/review/queue/${item.id}`)
       if (!response.ok) {
@@ -155,9 +149,7 @@ function Review() {
     try {
       setSubmitting(true)
 
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const payload = {
         approved: true,
@@ -205,9 +197,7 @@ function Review() {
     try {
       setSubmitting(true)
 
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const payload = {
         approved: false,

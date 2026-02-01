@@ -49,9 +49,7 @@ function Connections() {
   const fetchConnections = async () => {
     try {
       setLoading(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const params = new URLSearchParams()
       if (selectedProvider) {
@@ -74,9 +72,7 @@ function Connections() {
 
   const fetchProviders = async () => {
     try {
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/admin/providers`)
       if (response.ok) {
@@ -98,9 +94,7 @@ function Connections() {
 
     try {
       setSubmitting(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/admin/connections`, {
         method: 'POST',
@@ -140,9 +134,7 @@ function Connections() {
   const handleTestConnection = async (connectionId) => {
     try {
       setTesting({ ...testing, [connectionId]: true })
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(
         `${apiUrl}/api/v1/admin/connections/${connectionId}/test`,
@@ -170,9 +162,7 @@ function Connections() {
   const handleRefreshSchema = async (connectionId) => {
     try {
       setRefreshing({ ...refreshing, [connectionId]: true })
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(
         `${apiUrl}/api/v1/admin/connections/${connectionId}/refresh-schema`,

@@ -39,9 +39,7 @@ function WorkspaceDetail() {
   const fetchWorkspace = async () => {
     try {
       setLoading(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/admin/workspaces/${workspaceId}`)
       if (response.ok) {
@@ -65,9 +63,7 @@ function WorkspaceDetail() {
 
     try {
       setSaving(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/admin/workspaces/${workspaceId}`, {
         method: 'PUT',
@@ -102,9 +98,7 @@ function WorkspaceDetail() {
 
     try {
       setInviting(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(
         `${apiUrl}/api/v1/admin/workspaces/${workspaceId}/admins`,
@@ -140,9 +134,7 @@ function WorkspaceDetail() {
     }
 
     try {
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(
         `${apiUrl}/api/v1/admin/workspaces/${workspaceId}/admins/${adminId}`,

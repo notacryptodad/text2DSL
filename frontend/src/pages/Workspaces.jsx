@@ -21,9 +21,7 @@ function Workspaces() {
   const fetchWorkspaces = async () => {
     try {
       setLoading(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/admin/workspaces`)
       if (response.ok) {
@@ -47,9 +45,7 @@ function Workspaces() {
 
     try {
       setSubmitting(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       const response = await fetch(`${apiUrl}/api/v1/admin/workspaces`, {
         method: 'POST',

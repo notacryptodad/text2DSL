@@ -43,9 +43,7 @@ function AdminUsers() {
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState(false)
 
-  const apiUrl = import.meta.env.DEV
-    ? 'http://localhost:8000'
-    : window.location.origin
+  const apiUrl = ''
 
   useEffect(() => {
     fetchUsers()

@@ -14,9 +14,7 @@ function AdminDashboard() {
   const fetchStats = async () => {
     try {
       setLoading(true)
-      const apiUrl = import.meta.env.DEV
-        ? 'http://localhost:8000'
-        : window.location.origin
+      const apiUrl = ''
 
       // Fetch overview statistics
       const response = await fetch(`${apiUrl}/api/v1/admin/stats`)
