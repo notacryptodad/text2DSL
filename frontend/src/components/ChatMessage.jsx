@@ -5,8 +5,9 @@ import '../styles/prism-custom.css'
 import 'prismjs/components/prism-sql'
 import 'prismjs/components/prism-mongodb'
 import 'prismjs/components/prism-splunk-spl'
+import FeedbackButton from './FeedbackButton'
 
-function ChatMessage({ message }) {
+function ChatMessage({ message, conversationId }) {
   const [copied, setCopied] = useState(false)
   const [traceExpanded, setTraceExpanded] = useState(false)
   const [agentDetailsExpanded, setAgentDetailsExpanded] = useState({})
@@ -307,6 +308,14 @@ function ChatMessage({ message }) {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Feedback Buttons */}
+            {conversationId && message.turnId && (
+              <FeedbackButton
+                conversationId={conversationId}
+                turnId={message.turnId}
+              />
             )}
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

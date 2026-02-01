@@ -30,9 +30,10 @@ function Connections() {
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
     provider_id: providerId || '',
+    name: '',
     host: '',
     port: '',
-    database_name: '',
+    database: '',
     username: '',
     password: '',
     ssl_enabled: false,
@@ -87,7 +88,7 @@ function Connections() {
   const handleCreateConnection = async (e) => {
     e.preventDefault()
 
-    if (!formData.provider_id || !formData.host || !formData.port) {
+    if (!formData.provider_id || !formData.name || !formData.host || !formData.port) {
       alert('Please fill in all required fields')
       return
     }
@@ -96,29 +97,46 @@ function Connections() {
       setSubmitting(true)
       const apiUrl = ''
 
-      const response = await fetch(`${apiUrl}/api/v1/admin/connections`, {
+      // Find the provider to get its workspace_id
+      const provider = providers.find(p => p.id === formData.provider_id)
+      if (!provider || !provider.workspace_id) {
+        throw new Error('Provider not found or workspace_id missing')
+      }
+
+      const response = await fetch(`${apiUrl}/api/v1/workspaces/${provider.workspace_id}/providers/${formData.provider_id}/connections`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...formData,
+          name: formData.name,
+          host: formData.host,
           port: parseInt(formData.port),
+          database: formData.database || '',
+          schema_name: null,
+          credentials: formData.username || formData.password ? {
+            username: formData.username,
+            password: formData.password,
+          } : null,
+          connection_options: {
+            ssl: formData.ssl_enabled,
+          },
         }),
       })
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.detail || 'Failed to create connection')
+        throw new Error(error.detail?.message || error.detail || 'Failed to create connection')
       }
 
       await fetchConnections()
       setShowModal(false)
       setFormData({
         provider_id: providerId || '',
+        name: '',
         host: '',
         port: '',
-        database_name: '',
+        database: '',
         username: '',
         password: '',
         ssl_enabled: false,
@@ -136,8 +154,20 @@ function Connections() {
       setTesting({ ...testing, [connectionId]: true })
       const apiUrl = ''
 
+      // Find the connection to get its provider_id
+      const connection = connections.find(c => c.id === connectionId)
+      if (!connection || !connection.provider_id) {
+        throw new Error('Connection or provider not found')
+      }
+
+      // Find the provider to get its workspace_id
+      const provider = providers.find(p => p.id === connection.provider_id)
+      if (!provider || !provider.workspace_id) {
+        throw new Error('Provider workspace not found')
+      }
+
       const response = await fetch(
-        `${apiUrl}/api/v1/admin/connections/${connectionId}/test`,
+        `${apiUrl}/api/v1/workspaces/${provider.workspace_id}/providers/${connection.provider_id}/connections/${connectionId}/test`,
         {
           method: 'POST',
         }
@@ -145,15 +175,15 @@ function Connections() {
 
       const result = await response.json()
 
-      if (response.ok && result.status === 'success') {
-        alert('Connection test successful!')
+      if (response.ok && result.success) {
+        alert(`Connection test successful! ${result.message || ''}`)
         await fetchConnections()
       } else {
         alert(`Connection test failed: ${result.message || 'Unknown error'}`)
       }
     } catch (err) {
       console.error('Error testing connection:', err)
-      alert('Failed to test connection')
+      alert(`Failed to test connection: ${err.message}`)
     } finally {
       setTesting({ ...testing, [connectionId]: false })
     }
@@ -164,22 +194,36 @@ function Connections() {
       setRefreshing({ ...refreshing, [connectionId]: true })
       const apiUrl = ''
 
+      // Find the connection to get its provider_id
+      const connection = connections.find(c => c.id === connectionId)
+      if (!connection || !connection.provider_id) {
+        throw new Error('Connection or provider not found')
+      }
+
+      // Find the provider to get its workspace_id
+      const provider = providers.find(p => p.id === connection.provider_id)
+      if (!provider || !provider.workspace_id) {
+        throw new Error('Provider workspace not found')
+      }
+
       const response = await fetch(
-        `${apiUrl}/api/v1/admin/connections/${connectionId}/refresh-schema`,
+        `${apiUrl}/api/v1/workspaces/${provider.workspace_id}/providers/${connection.provider_id}/connections/${connectionId}/schema/refresh`,
         {
           method: 'POST',
         }
       )
 
-      if (!response.ok) {
-        throw new Error('Failed to refresh schema')
-      }
+      const result = await response.json()
 
-      alert('Schema refreshed successfully!')
-      await fetchConnections()
+      if (response.ok && result.status === 'success') {
+        alert(`Schema refreshed successfully! ${result.message || ''}`)
+        await fetchConnections()
+      } else {
+        alert(`Schema refresh failed: ${result.message || 'Unknown error'}`)
+      }
     } catch (err) {
       console.error('Error refreshing schema:', err)
-      alert('Failed to refresh schema')
+      alert(`Failed to refresh schema: ${err.message}`)
     } finally {
       setRefreshing({ ...refreshing, [connectionId]: false })
     }
@@ -188,7 +232,8 @@ function Connections() {
   const filteredConnections = connections.filter(
     (connection) =>
       connection.host.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      connection.database_name?.toLowerCase().includes(searchQuery.toLowerCase())
+      connection.database?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      connection.name?.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   const getStatusColor = (status) => {
@@ -322,13 +367,12 @@ function Connections() {
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                              {connection.host}:{connection.port}
+                              {connection.name || `${connection.host}:${connection.port}`}
                             </h3>
-                            {connection.database_name && (
-                              <p className="text-sm text-gray-600 dark:text-gray-400">
-                                Database: {connection.database_name}
-                              </p>
-                            )}
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {connection.host}:{connection.port}
+                              {connection.database && ` / ${connection.database}`}
+                            </p>
                           </div>
                         </div>
 
@@ -460,6 +504,7 @@ function Connections() {
                       Provider *
                     </label>
                     <select
+                      name="provider_id"
                       value={formData.provider_id}
                       onChange={(e) =>
                         setFormData({ ...formData, provider_id: e.target.value })
@@ -470,10 +515,27 @@ function Connections() {
                       <option value="">Select a provider</option>
                       {providers.map((provider) => (
                         <option key={provider.id} value={provider.id}>
-                          {provider.name} ({provider.provider_type})
+                          {provider.name} ({provider.provider_type || provider.type})
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Connection Name *
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
+                      placeholder="e.g., Production, Staging, Development"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      required
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -483,6 +545,7 @@ function Connections() {
                       </label>
                       <input
                         type="text"
+                        name="host"
                         value={formData.host}
                         onChange={(e) =>
                           setFormData({ ...formData, host: e.target.value })
@@ -499,6 +562,7 @@ function Connections() {
                       </label>
                       <input
                         type="number"
+                        name="port"
                         value={formData.port}
                         onChange={(e) =>
                           setFormData({ ...formData, port: e.target.value })
@@ -516,9 +580,10 @@ function Connections() {
                     </label>
                     <input
                       type="text"
-                      value={formData.database_name}
+                      name="database"
+                      value={formData.database}
                       onChange={(e) =>
-                        setFormData({ ...formData, database_name: e.target.value })
+                        setFormData({ ...formData, database: e.target.value })
                       }
                       placeholder="mydatabase"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -531,6 +596,7 @@ function Connections() {
                     </label>
                     <input
                       type="text"
+                      name="username"
                       value={formData.username}
                       onChange={(e) =>
                         setFormData({ ...formData, username: e.target.value })
@@ -547,6 +613,7 @@ function Connections() {
                     <div className="relative">
                       <input
                         type={showPassword ? 'text' : 'password'}
+                        name="password"
                         value={formData.password}
                         onChange={(e) =>
                           setFormData({ ...formData, password: e.target.value })

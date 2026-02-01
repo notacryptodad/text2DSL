@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react'
 import { FolderKanban, Plus, Search, Users, Database, X, Calendar } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import AdminSidebar from '../components/AdminSidebar'
+import { useAuth } from '../hooks/useAuth'
 
 function Workspaces() {
+  const { user } = useAuth()
   const [workspaces, setWorkspaces] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [formData, setFormData] = useState({
     name: '',
+    slug: '',
     description: '',
   })
   const [submitting, setSubmitting] = useState(false)
@@ -43,26 +46,43 @@ function Workspaces() {
       return
     }
 
+    if (!user?.id) {
+      alert('User not authenticated')
+      return
+    }
+
     try {
       setSubmitting(true)
       const apiUrl = ''
+
+      // Auto-generate slug from name if not provided
+      const slug = formData.slug.trim() || formData.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
 
       const response = await fetch(`${apiUrl}/api/v1/admin/workspaces`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          name: formData.name,
+          slug: slug,
+          description: formData.description || null,
+          settings: {},
+          owner_user_id: user.id,
+        }),
       })
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.detail || 'Failed to create workspace')
+        throw new Error(error.detail?.message || error.detail || 'Failed to create workspace')
       }
 
       await fetchWorkspaces()
       setShowModal(false)
-      setFormData({ name: '', description: '' })
+      setFormData({ name: '', slug: '', description: '' })
     } catch (err) {
       console.error('Error creating workspace:', err)
       alert(err.message)
@@ -248,6 +268,7 @@ function Workspaces() {
                     </label>
                     <input
                       type="text"
+                      name="name"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="e.g., Production, Development, Analytics"
@@ -258,9 +279,28 @@ function Workspaces() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Slug
+                    </label>
+                    <input
+                      type="text"
+                      name="slug"
+                      value={formData.slug}
+                      onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                      placeholder="Auto-generated from name if left empty"
+                      pattern="^[a-z0-9-]+$"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      URL-friendly identifier (lowercase letters, numbers, and hyphens only)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Description
                     </label>
                     <textarea
+                      name="description"
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       placeholder="Optional description for this workspace"
