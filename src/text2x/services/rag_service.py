@@ -9,11 +9,13 @@ This service provides:
 """
 
 import logging
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
 from text2x.models.rag import ExampleStatus, RAGExample
 from text2x.repositories.rag import RAGExampleRepository
+from text2x.services.opensearch_service import OpenSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +26,17 @@ class RAGService:
     def __init__(
         self,
         rag_repo: Optional[RAGExampleRepository] = None,
-        opensearch_client=None,  # TODO: Add OpenSearch client type
+        opensearch_service: Optional[OpenSearchService] = None,
     ):
         """
         Initialize RAG service.
 
         Args:
             rag_repo: RAG example repository
-            opensearch_client: OpenSearch client for vector search (optional)
+            opensearch_service: OpenSearch service for vector search (optional)
         """
         self.rag_repo = rag_repo or RAGExampleRepository()
-        self.opensearch_client = opensearch_client
+        self.opensearch_service = opensearch_service
 
     async def add_example(
         self,
@@ -107,7 +109,7 @@ class RAGService:
             )
 
             # Index in OpenSearch if available
-            if self.opensearch_client:
+            if self.opensearch_service:
                 await self._index_in_opensearch(example)
 
         logger.info(
@@ -134,7 +136,7 @@ class RAGService:
         logger.info(f"Removing RAG example {example_id}")
 
         # Remove from OpenSearch first
-        if self.opensearch_client:
+        if self.opensearch_service:
             try:
                 await self._remove_from_opensearch(example_id)
             except Exception as e:
@@ -191,29 +193,93 @@ class RAGService:
         if not query or not provider_id:
             raise ValueError("query and provider_id are required")
 
-        # For now, use simple database retrieval
-        # TODO: Implement hybrid search with OpenSearch when available
-        examples = await self._search_database(
-            query=query,
-            provider_id=provider_id,
-            query_intent=query_intent,
-            limit=limit,
-        )
-
-        # If OpenSearch is available, enhance with vector similarity
-        if self.opensearch_client and examples:
+        # Use OpenSearch hybrid search if available
+        if self.opensearch_service:
             try:
-                examples = await self._enhance_with_vector_search(
+                examples = await self._search_opensearch(
                     query=query,
-                    examples=examples,
+                    provider_id=provider_id,
+                    query_intent=query_intent,
                     min_similarity=min_similarity,
                     limit=limit,
                 )
             except Exception as e:
-                logger.warning(f"Vector search enhancement failed: {e}")
-                # Fall back to database-only results
+                logger.warning(f"OpenSearch search failed: {e}, falling back to database")
+                # Fall back to database search
+                examples = await self._search_database(
+                    query=query,
+                    provider_id=provider_id,
+                    query_intent=query_intent,
+                    limit=limit,
+                )
+        else:
+            # Fall back to database-only search
+            examples = await self._search_database(
+                query=query,
+                provider_id=provider_id,
+                query_intent=query_intent,
+                limit=limit,
+            )
 
         logger.info(f"Found {len(examples)} similar RAG examples")
+        return examples
+
+    async def _search_opensearch(
+        self,
+        query: str,
+        provider_id: str,
+        query_intent: Optional[str],
+        min_similarity: float,
+        limit: int,
+    ) -> List[RAGExample]:
+        """
+        Search examples using OpenSearch hybrid search.
+
+        Combines vector similarity and keyword matching for best results.
+
+        Args:
+            query: Natural language query
+            provider_id: Provider ID filter
+            query_intent: Optional intent filter
+            min_similarity: Minimum similarity threshold
+            limit: Maximum results
+
+        Returns:
+            List of RAG examples from OpenSearch
+        """
+        logger.debug(f"Searching OpenSearch with query: '{query[:50]}...'")
+
+        # Search OpenSearch with hybrid search
+        search_results = await self.opensearch_service.search_similar(
+            query_text=query,
+            k=limit,
+            provider_id=provider_id,
+            query_intent=query_intent,
+            min_score=min_similarity,
+            hybrid=True,
+        )
+
+        # Convert search results to RAGExample objects
+        examples = []
+        for result in search_results:
+            try:
+                # Fetch full example from database to get all fields
+                example_id = UUID(result["id"])
+                example = await self.rag_repo.get_by_id(example_id)
+
+                if example:
+                    # Add similarity score as a dynamic attribute
+                    example.similarity_score = result["score"]
+                    examples.append(example)
+                else:
+                    logger.warning(
+                        f"Example {example_id} found in OpenSearch but not in database"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to fetch example {result.get('id')}: {e}")
+                continue
+
+        logger.debug(f"Found {len(examples)} examples from OpenSearch")
         return examples
 
     async def _search_database(
@@ -245,19 +311,34 @@ class RAGService:
             limit=limit * 2,  # Get more to filter/rank
         )
 
-        # Simple keyword matching for now
-        # TODO: Implement proper full-text search
+        # Improved keyword matching with TF-IDF-like scoring
         query_lower = query.lower()
+        query_words = set(word for word in query_lower.split() if len(word) > 2)
+
         scored_examples = []
 
         for example in examples:
             nl_query_lower = example.natural_language_query.lower()
+            example_words = set(word for word in nl_query_lower.split() if len(word) > 2)
 
-            # Simple scoring based on keyword overlap
-            query_words = set(query_lower.split())
-            example_words = set(nl_query_lower.split())
+            # Keyword overlap score
             overlap = len(query_words & example_words)
-            score = overlap / max(len(query_words), 1)
+            overlap_score = overlap / max(len(query_words), 1) if query_words else 0
+
+            # Substring matching score (for partial matches)
+            substring_score = 0
+            for qword in query_words:
+                if any(qword in eword or eword in qword for eword in example_words):
+                    substring_score += 0.5
+
+            substring_score = min(1.0, substring_score / max(len(query_words), 1))
+
+            # Combined score (weighted)
+            score = 0.7 * overlap_score + 0.3 * substring_score
+
+            # Boost score for good examples
+            if example.is_good_example:
+                score *= 1.1
 
             scored_examples.append((score, example))
 
@@ -280,19 +361,47 @@ class RAGService:
         Raises:
             Exception: If indexing fails
         """
-        if not self.opensearch_client:
-            logger.debug("OpenSearch client not available, skipping indexing")
+        if not self.opensearch_service:
+            logger.debug("OpenSearch service not available, skipping indexing")
             return
 
         logger.info(f"Indexing RAG example {example.id} in OpenSearch")
 
-        # TODO: Implement OpenSearch indexing
-        # 1. Generate embedding for example.natural_language_query
-        # 2. Store in OpenSearch with metadata
-        # 3. Update example.embeddings_generated = True
+        try:
+            # Prepare metadata
+            metadata = {
+                "nl_query": example.natural_language_query,
+                "generated_query": example.get_query_for_rag(),
+                "provider_id": example.provider_id,
+                "status": example.status.value,
+                "is_good_example": example.is_good_example,
+                "involved_tables": example.involved_tables,
+                "query_intent": example.query_intent,
+                "complexity_level": example.complexity_level,
+                "reviewed_by": example.reviewed_by,
+                "reviewed_at": example.reviewed_at.isoformat() if example.reviewed_at else None,
+                "expert_corrected_query": example.expert_corrected_query,
+                "metadata": example.extra_metadata,
+                "created_at": example.created_at.isoformat() if hasattr(example, "created_at") and example.created_at else datetime.utcnow().isoformat(),
+                "updated_at": example.updated_at.isoformat() if hasattr(example, "updated_at") and example.updated_at else datetime.utcnow().isoformat(),
+            }
 
-        # Placeholder for now
-        logger.warning("OpenSearch indexing not yet implemented")
+            # Index document (embedding will be generated automatically)
+            await self.opensearch_service.index_document(
+                doc_id=str(example.id),
+                vector=None,  # Will be generated from nl_query
+                metadata=metadata,
+            )
+
+            # Update example to mark embeddings as generated
+            example.embeddings_generated = True
+            await self.rag_repo.update(example)
+
+            logger.info(f"Successfully indexed RAG example {example.id}")
+
+        except Exception as e:
+            logger.error(f"Failed to index example {example.id}: {e}")
+            raise
 
     async def _remove_from_opensearch(self, example_id: UUID) -> None:
         """
@@ -304,17 +413,24 @@ class RAGService:
         Raises:
             Exception: If removal fails
         """
-        if not self.opensearch_client:
-            logger.debug("OpenSearch client not available, skipping removal")
+        if not self.opensearch_service:
+            logger.debug("OpenSearch service not available, skipping removal")
             return
 
         logger.info(f"Removing RAG example {example_id} from OpenSearch")
 
-        # TODO: Implement OpenSearch removal
-        # Delete document from OpenSearch index
+        try:
+            # Delete document from OpenSearch
+            deleted = await self.opensearch_service.delete_document(str(example_id))
 
-        # Placeholder for now
-        logger.warning("OpenSearch removal not yet implemented")
+            if deleted:
+                logger.info(f"Successfully removed example {example_id} from OpenSearch")
+            else:
+                logger.warning(f"Example {example_id} not found in OpenSearch")
+
+        except Exception as e:
+            logger.error(f"Failed to remove example {example_id} from OpenSearch: {e}")
+            raise
 
     async def _enhance_with_vector_search(
         self,
@@ -329,6 +445,9 @@ class RAGService:
         This uses OpenSearch to compute semantic similarity between
         the query and retrieved examples, re-ranking them by relevance.
 
+        Note: This method is deprecated in favor of direct OpenSearch hybrid search.
+        It's kept for backward compatibility and fallback scenarios.
+
         Args:
             query: Natural language query
             examples: Initial examples from database search
@@ -338,14 +457,51 @@ class RAGService:
         Returns:
             Re-ranked list of examples
         """
-        # TODO: Implement vector similarity scoring
-        # 1. Generate embedding for query
-        # 2. Compute similarity with each example
-        # 3. Filter by min_similarity
-        # 4. Re-rank and return top K
+        if not self.opensearch_service:
+            logger.debug("OpenSearch service not available for enhancement")
+            return examples[:limit]
 
-        logger.warning("Vector similarity enhancement not yet implemented")
-        return examples[:limit]
+        try:
+            # Get example IDs
+            example_ids = {str(ex.id) for ex in examples}
+
+            # Search OpenSearch for vector similarity
+            search_results = await self.opensearch_service.search_similar(
+                query_text=query,
+                k=len(examples),  # Search within our candidate set
+                min_score=min_similarity,
+                hybrid=False,  # Pure vector search for enhancement
+            )
+
+            # Build score map
+            score_map = {
+                result["id"]: result["score"]
+                for result in search_results
+                if result["id"] in example_ids
+            }
+
+            # Add scores to examples
+            for example in examples:
+                example_id = str(example.id)
+                example.similarity_score = score_map.get(example_id, 0.0)
+
+            # Filter by minimum similarity
+            filtered = [ex for ex in examples if ex.similarity_score >= min_similarity]
+
+            # Re-rank by similarity score
+            filtered.sort(key=lambda ex: ex.similarity_score, reverse=True)
+
+            logger.debug(
+                f"Enhanced {len(examples)} examples, "
+                f"{len(filtered)} passed min_similarity threshold"
+            )
+
+            return filtered[:limit]
+
+        except Exception as e:
+            logger.warning(f"Vector enhancement failed: {e}")
+            # Return original examples as fallback
+            return examples[:limit]
 
     async def get_statistics(self, provider_id: Optional[str] = None) -> dict:
         """
