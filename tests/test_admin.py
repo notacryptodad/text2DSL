@@ -166,7 +166,7 @@ class TestWorkspaceAdminRepository:
 
     @pytest.mark.asyncio
     async def test_get_by_workspace_and_user(self, admin_repo, sample_workspace, db_session):
-        """Test getting admin by workspace and user."""
+        """Test getting admin roles by workspace and user."""
         await admin_repo.create(
             workspace_id=sample_workspace.id,
             user_id="user-123",
@@ -179,8 +179,40 @@ class TestWorkspaceAdminRepository:
             sample_workspace.id, "user-123", session=db_session
         )
         assert fetched is not None
-        assert fetched.user_id == "user-123"
-        assert fetched.workspace_id == sample_workspace.id
+        assert isinstance(fetched, list)
+        assert len(fetched) == 1
+        assert fetched[0].user_id == "user-123"
+        assert fetched[0].workspace_id == sample_workspace.id
+
+    @pytest.mark.asyncio
+    async def test_get_by_workspace_and_user_multiple_roles(self, admin_repo, sample_workspace, db_session):
+        """Test getting multiple admin roles for the same user."""
+        # Create user with ADMIN role
+        await admin_repo.create(
+            workspace_id=sample_workspace.id,
+            user_id="user-123",
+            invited_by="admin-456",
+            role=AdminRole.ADMIN,
+            session=db_session,
+        )
+
+        # Create same user with MEMBER role
+        await admin_repo.create(
+            workspace_id=sample_workspace.id,
+            user_id="user-123",
+            invited_by="admin-456",
+            role=AdminRole.MEMBER,
+            session=db_session,
+        )
+
+        fetched = await admin_repo.get_by_workspace_and_user(
+            sample_workspace.id, "user-123", session=db_session
+        )
+        assert fetched is not None
+        assert isinstance(fetched, list)
+        assert len(fetched) == 2
+        roles = {admin.role for admin in fetched}
+        assert roles == {AdminRole.ADMIN, AdminRole.MEMBER}
 
     @pytest.mark.asyncio
     async def test_get_by_workspace_and_user_not_found(self, admin_repo, sample_workspace, db_session):
@@ -188,7 +220,33 @@ class TestWorkspaceAdminRepository:
         result = await admin_repo.get_by_workspace_and_user(
             sample_workspace.id, "nonexistent-user", session=db_session
         )
-        assert result is None
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_by_workspace_user_and_role(self, admin_repo, sample_workspace, db_session):
+        """Test getting specific role assignment for a user."""
+        await admin_repo.create(
+            workspace_id=sample_workspace.id,
+            user_id="user-123",
+            invited_by="admin-456",
+            role=AdminRole.ADMIN,
+            session=db_session,
+        )
+
+        # Get specific role
+        fetched = await admin_repo.get_by_workspace_user_and_role(
+            sample_workspace.id, "user-123", AdminRole.ADMIN, session=db_session
+        )
+        assert fetched is not None
+        assert fetched.user_id == "user-123"
+        assert fetched.role == AdminRole.ADMIN
+
+        # Try to get non-existent role
+        not_found = await admin_repo.get_by_workspace_user_and_role(
+            sample_workspace.id, "user-123", AdminRole.OWNER, session=db_session
+        )
+        assert not_found is None
 
     @pytest.mark.asyncio
     async def test_list_by_workspace(self, admin_repo, sample_workspace, db_session):
@@ -430,12 +488,43 @@ class TestWorkspaceAdminRepository:
         result = await admin_repo.delete_by_workspace_and_user(
             sample_workspace.id, "user-123", session=db_session
         )
-        assert result is True
+        assert result == 1  # Deleted 1 role
 
         fetched = await admin_repo.get_by_workspace_and_user(
             sample_workspace.id, "user-123", session=db_session
         )
-        assert fetched is None
+        assert isinstance(fetched, list)
+        assert len(fetched) == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_by_workspace_and_user_multiple_roles(self, admin_repo, sample_workspace, db_session):
+        """Test deleting all roles for a user with multiple roles."""
+        # Create user with two roles
+        await admin_repo.create(
+            workspace_id=sample_workspace.id,
+            user_id="user-123",
+            invited_by="admin-456",
+            role=AdminRole.ADMIN,
+            session=db_session,
+        )
+        await admin_repo.create(
+            workspace_id=sample_workspace.id,
+            user_id="user-123",
+            invited_by="admin-456",
+            role=AdminRole.MEMBER,
+            session=db_session,
+        )
+
+        result = await admin_repo.delete_by_workspace_and_user(
+            sample_workspace.id, "user-123", session=db_session
+        )
+        assert result == 2  # Deleted 2 roles
+
+        fetched = await admin_repo.get_by_workspace_and_user(
+            sample_workspace.id, "user-123", session=db_session
+        )
+        assert isinstance(fetched, list)
+        assert len(fetched) == 0
 
     @pytest.mark.asyncio
     async def test_delete_by_workspace_and_user_not_found(self, admin_repo, sample_workspace, db_session):
@@ -443,7 +532,7 @@ class TestWorkspaceAdminRepository:
         result = await admin_repo.delete_by_workspace_and_user(
             sample_workspace.id, "nonexistent-user", session=db_session
         )
-        assert result is False
+        assert result == 0  # No roles deleted
 
     @pytest.mark.asyncio
     async def test_count_by_workspace(self, admin_repo, sample_workspace, db_session):

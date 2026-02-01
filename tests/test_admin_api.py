@@ -288,13 +288,13 @@ class TestAdminInvitationEndpoints:
         )
         assert response1.status_code == 201
 
-        # Try to invite again
+        # Try to invite again with the same role
         response2 = await client.post(
             f"/api/v1/admin/workspaces/{workspace_id}/admins", json=invite_data
         )
 
         assert response2.status_code == 400
-        assert "already has access" in response2.json()["detail"]["message"]
+        assert "already has the admin role" in response2.json()["detail"]["message"]
 
     @pytest.mark.asyncio
     async def test_invite_to_nonexistent_workspace(self, client):
