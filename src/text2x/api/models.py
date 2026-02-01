@@ -394,7 +394,7 @@ class HealthCheckResponse(BaseModel):
 class ErrorResponse(BaseModel):
     """Standard error response model."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", ser_json_timedelta="iso8601")
 
     error: str = Field(..., description="Error type/code")
     message: str = Field(..., description="Human-readable error message")
@@ -402,4 +402,4 @@ class ErrorResponse(BaseModel):
         default=None,
         description="Additional error details",
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
