@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   CheckCircle,
   XCircle,
@@ -10,13 +11,10 @@ import {
   Calendar,
   Database,
   AlertTriangle,
-  ThumbsUp,
-  ThumbsDown,
   X,
   Copy,
   Check,
-  ChevronDown,
-  ChevronUp,
+  BarChart3,
 } from 'lucide-react'
 import Prism from 'prismjs'
 import '../styles/prism-custom.css'
@@ -327,12 +325,23 @@ function Review() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Expert Review Dashboard
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Review and approve queries pending expert validation
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                Expert Review Dashboard
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                Review and approve queries pending expert validation
+              </p>
+            </div>
+            <Link
+              to="/app/feedback-stats"
+              className="flex items-center space-x-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>View Feedback Stats</span>
+            </Link>
+          </div>
         </div>
 
         {/* Statistics */}
@@ -479,7 +488,7 @@ function Review() {
                       {/* Query Text */}
                       <div className="mb-3">
                         <p className="text-base font-medium text-gray-900 dark:text-white mb-1">
-                          "{item.user_input}"
+                          &quot;{item.user_input}&quot;
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400 font-mono truncate">
                           {item.generated_query}
@@ -650,6 +659,23 @@ function Review() {
                     </p>
                   </div>
                 </div>
+
+                {/* Feedback Category */}
+                {selectedItem.feedback_category && (
+                  <div className="mb-6">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                      Feedback Category
+                    </label>
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400">
+                      {selectedItem.feedback_category.replace(/_/g, ' ').toUpperCase()}
+                    </span>
+                    {selectedItem.feedback_comment && (
+                      <p className="mt-2 text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 rounded p-3">
+                        &quot;{selectedItem.feedback_comment}&quot;
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Edit Mode */}
                 {editMode && (
