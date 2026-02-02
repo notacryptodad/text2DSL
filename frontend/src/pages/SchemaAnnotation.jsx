@@ -473,7 +473,7 @@ function SchemaAnnotation() {
           <div className="lg:col-span-1">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sticky top-4">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Database Schema
+                Schema
               </h2>
               {loading ? (
                 <div className="flex items-center justify-center py-8">

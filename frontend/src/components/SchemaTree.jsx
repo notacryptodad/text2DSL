@@ -101,14 +101,14 @@ function SchemaTree({ schema, onTableSelect, selectedTable, annotations = {} }) 
                   )}
                 </button>
                 <Table2 className="w-4 h-4 text-primary-500 flex-shrink-0" />
-                <span className="font-medium text-gray-900 dark:text-white truncate">
+                <span className="font-semibold text-gray-900 dark:text-white truncate text-sm">
                   {table.table_name}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
-                  ({table.columns?.length || 0} cols)
-                </span>
               </div>
-              <div className="flex-shrink-0 ml-2">
+              <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  {table.columns?.length || 0} cols
+                </span>
                 {isAnnotated ? (
                   <CheckCircle className="w-4 h-4 text-green-500" title="Annotated" />
                 ) : (
