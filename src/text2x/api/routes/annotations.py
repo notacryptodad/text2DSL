@@ -637,13 +637,17 @@ async def auto_annotate_table(
 Please:
 1. Sample some data from this table to understand its structure
 2. Analyze the columns and their data types
-3. Suggest meaningful annotations including:
-   - Table description
-   - Column descriptions
-   - Business terms (alternative names)
-   - Any patterns or relationships you notice
+3. Provide a JSON response with the following structure:
 
-Let's start by sampling data from the table."""
+{{
+  "table_description": "A concise description of what this table represents",
+  "columns": [
+    {{"name": "column_name", "description": "What this column represents"}},
+    ...
+  ]
+}}
+
+IMPORTANT: After analyzing the data, end your response with a JSON code block containing the structured annotations."""
 
         # Process the request
         result = await agent.process({
@@ -654,12 +658,46 @@ Let's start by sampling data from the table."""
         })
 
         # Extract suggestions from response
-        # In a real implementation, we'd parse the LLM response more carefully
+        # Parse JSON from the LLM response
+        import json
+        import re
+
+        llm_response = result["response"]
         suggestions = {
             "table_name": request.table_name,
-            "llm_response": result["response"],
-            "tool_calls": result.get("tool_calls", []),
+            "table_description": "",
+            "columns": [],
         }
+
+        # Try to extract JSON from code blocks or direct JSON
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', llm_response, re.DOTALL)
+        if json_match:
+            try:
+                parsed_json = json.loads(json_match.group(1))
+                suggestions["table_description"] = parsed_json.get("table_description", "")
+                suggestions["columns"] = parsed_json.get("columns", [])
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse JSON from LLM response")
+        else:
+            # Fallback: try to find JSON without code blocks
+            try:
+                # Find the last JSON object in the response
+                json_objects = re.findall(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', llm_response, re.DOTALL)
+                for json_str in reversed(json_objects):
+                    try:
+                        parsed_json = json.loads(json_str)
+                        if "table_description" in parsed_json or "columns" in parsed_json:
+                            suggestions["table_description"] = parsed_json.get("table_description", "")
+                            suggestions["columns"] = parsed_json.get("columns", [])
+                            break
+                    except json.JSONDecodeError:
+                        continue
+            except Exception as e:
+                logger.warning(f"Failed to extract JSON from response: {e}")
+
+        # Include full response for debugging
+        suggestions["llm_response"] = llm_response
+        suggestions["tool_calls"] = result.get("tool_calls", [])
 
         response = AutoAnnotateResponse(
             conversation_id=conversation_id,

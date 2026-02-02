@@ -34,6 +34,7 @@ function SchemaAnnotation() {
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [conversationId, setConversationId] = useState(null)
+  const [autoAnnotationSuggestions, setAutoAnnotationSuggestions] = useState(null)
   const chatEndRef = useRef(null)
 
   useEffect(() => {
@@ -289,14 +290,45 @@ function SchemaAnnotation() {
       }
       const data = await response.json()
 
-            setChatMessages([
-        ...chatMessages,
-        {
-          type: 'assistant',
-          content: data.suggestions || `Auto-annotation completed for table "${selectedTable}"!`,
-          timestamp: new Date(),
-        },
-      ])
+      // Store the structured suggestions
+      if (data.suggestions) {
+        const { table_description, columns } = data.suggestions
+
+        // Create annotation structure from suggestions
+        const suggestedAnnotation = {
+          table_name: selectedTable,
+          description: table_description || '',
+          columns: columns || [],
+          business_terms: [],
+          relationships: []
+        }
+
+        setAutoAnnotationSuggestions(suggestedAnnotation)
+
+        // Show success message with summary
+        const columnCount = columns?.length || 0
+        const message = table_description
+          ? `Auto-annotation completed!\n\nTable: ${table_description}\n\nGenerated descriptions for ${columnCount} column${columnCount !== 1 ? 's' : ''}.`
+          : `Auto-annotation completed for table "${selectedTable}"!`
+
+        setChatMessages([
+          ...chatMessages,
+          {
+            type: 'assistant',
+            content: message,
+            timestamp: new Date(),
+          },
+        ])
+      } else {
+        setChatMessages([
+          ...chatMessages,
+          {
+            type: 'assistant',
+            content: `Auto-annotation completed for table "${selectedTable}"!`,
+            timestamp: new Date(),
+          },
+        ])
+      }
 
       await fetchAnnotations()
     } catch (err) {
@@ -405,6 +437,7 @@ function SchemaAnnotation() {
       await fetchAnnotations()
       setShowEditor(false)
       setSelectedTable(null)
+      setAutoAnnotationSuggestions(null)
 
       setChatMessages([
         ...chatMessages,
@@ -522,6 +555,7 @@ function SchemaAnnotation() {
                     onTableSelect={(tableName) => {
                       setSelectedTable(tableName)
                       setShowEditor(true)
+                      setAutoAnnotationSuggestions(null)
                     }}
                     selectedTable={selectedTable}
                     annotations={annotations}
@@ -538,11 +572,12 @@ function SchemaAnnotation() {
               <AnnotationEditor
                 tableName={selectedTable}
                 schema={schema}
-                annotation={annotations[selectedTable]}
+                annotation={autoAnnotationSuggestions || annotations[selectedTable]}
                 onSave={handleSaveAnnotation}
                 onCancel={() => {
                   setShowEditor(false)
                   setSelectedTable(null)
+                  setAutoAnnotationSuggestions(null)
                 }}
               />
             )}
