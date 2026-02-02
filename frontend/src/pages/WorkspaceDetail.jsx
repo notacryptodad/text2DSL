@@ -235,6 +235,37 @@ function WorkspaceDetail() {
     }
   }
 
+  const handleDeleteProvider = async (providerId, providerName) => {
+    if (!confirm(`Are you sure you want to delete "${providerName}"? This will also delete all connections.`)) {
+      return
+    }
+
+    try {
+      const apiUrl = ''
+      const token = localStorage.getItem('access_token')
+
+      const response = await fetch(
+        `${apiUrl}/api/v1/workspaces/${workspaceId}/providers/${providerId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail?.message || error.detail || 'Failed to delete provider')
+      }
+
+      await fetchProviders()
+    } catch (err) {
+      console.error('Error deleting provider:', err)
+      alert(err.message)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
@@ -393,12 +424,14 @@ function WorkspaceDetail() {
                   {providers.length > 0 ? (
                     <div className="space-y-3">
                       {providers.map((provider) => (
-                        <Link
+                        <div
                           key={provider.id}
-                          to={`/admin/workspaces/${workspaceId}/providers/${provider.id}`}
-                          className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                          className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                         >
-                          <div className="flex items-center space-x-3">
+                          <Link
+                            to={`/admin/workspaces/${workspaceId}/providers/${provider.id}`}
+                            className="flex items-center space-x-3 flex-1 hover:opacity-80 transition-opacity"
+                          >
                             <div className="bg-primary-100 dark:bg-primary-900/30 p-2 rounded">
                               <Database className="w-5 h-5 text-primary-600 dark:text-primary-400" />
                             </div>
@@ -410,11 +443,20 @@ function WorkspaceDetail() {
                                 {provider.type}
                               </p>
                             </div>
+                          </Link>
+                          <div className="flex items-center space-x-3">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                              {provider.connection_count || 0} connections
+                            </span>
+                            <button
+                              onClick={() => handleDeleteProvider(provider.id, provider.name)}
+                              className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+                              title="Delete provider"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
-                            {provider.connection_count || 0} connections
-                          </span>
-                        </Link>
+                        </div>
                       ))}
                     </div>
                   ) : (
