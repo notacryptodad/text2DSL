@@ -273,6 +273,79 @@ async def list_workspaces() -> list[WorkspaceListResponse]:
         )
 
 
+@router.get(
+    "/workspaces/{workspace_id}",
+    response_model=WorkspaceListResponse,
+    summary="Get workspace details (super admin only)",
+    dependencies=[Depends(require_role("super_admin"))],
+)
+async def get_workspace(workspace_id: UUID) -> WorkspaceListResponse:
+    """
+    Get details for a specific workspace.
+
+    Args:
+        workspace_id: Workspace UUID
+
+    Returns:
+        Workspace details with admin and provider counts
+    """
+    try:
+        logger.info(f"Fetching workspace {workspace_id}")
+
+        from sqlalchemy import select, func
+        from text2x.models.workspace import Provider
+
+        async with await get_session() as session:
+            stmt = (
+                select(
+                    Workspace,
+                    func.count(func.distinct(WorkspaceAdmin.id)).label("admin_count"),
+                    func.count(func.distinct(Provider.id)).label("provider_count"),
+                )
+                .where(Workspace.id == workspace_id)
+                .outerjoin(WorkspaceAdmin, WorkspaceAdmin.workspace_id == Workspace.id)
+                .outerjoin(Provider, Provider.workspace_id == Workspace.id)
+                .group_by(Workspace.id)
+            )
+
+            result = await session.execute(stmt)
+            row = result.first()
+
+            if not row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Workspace {workspace_id} not found",
+                    ).model_dump(),
+                )
+
+            workspace, admin_count, provider_count = row
+
+            return WorkspaceListResponse(
+                id=workspace.id,
+                name=workspace.name,
+                slug=workspace.slug,
+                description=workspace.description,
+                admin_count=admin_count,
+                provider_count=provider_count,
+                created_at=workspace.created_at,
+                updated_at=workspace.updated_at,
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching workspace: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="fetch_error",
+                message="Failed to fetch workspace",
+            ).model_dump(),
+        )
+
+
 @router.post(
     "/workspaces/{workspace_id}/admins",
     response_model=AdminResponse,
