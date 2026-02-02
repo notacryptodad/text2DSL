@@ -378,7 +378,7 @@ function WorkspaceDetail() {
                   <div className="flex items-center space-x-2">
                     <Database className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      Database Providers
+                      DSL Providers
                     </h2>
                   </div>
                   <button
