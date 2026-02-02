@@ -40,8 +40,13 @@ function WorkspaceDetail() {
     try {
       setLoading(true)
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
-      const response = await fetch(`${apiUrl}/api/v1/admin/workspaces/${workspaceId}`)
+      const response = await fetch(`${apiUrl}/api/v1/admin/workspaces/${workspaceId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
       if (response.ok) {
         const data = await response.json()
         setWorkspace(data)
@@ -64,11 +69,13 @@ function WorkspaceDetail() {
     try {
       setSaving(true)
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       const response = await fetch(`${apiUrl}/api/v1/admin/workspaces/${workspaceId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(formData),
       })
@@ -99,6 +106,7 @@ function WorkspaceDetail() {
     try {
       setInviting(true)
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       const response = await fetch(
         `${apiUrl}/api/v1/admin/workspaces/${workspaceId}/admins`,
@@ -106,6 +114,7 @@ function WorkspaceDetail() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify({ email: inviteEmail }),
         }
@@ -135,11 +144,15 @@ function WorkspaceDetail() {
 
     try {
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       const response = await fetch(
         `${apiUrl}/api/v1/admin/workspaces/${workspaceId}/admins/${adminId}`,
         {
           method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
         }
       )
 
