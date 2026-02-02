@@ -6,8 +6,8 @@ Import order matters - boto3 credentials must be in env vars first.
 import os
 import boto3
 
-# Default settings
-DEFAULT_MODEL = "bedrock/anthropic.claude-opus-4-5-20251101-v1:0"
+# Default settings - use cross-region inference profiles
+DEFAULT_MODEL = "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0"
 DEFAULT_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 
@@ -124,14 +124,31 @@ async def get_chat_completion_async(
     return response.choices[0].message.content
 
 
-# Model aliases for convenience
+# Model aliases for convenience - use cross-region inference profiles
 MODELS = {
-    "opus": "bedrock/anthropic.claude-opus-4-5-20251101-v1:0",
-    "sonnet": "bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0", 
-    "haiku": "bedrock/anthropic.claude-3-haiku-20240307-v1:0",
+    "opus": "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0",
+    "sonnet": "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0", 
+    "haiku": "bedrock/us.anthropic.claude-3-haiku-20240307-v1:0",
 }
 
 
 def get_model(alias: str) -> str:
     """Get full model name from alias"""
     return MODELS.get(alias, alias)
+
+
+# Also export the client class for more advanced usage
+from .litellm_client import LiteLLMClient, get_client
+
+__all__ = [
+    "LiteLLMClient",
+    "get_client",
+    "get_completion",
+    "get_completion_async",
+    "get_chat_completion",
+    "get_chat_completion_async",
+    "get_model",
+    "MODELS",
+    "DEFAULT_MODEL",
+    "DEFAULT_REGION",
+]
