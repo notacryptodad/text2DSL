@@ -138,8 +138,9 @@ async def _get_or_create_agent(
             raise ValueError(f"Invalid connection ID format: {provider_id}")
 
         async with await get_session() as session:
-            # Query connection from database
-            conn_stmt = select(Connection).where(Connection.id == connection_id)
+            # Query connection from database with eagerly loaded provider
+            from sqlalchemy.orm import selectinload
+            conn_stmt = select(Connection).options(selectinload(Connection.provider)).where(Connection.id == connection_id)
             conn_result = await session.execute(conn_stmt)
             connection = conn_result.scalar_one_or_none()
 
@@ -152,7 +153,7 @@ async def _get_or_create_agent(
                     ).model_dump(),
                 )
 
-            # Get provider type
+            # Get provider type (now eagerly loaded)
             provider_type = connection.provider.type
 
             # Create appropriate provider based on type
