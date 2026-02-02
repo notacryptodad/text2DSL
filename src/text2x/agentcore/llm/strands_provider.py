@@ -1,0 +1,45 @@
+"""Strands LiteLLM Model Provider for AgentCore.
+
+Uses Strands SDK's built-in LiteLLMModel for Bedrock integration.
+"""
+import logging
+from typing import Optional
+
+from strands.models.litellm import LiteLLMModel
+
+from text2x.agentcore.config import AgentCoreConfig
+
+logger = logging.getLogger(__name__)
+
+
+def create_litellm_model(config: Optional[AgentCoreConfig] = None) -> LiteLLMModel:
+    """Create a Strands LiteLLM model provider for AgentCore.
+
+    Args:
+        config: AgentCore configuration (defaults to from_env)
+
+    Returns:
+        LiteLLMModel configured for Bedrock via LiteLLM
+    """
+    if config is None:
+        config = AgentCoreConfig.from_env()
+
+    # Create LiteLLM model with Bedrock configuration
+    model = LiteLLMModel(
+        model_id=config.model,
+        temperature=config.temperature,
+        max_tokens=config.max_tokens,
+    )
+
+    logger.info(f"Created Strands LiteLLM model provider: {config.model}")
+    return model
+
+
+# Default model factory for convenience
+def get_default_model() -> LiteLLMModel:
+    """Get the default LiteLLM model for AgentCore.
+
+    Returns:
+        LiteLLMModel with default configuration
+    """
+    return create_litellm_model()
