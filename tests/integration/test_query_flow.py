@@ -267,7 +267,7 @@ class TestSchemaIntrospection:
     ):
         """Test retrieving schema metadata from PostgreSQL."""
         # Get schema definition
-        schema = sql_provider.get_schema_definition(include_samples=False)
+        schema = await sql_provider.get_schema()
 
         assert schema is not None
         assert schema.tables is not None
@@ -292,7 +292,7 @@ class TestSchemaIntrospection:
         setup_test_schema
     ):
         """Test retrieving table relationships."""
-        schema = sql_provider.get_schema_definition(include_samples=False)
+        schema = await sql_provider.get_schema()
 
         # Verify relationships exist
         assert schema.relationships is not None
