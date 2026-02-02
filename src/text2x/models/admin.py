@@ -28,8 +28,9 @@ from .base import Base, TimestampMixin, UUIDMixin
 class AdminRole(str, Enum):
     """Admin roles within a workspace."""
 
-    OWNER = "owner"  # Full control, can manage admins
-    ADMIN = "admin"  # Can manage workspace settings and connections
+    OWNER = "owner"    # Full control, can manage admins
+    ADMIN = "admin"    # Can manage workspace settings and connections
+    EXPERT = "expert"  # Workspace expert: review queries, mark good/bad, correct SQL
     MEMBER = "member"  # Read access to workspace
 
 

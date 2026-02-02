@@ -17,10 +17,11 @@ from .base import Base, TimestampMixin, UUIDMixin
 
 
 class UserRole(str, Enum):
-    """User role enumeration."""
+    """User role enumeration (system-wide roles)."""
 
-    SUPER_ADMIN = "super_admin"
-    USER = "user"
+    SUPER_ADMIN = "super_admin"  # Full system access
+    EXPERT = "expert"            # System-wide expert: can review/approve across all workspaces
+    USER = "user"                # Regular user
 
 
 class User(Base, UUIDMixin, TimestampMixin):
