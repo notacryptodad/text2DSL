@@ -92,6 +92,10 @@ function SchemaAnnotation() {
   const fetchConnections = async (workspaceId) => {
     try {
       const token = localStorage.getItem('access_token')
+      if (!token) {
+        console.warn('No access token found, skipping fetchConnections')
+        return
+      }
       // First fetch providers for this workspace
       const providersRes = await fetch(
         `${getApiUrl()}/api/v1/workspaces/${workspaceId}/providers`,
@@ -99,7 +103,11 @@ function SchemaAnnotation() {
           headers: { 'Authorization': `Bearer ${token}` },
         }
       )
-      if (!providersRes.ok) throw new Error('Failed to fetch providers')
+      if (!providersRes.ok) {
+        const errorText = await providersRes.text()
+        console.error(`Failed to fetch providers: ${providersRes.status}`, errorText)
+        throw new Error(`Failed to fetch providers: ${providersRes.status}`)
+      }
       const providers = await providersRes.json()
       
       // Fetch connections for each provider
