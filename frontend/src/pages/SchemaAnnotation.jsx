@@ -256,25 +256,44 @@ function SchemaAnnotation() {
 
   const handleAutoAnnotate = async () => {
     if (!selectedWorkspace || !selectedConnection) return
-
-    try {
-      setChatLoading(true)
-      const response = await fetch(
-        `${getApiUrl()}/api/v1/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema/auto-annotate`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
-
-      if (!response.ok) throw new Error('Failed to auto-annotate')
-      const data = await response.json()
-
+    if (!selectedTable) {
       setChatMessages([
         ...chatMessages,
         {
+          type: 'error',
+          content: 'Please select a table first to auto-annotate.',
+          timestamp: new Date(),
+        },
+      ])
+      return
+    }
+
+    try {
+      setChatLoading(true)
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(
+        `${getApiUrl()}/api/v1/annotations/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema/auto-annotate`,
+        {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ table_name: selectedTable }),
+        }
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Failed to auto-annotate')
+      }
+      const data = await response.json()
+
+            setChatMessages([
+        ...chatMessages,
+        {
           type: 'assistant',
-          content: `Auto-annotation completed! Generated annotations for ${data.annotated_count} tables.`,
+          content: data.suggestions || `Auto-annotation completed for table "${selectedTable}"!`,
           timestamp: new Date(),
         },
       ])
@@ -286,7 +305,7 @@ function SchemaAnnotation() {
         ...chatMessages,
         {
           type: 'error',
-          content: 'Failed to auto-annotate schema. Please try again.',
+          content: `Failed to auto-annotate: ${err.message}`,
           timestamp: new Date(),
         },
       ])
