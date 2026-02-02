@@ -36,17 +36,20 @@ function Chat() {
   })
   const messagesEndRef = useRef(null)
 
-  const { sendQuery, connectionState, progress } = useWebSocket({
+    const { sendQuery, connectionState, progress, connect } = useWebSocket({
     onMessage: (event) => {
       handleWebSocketMessage(event)
     },
     onError: (error) => {
       console.error('WebSocket error:', error)
-      addMessage({
-        type: 'error',
-        content: 'Connection error. Please try again.',
-        timestamp: new Date(),
-      })
+      // Only show error if we were actually trying to send something
+      if (connectionState === 'connected') {
+        addMessage({
+          type: 'error',
+          content: 'Connection error. Please try again.',
+          timestamp: new Date(),
+        })
+      }
     },
   })
 
@@ -151,23 +154,38 @@ function Chat() {
   }
 
   const handleSendQuery = async (query) => {
+    // Connect WebSocket if not connected
+    if (connectionState !== 'connected') {
+      connect()
+      // Wait a moment for connection
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    
     addMessage({
       type: 'user',
       content: query,
       timestamp: new Date(),
     })
 
-    await sendQuery({
-      provider_id: selectedProvider.id,
-      query,
-      conversation_id: conversationId,
-      options: {
-        trace_level: settings.trace_level,
-        enable_execution: settings.enable_execution,
-        max_iterations: settings.max_iterations,
-        confidence_threshold: settings.confidence_threshold,
-      },
-    })
+    try {
+      await sendQuery({
+        provider_id: selectedProvider.id,
+        query,
+        conversation_id: conversationId,
+        options: {
+          trace_level: settings.trace_level,
+          enable_execution: settings.enable_execution,
+          max_iterations: settings.max_iterations,
+          confidence_threshold: settings.confidence_threshold,
+        },
+      })
+    } catch (error) {
+      addMessage({
+        type: 'error',
+        content: 'Failed to send query. Please try again.',
+        timestamp: new Date(),
+      })
+    }
   }
 
   const handleNewConversation = () => {

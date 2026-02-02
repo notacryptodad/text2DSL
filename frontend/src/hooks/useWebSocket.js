@@ -125,14 +125,21 @@ function useWebSocket({ onMessage, onError, onOpen, onClose }) {
     []
   )
 
-  // Connect on mount, disconnect on unmount
-  useEffect(() => {
-    connect()
+  // DISABLED: Auto-connect causes issues with port forwarding
+  // WebSocket will be connected manually when user sends a query
+  // useEffect(() => {
+  //   connect()
+  //   return () => {
+  //     disconnect()
+  //   }
+  // }, [connect, disconnect])
 
+  // Clean up on unmount only
+  useEffect(() => {
     return () => {
       disconnect()
     }
-  }, [connect, disconnect])
+  }, [disconnect])
 
   return {
     connectionState,
