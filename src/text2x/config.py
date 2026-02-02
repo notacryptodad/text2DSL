@@ -95,6 +95,8 @@ class Settings(BaseSettings):
         default="anthropic.claude-3-5-sonnet-20241022-v2:0",
         validation_alias="LLM_MODEL",
     )
+    llm_api_base: Optional[str] = Field(default=None, validation_alias="LLM_API_BASE")
+    llm_api_key: Optional[str] = Field(default=None, validation_alias="LLM_API_KEY")
     llm_temperature: float = Field(default=0.0, validation_alias="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(default=4096, validation_alias="LLM_MAX_TOKENS")
     llm_timeout: int = Field(default=120, validation_alias="LLM_TIMEOUT")  # seconds
