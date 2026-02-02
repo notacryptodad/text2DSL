@@ -71,15 +71,17 @@ function SchemaTree({ schema, onTableSelect, selectedTable, annotations = {} }) 
   return (
     <div className="space-y-1">
       {schema.map((table) => {
-        const isExpanded = expandedTables.has(table.table_name)
-        const isSelected = selectedTable === table.table_name
-        const isAnnotated = isTableAnnotated(table.table_name)
+        // Support both API formats: table_name (old) and name (new)
+        const tableName = table.table_name || table.name
+        const isExpanded = expandedTables.has(tableName)
+        const isSelected = selectedTable === tableName
+        const isAnnotated = isTableAnnotated(tableName)
 
         return (
-          <div key={table.table_name} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <div key={tableName} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             <div
               onClick={() => {
-                onTableSelect(table.table_name)
+                onTableSelect(tableName)
               }}
               className={`w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer ${
                 isSelected ? 'bg-primary-50 dark:bg-primary-900/20' : ''
@@ -89,7 +91,7 @@ function SchemaTree({ schema, onTableSelect, selectedTable, annotations = {} }) 
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    toggleTable(table.table_name)
+                    toggleTable(tableName)
                   }}
                   className="flex-shrink-0 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
                 >
@@ -101,7 +103,7 @@ function SchemaTree({ schema, onTableSelect, selectedTable, annotations = {} }) 
                 </button>
                 <Table2 className="w-4 h-4 text-primary-500 flex-shrink-0" />
                 <span className="font-semibold text-gray-900 dark:text-white truncate text-sm">
-                  {table.table_name}
+                  {tableName}
                 </span>
               </div>
               <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
@@ -119,23 +121,26 @@ function SchemaTree({ schema, onTableSelect, selectedTable, annotations = {} }) 
             {isExpanded && table.columns && (
               <div className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
                 {table.columns.map((column) => {
-                  const Icon = getDataTypeIcon(column.data_type)
-                  const isColAnnotated = isColumnAnnotated(table.table_name, column.column_name)
+                  // Support both API formats: data_type (old) and type (new), column_name (old) and name (new)
+                  const columnName = column.column_name || column.name
+                  const dataType = column.data_type || column.type
+                  const Icon = getDataTypeIcon(dataType)
+                  const isColAnnotated = isColumnAnnotated(tableName, columnName)
 
                   return (
                     <div
-                      key={column.column_name}
+                      key={columnName}
                       className="flex items-center justify-between px-8 py-2 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
                     >
                       <div className="flex items-center space-x-2 flex-1 min-w-0">
                         <Icon className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" />
                         <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                          {column.column_name}
+                          {columnName}
                         </span>
                         <span className="text-xs text-gray-500 dark:text-gray-400 font-mono flex-shrink-0">
-                          {column.data_type}
+                          {dataType}
                         </span>
-                        {column.is_nullable === false && (
+                        {(column.is_nullable === false || column.nullable === false) && (
                           <span className="text-xs text-red-600 dark:text-red-400 flex-shrink-0">
                             NOT NULL
                           </span>
