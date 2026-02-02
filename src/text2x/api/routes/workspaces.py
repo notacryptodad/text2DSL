@@ -1,7 +1,7 @@
 """Workspace management endpoints."""
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -1346,7 +1346,7 @@ async def refresh_connection_schema(
     provider_id: UUID,
     connection_id: UUID,
     current_user: User = Depends(get_current_active_user)
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """
     Trigger schema refresh for a connection.
 

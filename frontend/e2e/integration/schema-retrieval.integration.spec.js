@@ -65,14 +65,15 @@ test.describe('Integration: Schema Retrieval', () => {
     providerId = provider.id;
 
     // Create a connection to test database
+    // Use localhost:5433 since backend runs outside Docker
     const connectionResponse = await request.post(
       `${API_BASE}/workspaces/${workspaceId}/providers/${providerId}/connections`,
       {
         headers,
         data: {
           name: 'Schema Test Connection',
-          host: 'text2dsl-postgres-test',
-          port: 5432,
+          host: 'localhost',
+          port: 5433,
           database: 'text2x',
           credentials: {
             username: 'text2x',
