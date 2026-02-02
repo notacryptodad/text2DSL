@@ -1061,22 +1061,68 @@ The system now includes **internal user management** with authentication via JWT
 
 **Data Model:**
 ```python
+# System-wide roles (users table)
 class UserRole(str, Enum):
-    SUPER_ADMIN = "super_admin"
-    USER = "user"
+    SUPER_ADMIN = "super_admin"  # Full system access, manage all workspaces
+    EXPERT = "expert"            # System-wide expert: review/approve across ALL workspaces
+    USER = "user"                # Regular user
+
+# Per-workspace roles (workspace_admins table)
+class AdminRole(str, Enum):
+    OWNER = "owner"    # Full control, can manage admins
+    ADMIN = "admin"    # Can manage workspace settings and connections
+    EXPERT = "expert"  # Workspace expert: review queries, mark good/bad, correct SQL
+    MEMBER = "member"  # Read access to workspace
 
 @dataclass
 class User:
     id: UUID
     email: str
-    role: UserRole
+    role: UserRole          # System-wide role
     full_name: Optional[str]
     is_active: bool
     email_verified: bool
     created_at: datetime
     updated_at: datetime
     last_login_at: Optional[datetime]
+
+@dataclass
+class WorkspaceAdmin:
+    id: UUID
+    workspace_id: UUID
+    user_id: str
+    role: AdminRole         # Per-workspace role
+    invited_by: str
+    invited_at: datetime
+    accepted_at: Optional[datetime]
 ```
+
+**Role Hierarchy:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 System-wide Roles (UserRole)                 │
+├─────────────────────────────────────────────────────────────┤
+│  SUPER_ADMIN │ Full system access, manage all workspaces    │
+│  EXPERT      │ Review/approve queries across ALL workspaces │
+│  USER        │ Regular user, workspace access via AdminRole │
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  Workspace A    │ │  Workspace B    │ │  Workspace C    │
+├─────────────────┤ ├─────────────────┤ ├─────────────────┤
+│ OWNER  (full)   │ │ OWNER  (full)   │ │ OWNER  (full)   │
+│ ADMIN  (manage) │ │ ADMIN  (manage) │ │ ADMIN  (manage) │
+│ EXPERT (review) │ │ EXPERT (review) │ │ EXPERT (review) │
+│ MEMBER (read)   │ │ MEMBER (read)   │ │ MEMBER (read)   │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+```
+
+**Expert Permissions:**
+- **System EXPERT** (UserRole.EXPERT): Can review and approve queries in ANY workspace
+- **Workspace EXPERT** (AdminRole.EXPERT): Can review and approve queries only in assigned workspace
+- Experts can: mark queries as good/bad examples, provide corrected SQL, approve RAG examples
 
 **Success Criteria:**
 - Super Admin can create and manage users
@@ -1173,10 +1219,21 @@ sequenceDiagram
 
 **Multiple Roles Per User:**
 - A single user can have multiple roles in the same workspace
-- For example, a user can be both ADMIN and MEMBER
+- For example, a user can be both ADMIN and EXPERT
 - Each role is stored as a separate record in the workspace_admins table
 - Unique constraint: (workspace_id, user_id, role) - prevents duplicate role assignments
 - When removing a user, all their roles in the workspace are removed
+
+**Available Roles:**
+| Level | Role | Permissions |
+|-------|------|-------------|
+| System | SUPER_ADMIN | Full system access, manage all workspaces and users |
+| System | EXPERT | Review/approve queries across ALL workspaces |
+| System | USER | Regular user, requires workspace membership |
+| Workspace | OWNER | Full control, manage admins and settings |
+| Workspace | ADMIN | Manage workspace settings and connections |
+| Workspace | EXPERT | Review queries, mark good/bad, correct SQL |
+| Workspace | MEMBER | Read access to workspace |
 
 **API Endpoints:**
 - `POST /api/v1/admin/workspaces` - Create workspace (super admin)
