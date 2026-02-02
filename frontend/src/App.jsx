@@ -15,6 +15,7 @@ import AdminUsers from './pages/AdminUsers'
 import AdminDashboard from './pages/AdminDashboard'
 import Workspaces from './pages/Workspaces'
 import WorkspaceDetail from './pages/WorkspaceDetail'
+import ProviderDetail from './pages/ProviderDetail'
 import Providers from './pages/Providers'
 import Connections from './pages/Connections'
 
@@ -95,6 +96,14 @@ function App() {
             element={
               <ProtectedRoute requireAdmin={true}>
                 <WorkspaceDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/workspaces/:workspaceId/providers/:providerId"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <ProviderDetail />
               </ProtectedRoute>
             }
           />
