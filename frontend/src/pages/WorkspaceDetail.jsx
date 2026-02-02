@@ -24,6 +24,12 @@ function WorkspaceDetail() {
   const [showAddProviderModal, setShowAddProviderModal] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
+  const [addingProvider, setAddingProvider] = useState(false)
+  const [providerFormData, setProviderFormData] = useState({
+    name: '',
+    type: '',
+    description: '',
+  })
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -164,6 +170,47 @@ function WorkspaceDetail() {
     } catch (err) {
       console.error('Error removing admin:', err)
       alert('Failed to remove admin')
+    }
+  }
+
+  const handleAddProvider = async (e) => {
+    e.preventDefault()
+    
+    try {
+      setAddingProvider(true)
+      const apiUrl = ''
+      const token = localStorage.getItem('access_token')
+
+      const response = await fetch(
+        `${apiUrl}/api/v1/workspaces/${workspaceId}/providers`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: providerFormData.name,
+            type: providerFormData.type,
+            description: providerFormData.description || null,
+          }),
+        }
+      )
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail?.message || error.detail || 'Failed to add provider')
+      }
+
+      await fetchWorkspace()
+      setShowAddProviderModal(false)
+      setProviderFormData({ name: '', type: '', description: '' })
+      alert('Provider added successfully')
+    } catch (err) {
+      console.error('Error adding provider:', err)
+      alert(err.message)
+    } finally {
+      setAddingProvider(false)
     }
   }
 
@@ -498,7 +545,7 @@ function WorkspaceDetail() {
         </div>
       )}
 
-      {/* Add Provider Modal - Placeholder */}
+      {/* Add Provider Modal */}
       {showAddProviderModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
@@ -508,32 +555,86 @@ function WorkspaceDetail() {
             ></div>
 
             <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                    Add Provider
-                  </h3>
+              <form onSubmit={handleAddProvider}>
+                <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      Add Provider
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddProviderModal(false)}
+                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                    >
+                      <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                    </button>
+                  </div>
+                </div>
+                <div className="px-6 py-4 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Provider Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={providerFormData.name}
+                      onChange={(e) => setProviderFormData({ ...providerFormData, name: e.target.value })}
+                      placeholder="e.g., Production PostgreSQL"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Provider Type *
+                    </label>
+                    <select
+                      value={providerFormData.type}
+                      onChange={(e) => setProviderFormData({ ...providerFormData, type: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      required
+                    >
+                      <option value="">Select type...</option>
+                      <option value="postgresql">PostgreSQL</option>
+                      <option value="mysql">MySQL</option>
+                      <option value="athena">AWS Athena</option>
+                      <option value="bigquery">BigQuery</option>
+                      <option value="snowflake">Snowflake</option>
+                      <option value="mongodb">MongoDB</option>
+                      <option value="splunk">Splunk</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      value={providerFormData.description}
+                      onChange={(e) => setProviderFormData({ ...providerFormData, description: e.target.value })}
+                      placeholder="Optional description"
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                </div>
+                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end space-x-3">
                   <button
+                    type="button"
                     onClick={() => setShowAddProviderModal(false)}
-                    className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                    disabled={addingProvider}
+                    className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                   >
-                    <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addingProvider}
+                    className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {addingProvider ? 'Adding...' : 'Add Provider'}
                   </button>
                 </div>
-              </div>
-              <div className="px-6 py-8 text-center">
-                <Database className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  Provider management coming soon
-                </p>
-                <Link
-                  to="/admin/providers"
-                  onClick={() => setShowAddProviderModal(false)}
-                  className="inline-flex items-center text-primary-600 dark:text-primary-400 hover:underline"
-                >
-                  Go to Providers page
-                </Link>
-              </div>
+              </form>
             </div>
           </div>
         </div>
