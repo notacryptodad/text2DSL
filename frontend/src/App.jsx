@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
+import { WorkspaceProvider } from './contexts/WorkspaceContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/AppLayout'
 import Login from './pages/Login'
@@ -40,7 +41,8 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <Routes>
+        <WorkspaceProvider>
+          <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -116,7 +118,8 @@ function App() {
           {/* Default Redirect */}
           <Route path="/" element={<Navigate to="/app" replace />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
-        </Routes>
+          </Routes>
+        </WorkspaceProvider>
       </AuthProvider>
     </Router>
   )

@@ -8,16 +8,12 @@ import ProgressIndicator from '../components/ProgressIndicator'
 import SettingsPanel from '../components/SettingsPanel'
 import WelcomeScreen from '../components/WelcomeScreen'
 import useWebSocket from '../hooks/useWebSocket'
-
-const PROVIDERS = [
-  { id: 'sql-postgres', name: 'PostgreSQL', type: 'SQL', icon: '🐘' },
-  { id: 'sql-mysql', name: 'MySQL', type: 'SQL', icon: '🐬' },
-  { id: 'nosql-mongodb', name: 'MongoDB', type: 'NoSQL', icon: '🍃' },
-  { id: 'splunk', name: 'Splunk', type: 'SPL', icon: '📊' },
-]
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 function Chat() {
-  const [selectedProvider, setSelectedProvider] = useState(PROVIDERS[0])
+  const { currentWorkspace } = useWorkspace()
+  const [providers, setProviders] = useState([])
+  const [selectedProvider, setSelectedProvider] = useState(null)
   const [messages, setMessages] = useState([])
   const [conversationId, setConversationId] = useState(null)
   const [conversations, setConversations] = useState(() => {
@@ -52,6 +48,65 @@ function Chat() {
       }
     },
   })
+
+  // Fetch providers when workspace changes
+  useEffect(() => {
+    const fetchProviders = async () => {
+      if (!currentWorkspace) {
+        setProviders([])
+        setSelectedProvider(null)
+        return
+      }
+
+      try {
+        const token = localStorage.getItem('access_token')
+        const response = await fetch(`/api/v1/admin/workspaces/${currentWorkspace.id}/providers`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          // Transform the provider data to match the expected format
+          const formattedProviders = data.map(provider => ({
+            id: provider.id,
+            name: provider.name,
+            type: provider.provider_type.toUpperCase(),
+            icon: getProviderIcon(provider.provider_type),
+          }))
+          setProviders(formattedProviders)
+
+          // Select first provider if none selected or current is not in list
+          if (!selectedProvider || !formattedProviders.find(p => p.id === selectedProvider.id)) {
+            setSelectedProvider(formattedProviders[0] || null)
+          }
+        } else {
+          console.error('Failed to fetch providers')
+          setProviders([])
+          setSelectedProvider(null)
+        }
+      } catch (error) {
+        console.error('Error fetching providers:', error)
+        setProviders([])
+        setSelectedProvider(null)
+      }
+    }
+
+    fetchProviders()
+  }, [currentWorkspace])
+
+  const getProviderIcon = (type) => {
+    const icons = {
+      sql: '🗄️',
+      postgres: '🐘',
+      mysql: '🐬',
+      mongodb: '🍃',
+      nosql: '📦',
+      splunk: '📊',
+    }
+    return icons[type.toLowerCase()] || '🔌'
+  }
 
   useEffect(() => {
     // Scroll to bottom when messages change
@@ -154,13 +209,22 @@ function Chat() {
   }
 
   const handleSendQuery = async (query) => {
+    if (!selectedProvider) {
+      addMessage({
+        type: 'error',
+        content: 'Please select a provider first.',
+        timestamp: new Date(),
+      })
+      return
+    }
+
     // Connect WebSocket if not connected
     if (connectionState !== 'connected') {
       connect()
       // Wait a moment for connection
       await new Promise(resolve => setTimeout(resolve, 1000))
     }
-    
+
     addMessage({
       type: 'user',
       content: query,
@@ -230,9 +294,10 @@ function Chat() {
                 </h2>
               </div>
               <ProviderSelect
-                providers={PROVIDERS}
+                providers={providers}
                 selected={selectedProvider}
                 onChange={setSelectedProvider}
+                disabled={!currentWorkspace || providers.length === 0}
               />
 
               <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
@@ -287,9 +352,11 @@ function Chat() {
               <div className="p-6 border-t border-gray-200 dark:border-gray-700">
                 <QueryInput
                   onSend={handleSendQuery}
-                  disabled={connectionState !== 'connected'}
+                  disabled={connectionState !== 'connected' || !selectedProvider}
                   placeholder={
-                    connectionState === 'connected'
+                    !selectedProvider
+                      ? 'Select a provider from your workspace...'
+                      : connectionState === 'connected'
                       ? 'Ask me anything about your data...'
                       : 'Connecting to server...'
                   }

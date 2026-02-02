@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import WorkspaceSelector from './WorkspaceSelector'
 
 function AppLayout({ children, darkMode, toggleDarkMode }) {
   const navigate = useNavigate()
@@ -52,6 +53,9 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                   </p>
                 </div>
               </Link>
+
+              {/* Workspace Selector */}
+              {user && <WorkspaceSelector />}
 
               {/* Navigation Tabs */}
               <nav className="hidden md:flex items-center space-x-1 border-l border-gray-200 dark:border-gray-700 pl-6">
