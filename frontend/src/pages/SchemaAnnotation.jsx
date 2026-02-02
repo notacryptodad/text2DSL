@@ -41,11 +41,10 @@ function SchemaAnnotation() {
   }, [])
 
   // Handle URL params (from provider detail page)
+  // Only set workspace from URL - connection will be set after fetchConnections
   useEffect(() => {
     const wsParam = searchParams.get('workspace')
-    const connParam = searchParams.get('connection')
     if (wsParam) setSelectedWorkspace(wsParam)
-    if (connParam) setSelectedConnection(connParam)
   }, [searchParams])
 
   useEffect(() => {
@@ -93,24 +92,29 @@ function SchemaAnnotation() {
     try {
       setError(null)
       const token = localStorage.getItem('access_token')
+      console.log('fetchConnections called, workspaceId:', workspaceId, 'token exists:', !!token)
       if (!token) {
         console.warn('No access token found, skipping fetchConnections')
         setError('Please log in to view connections')
         return
       }
       // First fetch providers for this workspace
+      const providersUrl = `${getApiUrl()}/api/v1/workspaces/${workspaceId}/providers`
+      console.log('Fetching providers from:', providersUrl)
       const providersRes = await fetch(
-        `${getApiUrl()}/api/v1/workspaces/${workspaceId}/providers`,
+        providersUrl,
         {
           headers: { 'Authorization': `Bearer ${token}` },
         }
       )
+      console.log('Providers response status:', providersRes.status)
       if (!providersRes.ok) {
         const errorText = await providersRes.text()
         console.error(`Failed to fetch providers: ${providersRes.status}`, errorText)
         throw new Error(`Failed to fetch providers: ${providersRes.status}`)
       }
       const providers = await providersRes.json()
+      console.log('Providers fetched:', providers.length)
       
       // Fetch connections for each provider
       const allConnections = []
@@ -123,12 +127,14 @@ function SchemaAnnotation() {
         )
         if (connRes.ok) {
           const conns = await connRes.json()
+          console.log('Connections for provider', provider.id, ':', conns.length)
           conns.forEach(c => {
             allConnections.push({ ...c, provider_id: provider.id, provider_name: provider.name })
           })
         }
       }
       
+      console.log('Total connections fetched:', allConnections.length)
       setConnections(allConnections)
       
       // Check URL param or select first
