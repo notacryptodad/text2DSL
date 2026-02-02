@@ -4,12 +4,13 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from text2x.api.auth import User, get_current_active_user
 from text2x.api.state import app_state
 from text2x.api.models import ErrorResponse
 from text2x.models.workspace import Workspace, Provider, Connection
@@ -162,7 +163,9 @@ class ConnectionTestResult(BaseModel):
     response_model=list[WorkspaceResponse],
     summary="List all workspaces",
 )
-async def list_workspaces() -> list[WorkspaceResponse]:
+async def list_workspaces(
+    current_user: User = Depends(get_current_active_user)
+) -> list[WorkspaceResponse]:
     """
     List all workspaces.
 
@@ -216,7 +219,10 @@ async def list_workspaces() -> list[WorkspaceResponse]:
     status_code=status.HTTP_201_CREATED,
     summary="Create a workspace",
 )
-async def create_workspace(workspace: WorkspaceCreate) -> WorkspaceResponse:
+async def create_workspace(
+    workspace: WorkspaceCreate,
+    current_user: User = Depends(get_current_active_user)
+) -> WorkspaceResponse:
     """
     Create a new workspace.
 
@@ -284,7 +290,10 @@ async def create_workspace(workspace: WorkspaceCreate) -> WorkspaceResponse:
     response_model=WorkspaceResponse,
     summary="Get workspace details",
 )
-async def get_workspace(workspace_id: UUID) -> WorkspaceResponse:
+async def get_workspace(
+    workspace_id: UUID,
+    current_user: User = Depends(get_current_active_user)
+) -> WorkspaceResponse:
     """
     Get workspace details by ID.
 
@@ -347,7 +356,11 @@ async def get_workspace(workspace_id: UUID) -> WorkspaceResponse:
     response_model=WorkspaceResponse,
     summary="Update workspace",
 )
-async def update_workspace(workspace_id: UUID, update: WorkspaceUpdate) -> WorkspaceResponse:
+async def update_workspace(
+    workspace_id: UUID,
+    update: WorkspaceUpdate,
+    current_user: User = Depends(get_current_active_user)
+) -> WorkspaceResponse:
     """
     Update workspace details.
 
@@ -421,7 +434,10 @@ async def update_workspace(workspace_id: UUID, update: WorkspaceUpdate) -> Works
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete workspace",
 )
-async def delete_workspace(workspace_id: UUID) -> None:
+async def delete_workspace(
+    workspace_id: UUID,
+    current_user: User = Depends(get_current_active_user)
+) -> None:
     """
     Delete a workspace and all its providers/connections.
 
@@ -472,7 +488,10 @@ async def delete_workspace(workspace_id: UUID) -> None:
     response_model=list[ProviderResponse],
     summary="List providers in workspace",
 )
-async def list_workspace_providers(workspace_id: UUID) -> list[ProviderResponse]:
+async def list_workspace_providers(
+    workspace_id: UUID,
+    current_user: User = Depends(get_current_active_user)
+) -> list[ProviderResponse]:
     """
     List all providers in a workspace.
 
@@ -544,7 +563,11 @@ async def list_workspace_providers(workspace_id: UUID) -> list[ProviderResponse]
     status_code=status.HTTP_201_CREATED,
     summary="Create provider in workspace",
 )
-async def create_provider(workspace_id: UUID, provider: ProviderCreate) -> ProviderResponse:
+async def create_provider(
+    workspace_id: UUID,
+    provider: ProviderCreate,
+    current_user: User = Depends(get_current_active_user)
+) -> ProviderResponse:
     """
     Create a new provider in a workspace.
 
@@ -631,7 +654,11 @@ async def create_provider(workspace_id: UUID, provider: ProviderCreate) -> Provi
     response_model=ProviderResponse,
     summary="Get provider details",
 )
-async def get_provider(workspace_id: UUID, provider_id: UUID) -> ProviderResponse:
+async def get_provider(
+    workspace_id: UUID,
+    provider_id: UUID,
+    current_user: User = Depends(get_current_active_user)
+) -> ProviderResponse:
     """
     Get provider details.
 
@@ -700,7 +727,8 @@ async def get_provider(workspace_id: UUID, provider_id: UUID) -> ProviderRespons
 async def update_provider(
     workspace_id: UUID,
     provider_id: UUID,
-    update: ProviderUpdate
+    update: ProviderUpdate,
+    current_user: User = Depends(get_current_active_user)
 ) -> ProviderResponse:
     """
     Update provider details.
@@ -770,7 +798,11 @@ async def update_provider(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete provider",
 )
-async def delete_provider(workspace_id: UUID, provider_id: UUID) -> None:
+async def delete_provider(
+    workspace_id: UUID,
+    provider_id: UUID,
+    current_user: User = Depends(get_current_active_user)
+) -> None:
     """
     Delete a provider and all its connections.
     """
@@ -821,7 +853,11 @@ async def delete_provider(workspace_id: UUID, provider_id: UUID) -> None:
     response_model=list[ConnectionResponse],
     summary="List connections for provider",
 )
-async def list_connections(workspace_id: UUID, provider_id: UUID) -> list[ConnectionResponse]:
+async def list_connections(
+    workspace_id: UUID,
+    provider_id: UUID,
+    current_user: User = Depends(get_current_active_user)
+) -> list[ConnectionResponse]:
     """
     List all connections for a provider.
 
@@ -897,7 +933,8 @@ async def list_connections(workspace_id: UUID, provider_id: UUID) -> list[Connec
 async def create_connection(
     workspace_id: UUID,
     provider_id: UUID,
-    connection: ConnectionCreate
+    connection: ConnectionCreate,
+    current_user: User = Depends(get_current_active_user)
 ) -> ConnectionResponse:
     """
     Create a new connection for a provider.
@@ -996,7 +1033,8 @@ async def create_connection(
 async def get_connection(
     workspace_id: UUID,
     provider_id: UUID,
-    connection_id: UUID
+    connection_id: UUID,
+    current_user: User = Depends(get_current_active_user)
 ) -> ConnectionResponse:
     """
     Get connection details.
@@ -1076,6 +1114,7 @@ async def update_connection(
     provider_id: UUID,
     connection_id: UUID,
     update: ConnectionUpdate,
+    current_user: User = Depends(get_current_active_user)
 ) -> ConnectionResponse:
     """
     Update connection details.
@@ -1172,7 +1211,8 @@ async def update_connection(
 async def delete_connection(
     workspace_id: UUID,
     provider_id: UUID,
-    connection_id: UUID
+    connection_id: UUID,
+    current_user: User = Depends(get_current_active_user)
 ) -> None:
     """
     Delete a connection.
@@ -1223,7 +1263,8 @@ async def delete_connection(
 async def test_connection(
     workspace_id: UUID,
     provider_id: UUID,
-    connection_id: UUID
+    connection_id: UUID,
+    current_user: User = Depends(get_current_active_user)
 ) -> ConnectionTestResult:
     """
     Test a connection to verify connectivity.
@@ -1304,6 +1345,7 @@ async def refresh_connection_schema(
     workspace_id: UUID,
     provider_id: UUID,
     connection_id: UUID,
+    current_user: User = Depends(get_current_active_user)
 ) -> dict[str, str]:
     """
     Trigger schema refresh for a connection.
