@@ -1,0 +1,54 @@
+{
+  "tables": {
+    "customers": {
+      "description": "Customer information including contact details and registration date",
+      "business_context": "Stores all registered customers who can place orders",
+      "columns": {
+        "id": {"description": "Unique customer identifier", "is_primary_key": true},
+        "name": {"description": "Customer's full name"},
+        "email": {"description": "Customer's email address, used for login and communication"},
+        "created_at": {"description": "When the customer account was created"}
+      }
+    },
+    "products": {
+      "description": "Product catalog with pricing and inventory status",
+      "business_context": "All items available for sale in the e-commerce store",
+      "columns": {
+        "id": {"description": "Unique product identifier", "is_primary_key": true},
+        "name": {"description": "Product display name"},
+        "description": {"description": "Detailed product description"},
+        "price": {"description": "Current selling price in USD"},
+        "category": {"description": "Product category (Electronics, Sports, Home, Clothing, Books)"},
+        "in_stock": {"description": "Whether the product is currently available for purchase"},
+        "created_at": {"description": "When the product was added to catalog"}
+      }
+    },
+    "orders": {
+      "description": "Customer orders with status tracking",
+      "business_context": "Tracks all purchase transactions from cart to delivery",
+      "columns": {
+        "id": {"description": "Unique order identifier", "is_primary_key": true},
+        "customer_id": {"description": "Reference to the customer who placed the order", "foreign_key": "customers.id"},
+        "total": {"description": "Total order amount in USD"},
+        "status": {"description": "Order status: pending, processing, shipped, delivered, or cancelled"},
+        "created_at": {"description": "When the order was placed"}
+      }
+    },
+    "order_items": {
+      "description": "Individual line items within each order",
+      "business_context": "Links products to orders with quantity and price at time of purchase",
+      "columns": {
+        "id": {"description": "Unique line item identifier", "is_primary_key": true},
+        "order_id": {"description": "Reference to the parent order", "foreign_key": "orders.id"},
+        "product_id": {"description": "Reference to the purchased product", "foreign_key": "products.id"},
+        "quantity": {"description": "Number of units purchased"},
+        "unit_price": {"description": "Price per unit at time of purchase (may differ from current product price)"}
+      }
+    }
+  },
+  "relationships": [
+    {"from": "orders.customer_id", "to": "customers.id", "type": "many-to-one"},
+    {"from": "order_items.order_id", "to": "orders.id", "type": "many-to-one"},
+    {"from": "order_items.product_id", "to": "products.id", "type": "many-to-one"}
+  ]
+}

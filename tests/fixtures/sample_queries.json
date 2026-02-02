@@ -1,0 +1,152 @@
+[
+  {
+    "question": "How many customers do we have?",
+    "sql": "SELECT COUNT(*) FROM customers",
+    "difficulty": "simple"
+  },
+  {
+    "question": "List all products under $50",
+    "sql": "SELECT name, price FROM products WHERE price < 50 ORDER BY price",
+    "difficulty": "simple"
+  },
+  {
+    "question": "What are the top 5 most expensive products?",
+    "sql": "SELECT name, price FROM products ORDER BY price DESC LIMIT 5",
+    "difficulty": "simple"
+  },
+  {
+    "question": "Show me all orders from the last 30 days",
+    "sql": "SELECT * FROM orders WHERE created_at >= NOW() - INTERVAL '30 days'",
+    "difficulty": "simple"
+  },
+  {
+    "question": "Which customers have placed orders?",
+    "sql": "SELECT DISTINCT c.name, c.email FROM customers c INNER JOIN orders o ON c.id = o.customer_id",
+    "difficulty": "medium"
+  },
+  {
+    "question": "What is the total revenue?",
+    "sql": "SELECT SUM(total) as total_revenue FROM orders WHERE status = 'delivered'",
+    "difficulty": "simple"
+  },
+  {
+    "question": "How many orders are pending?",
+    "sql": "SELECT COUNT(*) FROM orders WHERE status = 'pending'",
+    "difficulty": "simple"
+  },
+  {
+    "question": "What products are out of stock?",
+    "sql": "SELECT name FROM products WHERE in_stock = false",
+    "difficulty": "simple"
+  },
+  {
+    "question": "Show the average order value",
+    "sql": "SELECT AVG(total) as average_order_value FROM orders",
+    "difficulty": "simple"
+  },
+  {
+    "question": "List products by category with count",
+    "sql": "SELECT category, COUNT(*) as product_count FROM products GROUP BY category ORDER BY product_count DESC",
+    "difficulty": "medium"
+  },
+  {
+    "question": "Who are our top 5 customers by total spend?",
+    "sql": "SELECT c.name, SUM(o.total) as total_spent FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.status = 'delivered' GROUP BY c.id, c.name ORDER BY total_spent DESC LIMIT 5",
+    "difficulty": "complex"
+  },
+  {
+    "question": "What is the most popular product by quantity sold?",
+    "sql": "SELECT p.name, SUM(oi.quantity) as total_sold FROM products p JOIN order_items oi ON p.id = oi.product_id GROUP BY p.id, p.name ORDER BY total_sold DESC LIMIT 1",
+    "difficulty": "complex"
+  },
+  {
+    "question": "Show monthly revenue for the last 6 months",
+    "sql": "SELECT DATE_TRUNC('month', created_at) as month, SUM(total) as revenue FROM orders WHERE created_at >= NOW() - INTERVAL '6 months' AND status = 'delivered' GROUP BY month ORDER BY month",
+    "difficulty": "complex"
+  },
+  {
+    "question": "Find customers who haven't ordered in 60 days",
+    "sql": "SELECT c.name, c.email, MAX(o.created_at) as last_order FROM customers c LEFT JOIN orders o ON c.id = o.customer_id GROUP BY c.id, c.name, c.email HAVING MAX(o.created_at) < NOW() - INTERVAL '60 days' OR MAX(o.created_at) IS NULL",
+    "difficulty": "complex"
+  },
+  {
+    "question": "What is the order status breakdown?",
+    "sql": "SELECT status, COUNT(*) as count, ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage FROM orders GROUP BY status",
+    "difficulty": "medium"
+  },
+  {
+    "question": "Show products with their total revenue",
+    "sql": "SELECT p.name, p.category, SUM(oi.quantity * oi.unit_price) as revenue FROM products p JOIN order_items oi ON p.id = oi.product_id GROUP BY p.id, p.name, p.category ORDER BY revenue DESC",
+    "difficulty": "complex"
+  },
+  {
+    "question": "List all electronics products sorted by price",
+    "sql": "SELECT name, price FROM products WHERE category = 'Electronics' ORDER BY price",
+    "difficulty": "simple"
+  },
+  {
+    "question": "How many orders does each customer have?",
+    "sql": "SELECT c.name, COUNT(o.id) as order_count FROM customers c LEFT JOIN orders o ON c.id = o.customer_id GROUP BY c.id, c.name ORDER BY order_count DESC",
+    "difficulty": "medium"
+  },
+  {
+    "question": "What is the average items per order?",
+    "sql": "SELECT AVG(item_count) as avg_items_per_order FROM (SELECT order_id, SUM(quantity) as item_count FROM order_items GROUP BY order_id) subq",
+    "difficulty": "complex"
+  },
+  {
+    "question": "Find orders with total over $200",
+    "sql": "SELECT o.id, c.name as customer, o.total, o.status FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.total > 200 ORDER BY o.total DESC",
+    "difficulty": "medium"
+  },
+  {
+    "question": "Show the price range for each category",
+    "sql": "SELECT category, MIN(price) as min_price, MAX(price) as max_price, AVG(price) as avg_price FROM products GROUP BY category",
+    "difficulty": "medium"
+  },
+  {
+    "question": "Which products have never been ordered?",
+    "sql": "SELECT p.name, p.category FROM products p LEFT JOIN order_items oi ON p.id = oi.product_id WHERE oi.id IS NULL",
+    "difficulty": "medium"
+  },
+  {
+    "question": "Show daily order counts for the last week",
+    "sql": "SELECT DATE(created_at) as date, COUNT(*) as orders FROM orders WHERE created_at >= NOW() - INTERVAL '7 days' GROUP BY DATE(created_at) ORDER BY date",
+    "difficulty": "medium"
+  },
+  {
+    "question": "What percentage of products are in stock?",
+    "sql": "SELECT ROUND(COUNT(*) FILTER (WHERE in_stock = true) * 100.0 / COUNT(*), 2) as in_stock_percentage FROM products",
+    "difficulty": "medium"
+  },
+  {
+    "question": "Find the customer with the highest single order",
+    "sql": "SELECT c.name, o.total FROM customers c JOIN orders o ON c.id = o.customer_id ORDER BY o.total DESC LIMIT 1",
+    "difficulty": "medium"
+  },
+  {
+    "question": "Show repeat customers (more than 2 orders)",
+    "sql": "SELECT c.name, c.email, COUNT(o.id) as order_count FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.id, c.name, c.email HAVING COUNT(o.id) > 2",
+    "difficulty": "complex"
+  },
+  {
+    "question": "Calculate conversion rate by order status",
+    "sql": "SELECT status, COUNT(*) as count, ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM orders), 2) as rate FROM orders GROUP BY status ORDER BY count DESC",
+    "difficulty": "complex"
+  },
+  {
+    "question": "What are the newest products added?",
+    "sql": "SELECT name, category, price, created_at FROM products ORDER BY created_at DESC LIMIT 10",
+    "difficulty": "simple"
+  },
+  {
+    "question": "Show cancelled orders with customer details",
+    "sql": "SELECT o.id, c.name, c.email, o.total, o.created_at FROM orders o JOIN customers c ON o.customer_id = c.id WHERE o.status = 'cancelled' ORDER BY o.created_at DESC",
+    "difficulty": "medium"
+  },
+  {
+    "question": "What is the revenue by product category?",
+    "sql": "SELECT p.category, SUM(oi.quantity * oi.unit_price) as revenue FROM products p JOIN order_items oi ON p.id = oi.product_id GROUP BY p.category ORDER BY revenue DESC",
+    "difficulty": "complex"
+  }
+]
