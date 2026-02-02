@@ -339,10 +339,10 @@ export const TEST_QUERIES = {
 
 /**
  * Helper to create a mock WebSocket server for testing
- * Call this in beforeEach to intercept WebSocket connections
+ * Call this before navigating to the page to intercept WebSocket connections
  */
-export function setupMockWebSocket(page, mockResponse) {
-  return page.evaluateOnNewDocument((mockEvents) => {
+export async function setupMockWebSocket(page, mockResponse) {
+  await page.addInitScript((mockEvents) => {
     const OriginalWebSocket = window.WebSocket;
 
     window.WebSocket = function(url, protocols) {
