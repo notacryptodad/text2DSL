@@ -6,11 +6,16 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from text2x.agents.annotation_agent import AnnotationAgent
 from text2x.agents.base import LLMConfig
 from text2x.api.models import ErrorResponse, TableInfo
+from text2x.api.state import app_state
 from text2x.config import settings
+from text2x.models.workspace import Connection, ProviderType
+from text2x.providers.sql_provider import SQLConnectionConfig, SQLProvider
 from text2x.repositories.annotation import SchemaAnnotationRepository
 from text2x.services.schema_service import SchemaService
 from text2x.utils.observability import async_log_context
@@ -18,6 +23,16 @@ from text2x.utils.observability import async_log_context
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/annotations", tags=["annotations"])
+
+
+async def get_session() -> AsyncSession:
+    """Get database session from app state."""
+    session_maker = async_sessionmaker(
+        app_state.db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    return session_maker()
 
 
 # Request/Response Models
@@ -93,7 +108,7 @@ class AnnotationChatResponse(BaseModel):
 _conversation_agents: Dict[UUID, AnnotationAgent] = {}
 
 
-def _get_or_create_agent(
+async def _get_or_create_agent(
     conversation_id: UUID,
     provider_id: str
 ) -> AnnotationAgent:
@@ -116,31 +131,68 @@ def _get_or_create_agent(
             timeout=60.0
         )
 
-        # TODO: Load actual provider from database
-        # For now, we create a mock provider that needs to be replaced
-        # with actual provider lookup based on provider_id
-        from text2x.providers.base import QueryProvider, ProviderCapability
+        # Load actual provider from database using connection_id
+        try:
+            connection_id = UUID(provider_id)
+        except ValueError:
+            raise ValueError(f"Invalid connection ID format: {provider_id}")
 
-        class MockProvider(QueryProvider):
-            def get_provider_id(self) -> str:
-                return provider_id
+        async with await get_session() as session:
+            # Query connection from database
+            conn_stmt = select(Connection).where(Connection.id == connection_id)
+            conn_result = await session.execute(conn_stmt)
+            connection = conn_result.scalar_one_or_none()
 
-            def get_query_language(self) -> str:
-                return "SQL"
+            if not connection:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Connection {provider_id} not found",
+                    ).model_dump(),
+                )
 
-            def get_capabilities(self) -> List[ProviderCapability]:
-                return [
-                    ProviderCapability.SCHEMA_INTROSPECTION,
-                    ProviderCapability.QUERY_EXECUTION,
-                ]
+            # Get provider type
+            provider_type = connection.provider.type
 
-            async def get_schema(self):
-                return None
+            # Create appropriate provider based on type
+            if provider_type in [
+                ProviderType.POSTGRESQL,
+                ProviderType.MYSQL,
+                ProviderType.REDSHIFT,
+            ]:
+                # Create SQL provider
+                credentials = connection.credentials or {}
+                username = credentials.get("username", "")
+                password = credentials.get("password", "")
 
-            async def validate_syntax(self, query: str):
-                return None
+                # Map provider type to dialect
+                dialect_map = {
+                    ProviderType.POSTGRESQL: "postgresql",
+                    ProviderType.MYSQL: "mysql",
+                    ProviderType.REDSHIFT: "postgresql",
+                }
+                dialect = dialect_map.get(provider_type, "postgresql")
 
-        mock_provider = MockProvider()
+                sql_config = SQLConnectionConfig(
+                    host=connection.host,
+                    port=connection.port or 5432,
+                    database=connection.database,
+                    username=username,
+                    password=password,
+                    dialect=dialect,
+                    extra_params=connection.connection_options or {}
+                )
+
+                provider = SQLProvider(sql_config)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorResponse(
+                        error="unsupported_provider",
+                        message=f"Provider type {provider_type.value} not supported for annotations",
+                    ).model_dump(),
+                )
 
         # Create annotation repository
         annotation_repo = SchemaAnnotationRepository()
@@ -148,7 +200,7 @@ def _get_or_create_agent(
         # Create agent
         agent = AnnotationAgent(
             llm_config=llm_config,
-            provider=mock_provider,
+            provider=provider,
             annotation_repo=annotation_repo
         )
 
@@ -200,7 +252,7 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
             )
 
             # Get or create agent for this conversation
-            agent = _get_or_create_agent(conversation_id, request.provider_id)
+            agent = await _get_or_create_agent(conversation_id, request.provider_id)
 
             # Reset conversation if requested
             if request.reset_conversation:
@@ -576,7 +628,7 @@ async def auto_annotate_table(
         conversation_id = uuid4()
 
         # Get or create agent for this conversation
-        agent = _get_or_create_agent(conversation_id, str(connection_id))
+        agent = await _get_or_create_agent(conversation_id, str(connection_id))
 
         # Build prompt for auto-annotation
         prompt = f"""I need help annotating the table '{request.table_name}'.
