@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from text2x.api.state import app_state
-from text2x.api.auth import User, get_current_user
+from text2x.api.auth import User, get_current_user, require_expert, check_workspace_expert
 from text2x.api.models import (
     ErrorResponse,
     ExampleStatus,
@@ -94,6 +94,7 @@ def calculate_review_priority(
     response_model=list[ReviewQueueItem],
     summary="Get review queue",
     description="Retrieve paginated list of items awaiting expert review, sorted by priority",
+    dependencies=[Depends(require_expert())],
 )
 async def get_review_queue(
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
@@ -102,6 +103,7 @@ async def get_review_queue(
     status_filter: Optional[ExampleStatus] = Query(
         None, description="Filter by status"
     ),
+    current_user: User = Depends(get_current_user),
 ) -> list[ReviewQueueItem]:
     """
     Get paginated review queue with priority ordering.
@@ -242,8 +244,12 @@ async def get_review_queue(
     response_model=RAGExampleResponse,
     summary="Get review item details",
     description="Get detailed information about a specific review queue item",
+    dependencies=[Depends(require_expert())],
 )
-async def get_review_item(item_id: UUID) -> RAGExampleResponse:
+async def get_review_item(
+    item_id: UUID,
+    current_user: User = Depends(get_current_user),
+) -> RAGExampleResponse:
     """
     Get detailed information about a review queue item.
 
@@ -318,11 +324,12 @@ async def get_review_item(item_id: UUID) -> RAGExampleResponse:
     response_model=RAGExampleResponse,
     summary="Update review item",
     description="Approve, reject, or correct a review queue item",
+    dependencies=[Depends(require_expert())],
 )
 async def update_review_item(
     item_id: UUID,
     update: ReviewUpdateRequest,
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> RAGExampleResponse:
     """
     Update/approve/reject a review queue item.
@@ -475,8 +482,11 @@ async def update_review_item(
     "/stats",
     summary="Get review queue statistics",
     description="Get statistics about the review queue",
+    dependencies=[Depends(require_expert())],
 )
-async def get_review_stats() -> dict:
+async def get_review_stats(
+    current_user: User = Depends(get_current_user),
+) -> dict:
     """
     Get statistics about the review queue.
 

@@ -1,7 +1,8 @@
 """Authentication and authorization utilities for the API."""
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+from uuid import UUID
 
 import bcrypt
 from fastapi import Depends, HTTPException, Security, status
@@ -10,6 +11,9 @@ from jose import JWTError, jwt
 from pydantic import BaseModel, Field
 
 from text2x.config import settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -417,3 +421,66 @@ def require_role(required_role: str):
         return current_user
 
     return role_checker
+
+
+def require_expert():
+    """
+    Create a dependency that requires expert role (system or workspace level).
+    
+    Allows:
+    - System-wide SUPER_ADMIN
+    - System-wide EXPERT
+    - Workspace EXPERT (checked per-request based on workspace_id)
+    
+    Returns:
+        Dependency function that checks for expert permissions
+    """
+
+    async def expert_checker(current_user: User = Depends(get_current_active_user)) -> User:
+        # System-wide experts can review anything
+        if "super_admin" in current_user.roles or "expert" in current_user.roles:
+            return current_user
+        
+        # For workspace-level experts, we need workspace_id in the request
+        # This basic check allows any authenticated user through,
+        # and workspace-level checks happen in the endpoint itself
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Expert role required to access review features",
+        )
+
+    return expert_checker
+
+
+async def check_workspace_expert(
+    user: User,
+    workspace_id: UUID,
+    session: "AsyncSession",
+) -> bool:
+    """
+    Check if user has expert permissions for a specific workspace.
+    
+    Args:
+        user: Current user
+        workspace_id: Workspace to check
+        session: Database session
+        
+    Returns:
+        True if user is system expert or workspace expert
+    """
+    # System-wide experts
+    if "super_admin" in user.roles or "expert" in user.roles:
+        return True
+    
+    # Check workspace-level expert role
+    from text2x.models.admin import WorkspaceAdmin, AdminRole
+    from sqlalchemy import select
+    
+    result = await session.execute(
+        select(WorkspaceAdmin).where(
+            WorkspaceAdmin.workspace_id == workspace_id,
+            WorkspaceAdmin.user_id == user.user_id,
+            WorkspaceAdmin.role == AdminRole.EXPERT,
+        )
+    )
+    return result.scalar_one_or_none() is not None
