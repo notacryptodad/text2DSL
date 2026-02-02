@@ -162,6 +162,7 @@ class RAGService:
         limit: int = 5,
         query_intent: Optional[str] = None,
         min_similarity: float = 0.7,
+        include_sample_queries: bool = True,
     ) -> List[RAGExample]:
         """
         Search for similar examples using hybrid retrieval.
@@ -169,6 +170,7 @@ class RAGService:
         This performs a hybrid search combining:
         1. Keyword-based search (PostgreSQL full-text search)
         2. Vector similarity search (OpenSearch embeddings) if available
+        3. Sample queries from the reference index (if include_sample_queries=True)
 
         Only approved good examples are returned for use in query generation.
 
@@ -178,6 +180,7 @@ class RAGService:
             limit: Maximum number of examples to return
             query_intent: Optional intent filter (aggregation, filter, etc.)
             min_similarity: Minimum similarity threshold (0.0 to 1.0)
+            include_sample_queries: Whether to include sample queries from reference index
 
         Returns:
             List of similar RAG examples, ranked by relevance
@@ -187,11 +190,14 @@ class RAGService:
         """
         logger.info(
             f"Searching RAG examples: query='{query[:50]}...', "
-            f"provider={provider_id}, limit={limit}, intent={query_intent}"
+            f"provider={provider_id}, limit={limit}, intent={query_intent}, "
+            f"include_samples={include_sample_queries}"
         )
 
         if not query or not provider_id:
             raise ValueError("query and provider_id are required")
+
+        examples = []
 
         # Use OpenSearch hybrid search if available
         if self.opensearch_service:
@@ -220,6 +226,26 @@ class RAGService:
                 query_intent=query_intent,
                 limit=limit,
             )
+
+        # Search sample queries index if requested and available
+        if include_sample_queries and self.opensearch_service:
+            try:
+                sample_examples = await self._search_sample_queries(
+                    query=query,
+                    limit=max(2, limit // 2),  # Get some sample queries too
+                    min_similarity=min_similarity,
+                )
+                examples.extend(sample_examples)
+                logger.info(f"Added {len(sample_examples)} sample query examples")
+            except Exception as e:
+                logger.warning(f"Failed to search sample queries: {e}")
+
+        # Re-sort by similarity score if we have mixed results
+        if examples and hasattr(examples[0], 'similarity_score'):
+            examples.sort(key=lambda ex: getattr(ex, 'similarity_score', 0.0), reverse=True)
+
+        # Limit to requested number
+        examples = examples[:limit]
 
         logger.info(f"Found {len(examples)} similar RAG examples")
         return examples
@@ -502,6 +528,119 @@ class RAGService:
             logger.warning(f"Vector enhancement failed: {e}")
             # Return original examples as fallback
             return examples[:limit]
+
+    async def _search_sample_queries(
+        self,
+        query: str,
+        limit: int = 3,
+        min_similarity: float = 0.7,
+    ) -> List[RAGExample]:
+        """
+        Search sample queries from the reference index.
+
+        This searches the static sample queries index (text2dsl-queries)
+        for relevant examples to supplement the dynamic RAG examples.
+
+        Args:
+            query: Natural language query
+            limit: Maximum results to return
+            min_similarity: Minimum similarity threshold
+
+        Returns:
+            List of RAGExample objects created from sample queries
+        """
+        from text2x.config import get_settings
+
+        settings = get_settings()
+        sample_index = "text2dsl-queries"  # Hardcoded sample queries index
+
+        logger.debug(f"Searching sample queries index '{sample_index}'")
+
+        try:
+            # Generate embedding for the query
+            query_vector = await self.opensearch_service._generate_embedding(query)
+
+            # Build search query for sample queries index
+            search_body = {
+                "size": limit,
+                "query": {
+                    "script_score": {
+                        "query": {
+                            "bool": {
+                                "should": [
+                                    {
+                                        "match": {
+                                            "question": {
+                                                "query": query,
+                                                "boost": 0.3,
+                                            }
+                                        }
+                                    },
+                                ],
+                            }
+                        },
+                        "script": {
+                            "source": """
+                                float vectorScore = cosineSimilarity(params.query_vector, 'embedding') + 1.0;
+                                float keywordScore = _score;
+                                return 0.7 * vectorScore + 0.3 * keywordScore;
+                            """,
+                            "params": {
+                                "query_vector": query_vector,
+                            },
+                        },
+                    }
+                },
+            }
+
+            # Execute search on sample queries index
+            response = await self.opensearch_service.client.search(
+                index=sample_index,
+                body=search_body,
+            )
+
+            # Convert sample queries to RAGExample objects
+            examples = []
+            for hit in response.get("hits", {}).get("hits", []):
+                score = hit.get("_score", 0.0)
+
+                # Filter by minimum similarity
+                if score < min_similarity:
+                    continue
+
+                source = hit["_source"]
+
+                # Create a RAGExample-like object from sample query
+                # Note: This is a synthetic RAGExample for consistency
+                example = RAGExample(
+                    id=None,  # No database ID
+                    provider_id="sample",  # Mark as sample
+                    natural_language_query=source.get("question", ""),
+                    generated_query=source.get("sql", ""),
+                    involved_tables=["unknown"],
+                    query_intent="unknown",
+                    complexity_level=source.get("difficulty", "medium"),
+                    is_good_example=True,
+                    status=ExampleStatus.APPROVED,
+                    extra_metadata={"source": "sample_queries"},
+                    embeddings_generated=True,
+                    reviewed_by="system",
+                    reviewed_at=datetime.utcnow(),
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+
+                # Add similarity score
+                example.similarity_score = score
+                examples.append(example)
+
+            logger.debug(f"Found {len(examples)} sample query examples")
+            return examples
+
+        except Exception as e:
+            logger.error(f"Failed to search sample queries: {e}")
+            # Return empty list on error
+            return []
 
     async def get_statistics(self, provider_id: Optional[str] = None) -> dict:
         """

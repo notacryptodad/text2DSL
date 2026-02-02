@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { ChatPage } from './pages/ChatPage.js';
+import { MOCK_QUERY_RESPONSES, TEST_QUERIES, setupMockWebSocket } from './fixtures/query.fixture.js';
 
 /**
  * Scenario 3: Query Generation Tests
  *
- * Tests basic chat page functionality.
- * Most tests skipped as they require AI backend processing.
+ * Tests query generation functionality with both mocked and real AI backend.
+ * Tests with 'mock:' prefix use WebSocket mocks for predictable results.
+ * Tests without prefix use real backend (skipped by default in CI).
  */
 test.describe('Scenario 3: Query Generation', () => {
   // Use regular user authentication
@@ -24,13 +26,42 @@ test.describe('Scenario 3: Query Generation', () => {
     await expect(queryInput).toBeVisible();
   });
 
-  // Skip tests requiring AI backend
-  test.skip('should submit query and receive result', async ({ page }) => {
-    // Requires AI backend processing
+  test('mock: should submit query and receive result', async ({ page }) => {
+    const chatPage = new ChatPage(page);
+
+    // Setup mock WebSocket responses
+    await setupMockWebSocket(page, MOCK_QUERY_RESPONSES.simpleQuery.events);
+
+    await chatPage.goto();
+    await chatPage.setupWebSocketInterception();
+
+    // Submit query
+    await chatPage.submitQuery(TEST_QUERIES.simple);
+
+    // Wait for completion
+    await page.waitForTimeout(2500); // Wait for all mock events
+
+    // Get WebSocket messages
+    const messages = await chatPage.getWebSocketMessages();
+
+    // Verify we received messages
+    expect(messages.length).toBeGreaterThan(0);
+
+    // Verify we got progress events
+    const progressEvents = messages.filter(m => m.type === 'progress');
+    expect(progressEvents.length).toBeGreaterThan(0);
+
+    // Verify we got result event
+    const resultEvent = messages.find(m => m.type === 'result');
+    expect(resultEvent).toBeTruthy();
+    expect(resultEvent.data.result.generated_query).toContain('SELECT');
   });
 
-  test.skip('should capture WebSocket progress messages', async ({ page }) => {
+  test('mock: should capture WebSocket progress messages', async ({ page }) => {
     const chatPage = new ChatPage(page);
+
+    // Setup mock WebSocket responses
+    await setupMockWebSocket(page, MOCK_QUERY_RESPONSES.simpleQuery.events);
 
     await chatPage.goto();
 
@@ -38,10 +69,10 @@ test.describe('Scenario 3: Query Generation', () => {
     await chatPage.setupWebSocketInterception();
 
     // Submit a query
-    await chatPage.submitQuery('Get all products with price greater than 100');
+    await chatPage.submitQuery(TEST_QUERIES.simple);
 
-    // Wait a bit for messages to start coming in
-    await page.waitForTimeout(3000);
+    // Wait for mock events to be delivered
+    await page.waitForTimeout(2500);
 
     // Get WebSocket messages
     const messages = await chatPage.getWebSocketMessages();
@@ -49,12 +80,22 @@ test.describe('Scenario 3: Query Generation', () => {
     // Verify we received some messages
     expect(messages.length).toBeGreaterThan(0);
 
-    // Log messages for debugging
-    console.log('WebSocket messages received:', messages.length);
+    // Verify progress stages
+    const progressMessages = messages.filter(m => m.type === 'progress');
+    expect(progressMessages.length).toBeGreaterThan(3);
+
+    // Verify stages exist
+    const stages = progressMessages.map(m => m.data.stage);
+    expect(stages).toContain('schema_retrieval');
+    expect(stages).toContain('query_generation');
+    expect(stages).toContain('validation');
   });
 
-  test.skip('should handle query execution and display results', async ({ page }) => {
+  test('mock: should handle query execution and display results', async ({ page }) => {
     const chatPage = new ChatPage(page);
+
+    // Setup mock WebSocket responses
+    await setupMockWebSocket(page, MOCK_QUERY_RESPONSES.countQuery.events);
 
     await chatPage.goto();
 
@@ -62,23 +103,17 @@ test.describe('Scenario 3: Query Generation', () => {
     await chatPage.setupWebSocketInterception();
 
     // Submit a query that should return data
-    await chatPage.submitQuery('List the first 5 records from the main table');
+    await chatPage.submitQuery(TEST_QUERIES.count);
 
-    // Wait for completion
-    await chatPage.waitForQueryCompletion(60000);
+    // Wait for mock events
+    await page.waitForTimeout(2000);
 
     // Wait for result message
-    try {
-      const resultMessage = await chatPage.waitForWebSocketMessage('result', 30000);
-      expect(resultMessage).toBeTruthy();
-    } catch (error) {
-      // Result might be in different message type
-      console.log('Result message not found with expected type, checking for any result');
-    }
-
-    // Verify result is displayed
-    const result = await chatPage.getResult();
-    expect(result).toBeTruthy();
+    const resultMessage = await chatPage.waitForWebSocketMessage('result', 3000);
+    expect(resultMessage).toBeTruthy();
+    expect(resultMessage.data.result.generated_query).toBeTruthy();
+    expect(resultMessage.data.result.execution_result).toBeTruthy();
+    expect(resultMessage.data.result.execution_result.success).toBe(true);
   });
 
   test.skip('should handle multiple queries in sequence', async ({ page }) => {
