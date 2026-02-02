@@ -71,11 +71,16 @@ function SchemaAnnotation() {
 
   const fetchWorkspaces = async () => {
     try {
-      const response = await fetch(`${getApiUrl()}/api/v1/workspaces`)
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`${getApiUrl()}/api/v1/workspaces`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      })
       if (!response.ok) throw new Error('Failed to fetch workspaces')
       const data = await response.json()
       setWorkspaces(data)
-      if (data.length > 0) {
+      // Only set default if no URL param is present
+      const wsParam = searchParams.get('workspace')
+      if (data.length > 0 && !wsParam) {
         setSelectedWorkspace(data[0].id)
       }
     } catch (err) {
