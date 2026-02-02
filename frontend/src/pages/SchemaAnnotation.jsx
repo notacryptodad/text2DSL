@@ -91,9 +91,11 @@ function SchemaAnnotation() {
 
   const fetchConnections = async (workspaceId) => {
     try {
+      setError(null)
       const token = localStorage.getItem('access_token')
       if (!token) {
         console.warn('No access token found, skipping fetchConnections')
+        setError('Please log in to view connections')
         return
       }
       // First fetch providers for this workspace

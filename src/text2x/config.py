@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     
     # CORS
     cors_origins: list[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8000"],
+        default=["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"],
         validation_alias="CORS_ORIGINS",
     )
     cors_allow_credentials: bool = Field(
