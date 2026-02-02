@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from text2x.agents.base import BaseAgent, LLMConfig, LLMMessage
 from text2x.models import RAGExample, ExampleStatus, SchemaContext
 from text2x.services.embedding_service import BedrockEmbeddingService
+from text2x.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -224,27 +225,60 @@ Return ONLY a JSON array of keywords: ["keyword1", "keyword2", ...]"""
         """
         Get embedding for semantic search using Bedrock Titan
 
-        Uses BedrockEmbeddingService to generate embeddings.
-        Falls back to mock embedding if service is not configured.
+        Uses BedrockEmbeddingService to generate embeddings from AWS Bedrock.
+        In development/debug mode only, falls back to mock embeddings if service fails.
+
+        Raises:
+            ValueError: If embedding service is not configured in production
+            Exception: If Bedrock API fails in production
         """
+        # Production mode: require real embeddings
+        if settings.environment == "production" and not self.embedding_service:
+            raise ValueError(
+                "Embedding service not configured. BedrockEmbeddingService is required "
+                "for production. Set BEDROCK_REGION and ensure AWS credentials are available."
+            )
+
+        # Try to use Bedrock embedding service
         if self.embedding_service:
             try:
                 embedding = await self.embedding_service.embed_text(text)
-                logger.debug(f"Generated embedding with {len(embedding)} dimensions")
+                logger.debug(f"Generated Bedrock embedding with {len(embedding)} dimensions")
                 return embedding
             except Exception as e:
-                logger.error(f"Embedding service failed: {e}, falling back to mock")
+                # In production, fail fast - don't use mock embeddings
+                if settings.environment == "production":
+                    logger.error(f"Bedrock embedding service failed in production: {e}")
+                    raise RuntimeError(
+                        f"Failed to generate embeddings from Bedrock: {e}. "
+                        "Check AWS credentials and Bedrock service availability."
+                    ) from e
 
-        # Fallback: Mock embedding for development/testing
-        logger.warning("Using mock embedding - configure BedrockEmbeddingService for production")
-        import hashlib
-        hash_obj = hashlib.md5(text.encode())
-        hash_int = int(hash_obj.hexdigest(), 16)
+                # In development, log warning and fall back
+                logger.warning(f"Embedding service failed in {settings.environment} mode: {e}")
+                if settings.debug:
+                    logger.debug("Falling back to mock embeddings (development only)")
 
-        # Generate deterministic "embedding" from hash
-        # Use 1024 dimensions to match Titan v2
-        embedding = [(hash_int >> i) % 100 / 100.0 for i in range(1024)]
-        return embedding
+        # Development/debug-only fallback: Mock embedding for testing
+        if settings.environment != "production" and (settings.debug or not self.embedding_service):
+            logger.warning(
+                "Using mock embedding - this is only for development/testing. "
+                "Configure BedrockEmbeddingService for production use."
+            )
+            import hashlib
+            hash_obj = hashlib.md5(text.encode())
+            hash_int = int(hash_obj.hexdigest(), 16)
+
+            # Generate deterministic "embedding" from hash
+            # Use 1024 dimensions to match Titan v2
+            embedding = [(hash_int >> i) % 100 / 100.0 for i in range(1024)]
+            return embedding
+
+        # This should never be reached, but provide a clear error
+        raise RuntimeError(
+            "No embedding service available and not in development mode. "
+            "This should not happen - please check configuration."
+        )
 
     async def _classify_intent(self, user_query: str) -> str:
         """Classify query intent using LLM"""

@@ -54,18 +54,36 @@ class BedrockEmbeddingService:
         self.model_id = model_id
         self.max_batch_size = max_batch_size
 
-        # Initialize Bedrock runtime client
-        session_kwargs = {"region_name": region}
-        if aws_access_key_id and aws_secret_access_key:
-            session_kwargs["aws_access_key_id"] = aws_access_key_id
-            session_kwargs["aws_secret_access_key"] = aws_secret_access_key
+        # Initialize Bedrock runtime client using boto3 session pattern
+        # This matches the credential pattern from src/text2x/llm/__init__.py
+        try:
+            session = boto3.Session(region_name=region)
 
-        self.client = boto3.client("bedrock-runtime", **session_kwargs)
+            # If explicit credentials provided, use them
+            if aws_access_key_id and aws_secret_access_key:
+                session = boto3.Session(
+                    region_name=region,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key
+                )
 
-        logger.info(
-            f"BedrockEmbeddingService initialized with model={model_id}, "
-            f"region={region}, max_batch_size={max_batch_size}"
-        )
+            # Get credentials from session (either explicit or from instance role)
+            creds = session.get_credentials()
+            if not creds:
+                raise ValueError(
+                    "Failed to obtain AWS credentials. Ensure IAM role is attached "
+                    "or AWS credentials are configured."
+                )
+
+            self.client = session.client("bedrock-runtime")
+
+            logger.info(
+                f"BedrockEmbeddingService initialized with model={model_id}, "
+                f"region={region}, max_batch_size={max_batch_size}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize Bedrock client: {e}")
+            raise
 
     @retry(
         retry=retry_if_exception_type((ClientError, BotoCoreError)),
