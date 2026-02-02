@@ -681,11 +681,17 @@ Let's start by sampling data from the table."""
 
     except Exception as e:
         logger.error(f"Error in auto-annotation: {e}", exc_info=True)
+        
+        # Provide more helpful error message
+        error_msg = str(e)
+        if "missing an 'http://' or 'https://' protocol" in error_msg:
+            error_msg = "LLM not configured. Please set LLM_API_BASE environment variable or configure Bedrock."
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
                 error="annotation_error",
-                message="Failed to auto-annotate table",
+                message=f"Failed to auto-annotate table: {error_msg}",
                 details={"error": str(e)} if settings.debug else None,
             ).model_dump(),
         )
