@@ -43,25 +43,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/query", tags=["query"])
 
-# Global orchestrator instance (initialized on app startup)
-_orchestrator: Optional[any] = None
-
-
-def set_orchestrator(orchestrator):
-    """Set the global orchestrator instance (called from app startup)."""
-    global _orchestrator
-    _orchestrator = orchestrator
-
-
-def get_orchestrator():
-    """Get the global orchestrator instance."""
-    if _orchestrator is None:
-        raise RuntimeError(
-            "Orchestrator not initialized. Make sure to call set_orchestrator() "
-            "during app startup."
-        )
-    return _orchestrator
-
 
 @router.post(
     "",
@@ -73,21 +54,17 @@ def get_orchestrator():
 async def process_query(
     request: QueryRequest,
     current_user: Optional[User] = Depends(get_current_user),
-    use_agentcore: bool = True,
 ) -> QueryResponse:
     """
-    Process a natural language query and generate executable database query.
+    Process a natural language query and generate executable database query using AgentCore.
 
-    This endpoint orchestrates the multi-agent system to:
+    This endpoint uses the QueryAgent from AgentCore to:
     1. Retrieve relevant schema context
-    2. Fetch similar examples from RAG store
-    3. Generate query using LLM
-    4. Validate generated query
-    5. Optionally execute query if enabled
+    2. Generate query using LLM
+    3. Optionally execute query if enabled
 
     Args:
         request: Query request with natural language input
-        use_agentcore: If True, use QueryAgent from AgentCore instead of orchestrator
 
     Returns:
         QueryResponse with generated query and metadata
@@ -129,435 +106,133 @@ async def process_query(
             # Extract user ID from auth context if available
             user_id = current_user.id if current_user else "anonymous"
 
-            # Use AgentCore QueryAgent (default path)
-            if use_agentcore:
-                from text2x.api.state import app_state
-                from text2x.repositories.provider import ProviderRepository
-                from uuid import UUID as PyUUID
+            # Use AgentCore QueryAgent
+            from text2x.api.state import app_state
+            from text2x.repositories.provider import ProviderRepository
+            from uuid import UUID as PyUUID
 
-                # Get provider to access schema
-                provider_repo = ProviderRepository()
-                provider_uuid = PyUUID(request.provider_id) if request.provider_id else None
-                provider = await provider_repo.get_by_id(provider_uuid) if provider_uuid else None
+            # Get provider to access schema
+            provider_repo = ProviderRepository()
+            provider_uuid = PyUUID(request.provider_id) if request.provider_id else None
+            provider = await provider_repo.get_by_id(provider_uuid) if provider_uuid else None
 
-                if not provider:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=ErrorResponse(
-                            error="provider_not_found",
-                            message=f"Provider {request.provider_id} not found",
-                        ).model_dump(),
-                    )
-
-                # Get or create QueryAgent instance
-                runtime = app_state.agentcore
-                agent_name = f"query_{request.provider_id}"
-
-                # Check if agent already exists
-                if agent_name not in runtime.agents:
-                    from text2x.agentcore.agents.query import QueryAgent
-
-                    # Create agent instance
-                    agent = QueryAgent(runtime, agent_name)
-
-                    # Set provider on agent
-                    from text2x.providers.factory import get_provider_instance
-                    query_provider = await get_provider_instance(provider)
-                    agent.set_provider(query_provider)
-
-                    # Register agent with runtime
-                    runtime.agents[agent_name] = agent
-                    logger.info(f"Created QueryAgent instance: {agent_name}")
-                else:
-                    agent = runtime.agents[agent_name]
-
-                # Get schema context
-                schema_context = {}
-                try:
-                    schema = await provider.get_schema()
-                    if schema:
-                        schema_context["tables"] = [
-                            {
-                                "name": table.name,
-                                "columns": [
-                                    {"name": col.name, "type": col.type}
-                                    for col in table.columns
-                                ],
-                            }
-                            for table in schema.tables
-                        ]
-                except Exception as e:
-                    logger.warning(f"Failed to get schema: {e}")
-
-                # Process query through QueryAgent
-                agent_result = await agent.process({
-                    "user_message": request.query,
-                    "provider_id": request.provider_id,
-                    "schema_context": schema_context,
-                    "enable_execution": enable_execution,
-                    "reset_conversation": not request.conversation_id,
-                })
-
-                # Build API response from agent result
-                generated_query = agent_result.get("generated_query", "")
-                query_explanation = agent_result.get("query_explanation", "")
-                execution_result = agent_result.get("execution_result")
-
-                # Build validation result (simplified for AgentCore path)
-                from text2x.api.models import (
-                    ValidationResult as APIValidationResult,
-                    ExecutionResult as APIExecutionResult,
+            if not provider:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="provider_not_found",
+                        message=f"Provider {request.provider_id} not found",
+                    ).model_dump(),
                 )
 
-                api_validation_status = ValidationStatus.VALID if generated_query else ValidationStatus.UNKNOWN
-                api_validation_result = APIValidationResult(
-                    status=api_validation_status,
-                    errors=[],
-                    warnings=[],
-                    suggestions=[],
-                )
+            # Get or create QueryAgent instance
+            runtime = app_state.agentcore
+            agent_name = f"query_{request.provider_id}"
 
-                # Build execution result if available
-                api_execution_result = None
-                if execution_result:
-                    api_execution_result = APIExecutionResult(
-                        success=execution_result.get("success", False),
-                        row_count=execution_result.get("row_count", 0),
-                        data=execution_result.get("rows"),
-                        error_message=execution_result.get("error"),
-                        execution_time_ms=int(execution_result.get("execution_time_ms", 0)),
-                    )
+            # Check if agent already exists
+            if agent_name not in runtime.agents:
+                from text2x.agentcore.agents.query import QueryAgent
 
-                # Build final API response
-                api_response = QueryResponse(
-                    conversation_id=conversation_id,
-                    turn_id=turn_id,
-                    generated_query=generated_query,
-                    confidence_score=1.0 if generated_query else 0.0,  # Simplified confidence
-                    validation_status=api_validation_status,
-                    validation_result=api_validation_result,
-                    execution_result=api_execution_result,
-                    reasoning_trace=None,
-                    needs_clarification=False,
-                    clarification_questions=[],
-                    iterations=1,
-                    query_explanation=query_explanation,  # Add explanation field
-                )
+                # Create agent instance
+                agent = QueryAgent(runtime, agent_name)
 
-                logger.info(
-                    f"Query processed via AgentCore: turn_id={turn_id}, "
-                    f"has_query={bool(generated_query)}"
-                )
+                # Set provider on agent
+                from text2x.providers.factory import get_provider_instance
+                query_provider = await get_provider_instance(provider)
+                agent.set_provider(query_provider)
 
-                # Record metrics
-                query_duration = time.time() - start_time
-                provider_type = provider.type.value if provider else "unknown"
-
-                record_query_success(provider_type)
-                record_query_latency(provider_type, query_duration)
-                record_iterations(provider_type, 1)
-                record_validation_result(provider_type, True)
-
-                return api_response
+                # Register agent with runtime
+                runtime.agents[agent_name] = agent
+                logger.info(f"Created QueryAgent instance: {agent_name}")
             else:
-                # Legacy path - log warning
-                logger.warning(
-                    "Using legacy orchestrator path. This is deprecated and will be removed. "
-                    "Please migrate to AgentCore by setting use_agentcore=True"
-                )
+                agent = runtime.agents[agent_name]
 
-            # Get orchestrator and process query
-            orchestrator = get_orchestrator()
-
-            # Get schema annotations for the provider
-            annotation_repo = SchemaAnnotationRepository()
-            annotations_list = await annotation_repo.list_by_provider(request.provider_id)
-
-            # Convert annotations to dict format expected by orchestrator
-            annotations = {}
-            for ann in annotations_list:
-                if ann.table_name and not ann.column_name:
-                    # Table-level annotation
-                    if ann.table_name not in annotations:
-                        annotations[ann.table_name] = {}
-                    annotations[ann.table_name]["description"] = ann.description
-                    if ann.business_terms:
-                        annotations[ann.table_name]["business_terms"] = ann.business_terms
-                elif ann.column_name:
-                    # Column-level annotation (format: "table.column")
-                    parts = ann.column_name.split(".", 1)
-                    if len(parts) == 2:
-                        table_name, col_name = parts
-                        if table_name not in annotations:
-                            annotations[table_name] = {}
-                        if "columns" not in annotations[table_name]:
-                            annotations[table_name]["columns"] = {}
-                        annotations[table_name]["columns"][col_name] = {
-                            "description": ann.description,
-                            "business_terms": ann.business_terms or [],
-                            "examples": ann.examples or [],
-                            "sensitive": ann.sensitive,
+            # Get schema context
+            schema_context = {}
+            try:
+                schema = await provider.get_schema()
+                if schema:
+                    schema_context["tables"] = [
+                        {
+                            "name": table.name,
+                            "columns": [
+                                {"name": col.name, "type": col.type}
+                                for col in table.columns
+                            ],
                         }
+                        for table in schema.tables
+                    ]
+            except Exception as e:
+                logger.warning(f"Failed to get schema: {e}")
 
-            # Extract user ID from auth context if available
-            user_id = current_user.id if current_user else "anonymous"
-
-            # Prepare input for orchestrator
-            orchestrator_input = {
-                "user_query": request.query,
+            # Process query through QueryAgent
+            agent_result = await agent.process({
+                "user_message": request.query,
                 "provider_id": request.provider_id,
-                "conversation_id": conversation_id,
-                "user_id": user_id,
+                "schema_context": schema_context,
                 "enable_execution": enable_execution,
-                "trace_level": request.options.trace_level.value,
-                "annotations": annotations,
-            }
+                "reset_conversation": not request.conversation_id,
+            })
 
-            # Process query through orchestrator
-            orchestrator_result = await orchestrator.process(orchestrator_input)
+            # Build API response from agent result
+            generated_query = agent_result.get("generated_query", "")
+            query_explanation = agent_result.get("query_explanation", "")
+            execution_result = agent_result.get("execution_result")
 
-            # Extract results from orchestrator
-            query_response: QueryResponse = orchestrator_result["query_response"]
-            actual_conversation_id = orchestrator_result["conversation_id"]
-            actual_turn_id = orchestrator_result["turn_id"]
-            all_traces = orchestrator_result.get("all_traces", [])
-
-            # Convert domain QueryResponse to API QueryResponse
+            # Build validation result (simplified for AgentCore path)
             from text2x.api.models import (
-                AgentTrace,
-                ExecutionResult as APIExecutionResult,
-                ReasoningTrace as APIReasoningTrace,
                 ValidationResult as APIValidationResult,
+                ExecutionResult as APIExecutionResult,
             )
 
-            # Convert ValidationStatus from domain to API
-            api_validation_status = ValidationStatus.VALID
-            if query_response.validation_status.value == "passed":
-                api_validation_status = ValidationStatus.VALID
-            elif query_response.validation_status.value == "failed":
-                api_validation_status = ValidationStatus.INVALID
-            elif query_response.validation_status.value == "pending":
-                api_validation_status = ValidationStatus.UNKNOWN
-
-            # Build validation result
+            api_validation_status = ValidationStatus.VALID if generated_query else ValidationStatus.UNKNOWN
             api_validation_result = APIValidationResult(
                 status=api_validation_status,
-                errors=[query_response.validation_result.error] if query_response.validation_result.error else [],
+                errors=[],
                 warnings=[],
-                suggestions=query_response.validation_result.suggestions or [],
+                suggestions=[],
             )
 
             # Build execution result if available
             api_execution_result = None
-            if query_response.execution_result:
+            if execution_result:
                 api_execution_result = APIExecutionResult(
-                    success=query_response.execution_result.success,
-                    row_count=query_response.execution_result.row_count,
-                    data=None,  # Don't return full data in API response
-                    error_message=query_response.execution_result.error,
-                    execution_time_ms=int(query_response.execution_result.execution_time_ms),
-                )
-
-            # Build reasoning trace if requested
-            api_reasoning_trace = None
-            if request.options.trace_level != "none" and all_traces:
-                # Aggregate traces by agent
-                agent_traces = {}
-                total_input_tokens = 0
-                total_output_tokens = 0
-                total_latency = 0
-
-                for trace in all_traces:
-                    agent_name = trace.agent_name
-                    if agent_name not in agent_traces:
-                        agent_traces[agent_name] = {
-                            "latency_ms": 0,
-                            "tokens_input": 0,
-                            "tokens_output": 0,
-                            "iterations": 0,
-                            "details": {}
-                        }
-
-                    agent_traces[agent_name]["latency_ms"] += trace.duration_ms
-
-                    # Extract token counts from trace metadata if available
-                    trace_data = trace.data or {}
-                    tokens_in = trace_data.get("tokens_input", 0)
-                    tokens_out = trace_data.get("tokens_output", 0)
-
-                    agent_traces[agent_name]["tokens_input"] += tokens_in
-                    agent_traces[agent_name]["tokens_output"] += tokens_out
-                    total_input_tokens += tokens_in
-                    total_output_tokens += tokens_out
-                    total_latency += trace.duration_ms
-
-                # Calculate cost based on token usage (using Claude Sonnet pricing as default)
-                # Input: $3 per 1M tokens, Output: $15 per 1M tokens
-                cost_per_input_token = 3.0 / 1_000_000
-                cost_per_output_token = 15.0 / 1_000_000
-                total_cost_usd = (
-                    total_input_tokens * cost_per_input_token +
-                    total_output_tokens * cost_per_output_token
-                )
-
-                # Build API trace structure
-                api_reasoning_trace = APIReasoningTrace(
-                    schema_agent=AgentTrace(
-                        agent_name="SchemaExpert",
-                        latency_ms=int(agent_traces.get("SchemaExpertAgent", {}).get("latency_ms", 0)),
-                        tokens_input=int(agent_traces.get("SchemaExpertAgent", {}).get("tokens_input", 0)),
-                        tokens_output=int(agent_traces.get("SchemaExpertAgent", {}).get("tokens_output", 0)),
-                        details=agent_traces.get("SchemaExpertAgent", {}).get("details", {}),
-                    ) if "SchemaExpertAgent" in agent_traces else None,
-                    rag_agent=AgentTrace(
-                        agent_name="RAGRetrieval",
-                        latency_ms=int(agent_traces.get("RAGRetrievalAgent", {}).get("latency_ms", 0)),
-                        tokens_input=int(agent_traces.get("RAGRetrievalAgent", {}).get("tokens_input", 0)),
-                        tokens_output=int(agent_traces.get("RAGRetrievalAgent", {}).get("tokens_output", 0)),
-                        details=agent_traces.get("RAGRetrievalAgent", {}).get("details", {}),
-                    ) if "RAGRetrievalAgent" in agent_traces else None,
-                    query_builder_agent=AgentTrace(
-                        agent_name="QueryBuilder",
-                        latency_ms=int(agent_traces.get("QueryBuilderAgent", {}).get("latency_ms", 0)),
-                        tokens_input=int(agent_traces.get("QueryBuilderAgent", {}).get("tokens_input", 0)),
-                        tokens_output=int(agent_traces.get("QueryBuilderAgent", {}).get("tokens_output", 0)),
-                        iterations=query_response.iterations,
-                        details=agent_traces.get("QueryBuilderAgent", {}).get("details", {}),
-                    ) if "QueryBuilderAgent" in agent_traces else None,
-                    validator_agent=AgentTrace(
-                        agent_name="Validator",
-                        latency_ms=int(agent_traces.get("ValidatorAgent", {}).get("latency_ms", 0)),
-                        tokens_input=int(agent_traces.get("ValidatorAgent", {}).get("tokens_input", 0)),
-                        tokens_output=int(agent_traces.get("ValidatorAgent", {}).get("tokens_output", 0)),
-                        details=agent_traces.get("ValidatorAgent", {}).get("details", {}),
-                    ) if "ValidatorAgent" in agent_traces else None,
-                    orchestrator_latency_ms=int(total_latency),
-                    total_tokens_input=total_input_tokens,
-                    total_tokens_output=total_output_tokens,
-                    total_cost_usd=total_cost_usd,
+                    success=execution_result.get("success", False),
+                    row_count=execution_result.get("row_count", 0),
+                    data=execution_result.get("rows"),
+                    error_message=execution_result.get("error"),
+                    execution_time_ms=int(execution_result.get("execution_time_ms", 0)),
                 )
 
             # Build final API response
             api_response = QueryResponse(
-                conversation_id=actual_conversation_id,
-                turn_id=actual_turn_id,
-                generated_query=query_response.generated_query,
-                confidence_score=query_response.confidence_score,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                generated_query=generated_query,
+                confidence_score=1.0 if generated_query else 0.0,  # Simplified confidence
                 validation_status=api_validation_status,
                 validation_result=api_validation_result,
                 execution_result=api_execution_result,
-                reasoning_trace=api_reasoning_trace,
-                needs_clarification=query_response.clarification_needed,
-                clarification_questions=[query_response.clarification_question] if query_response.clarification_question else [],
-                iterations=query_response.iterations,
+                reasoning_trace=None,
+                needs_clarification=False,
+                clarification_questions=[],
+                iterations=1,
+                query_explanation=query_explanation,  # Add explanation field
             )
 
             logger.info(
-                f"Query processed successfully: turn_id={actual_turn_id}, "
-                f"confidence={api_response.confidence_score}"
+                f"Query processed via AgentCore: turn_id={turn_id}, "
+                f"has_query={bool(generated_query)}"
             )
 
             # Record metrics
             query_duration = time.time() - start_time
+            provider_type = provider.type.value if provider else "unknown"
 
-            # Look up provider type from database
-            provider_repo = ProviderRepository()
-            try:
-                from uuid import UUID as PyUUID
-                provider_uuid = PyUUID(request.provider_id) if request.provider_id else None
-                provider = await provider_repo.get_by_id(provider_uuid) if provider_uuid else None
-                provider_type = provider.type.value if provider else "unknown"
-            except (ValueError, AttributeError):
-                # Fall back to unknown if provider_id is not a valid UUID or provider not found
-                logger.warning(f"Could not determine provider type for provider_id={request.provider_id}")
-                provider_type = "unknown"
-
-            # Success metrics
             record_query_success(provider_type)
             record_query_latency(provider_type, query_duration)
-            record_iterations(provider_type, api_response.iterations)
-
-            # Validation metrics
-            is_valid = api_response.validation_status == ValidationStatus.VALID
-            record_validation_result(provider_type, is_valid)
-
-            # Queue for expert review if validation failed
-            if (
-                settings.review_queue_enabled
-                and api_response.validation_status == ValidationStatus.INVALID
-            ):
-                logger.info(f"Queuing turn {actual_turn_id} for expert review (validation failure)")
-                review_service = ReviewService()
-                try:
-                    await review_service.auto_queue_for_review(
-                        turn_id=actual_turn_id,
-                        trigger=ReviewTrigger.VALIDATION_FAILURE,
-                        provider_id=request.provider_id,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to queue validation failure: {e}", exc_info=True)
-                    # Don't fail the request if queuing fails
-
-            # Cost metrics (from trace if available)
-            if api_response.reasoning_trace:
-                trace = api_response.reasoning_trace
-                record_tokens_used("input", trace.total_tokens_input, provider_type)
-                record_tokens_used("output", trace.total_tokens_output, provider_type)
-                record_cost(provider_type, trace.total_cost_usd)
-
-                # Agent-specific metrics
-                if trace.schema_agent:
-                    record_agent_latency("schema", trace.schema_agent.latency_ms / 1000)
-                    record_tokens_by_agent(
-                        "schema", "input", trace.schema_agent.tokens_input
-                    )
-                    record_tokens_by_agent(
-                        "schema", "output", trace.schema_agent.tokens_output
-                    )
-
-                if trace.rag_agent:
-                    record_agent_latency("rag", trace.rag_agent.latency_ms / 1000)
-                    record_tokens_by_agent("rag", "input", trace.rag_agent.tokens_input)
-                    record_tokens_by_agent("rag", "output", trace.rag_agent.tokens_output)
-                    record_rag_retrieval(provider_type)
-
-                if trace.query_builder_agent:
-                    record_agent_latency(
-                        "query_builder", trace.query_builder_agent.latency_ms / 1000
-                    )
-                    record_tokens_by_agent(
-                        "query_builder", "input", trace.query_builder_agent.tokens_input
-                    )
-                    record_tokens_by_agent(
-                        "query_builder", "output", trace.query_builder_agent.tokens_output
-                    )
-
-                if trace.validator_agent:
-                    record_agent_latency(
-                        "validator", trace.validator_agent.latency_ms / 1000
-                    )
-                    record_tokens_by_agent(
-                        "validator", "input", trace.validator_agent.tokens_input
-                    )
-                    record_tokens_by_agent(
-                        "validator", "output", trace.validator_agent.tokens_output
-                    )
-
-            # Queue for expert review if confidence is low
-            if (
-                settings.auto_queue_low_confidence
-                and api_response.confidence_score < settings.low_confidence_threshold
-            ):
-                logger.info(f"Queuing turn {actual_turn_id} for expert review (low confidence)")
-                review_service = ReviewService()
-                try:
-                    await review_service.auto_queue_for_review(
-                        turn_id=actual_turn_id,
-                        trigger=ReviewTrigger.LOW_CONFIDENCE,
-                        provider_id=request.provider_id,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to queue turn for review: {e}", exc_info=True)
+            record_iterations(provider_type, 1)
+            record_validation_result(provider_type, True)
 
             return api_response
 

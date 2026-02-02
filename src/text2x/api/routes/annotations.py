@@ -9,8 +9,6 @@ from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from text2x.agents.annotation_agent import AnnotationAgent  # DEPRECATED: Use AgentCore instead
-from text2x.agents.base import LLMConfig
 from text2x.api.models import ErrorResponse, TableInfo
 from text2x.api.state import app_state
 from text2x.config import settings
@@ -103,111 +101,9 @@ class AnnotationChatResponse(BaseModel):
     )
 
 
-# In-memory storage for conversation agents (in production, use Redis or similar)
-# Maps conversation_id -> AnnotationAgent
-_conversation_agents: Dict[UUID, AnnotationAgent] = {}
-
-
-async def _get_or_create_agent(
-    conversation_id: UUID,
-    provider_id: str
-) -> AnnotationAgent:
-    """
-    Get or create an annotation agent for a conversation.
-
-    In production, this should:
-    1. Store agents in Redis with TTL
-    2. Load provider from database
-    3. Handle proper cleanup
-    """
-    if conversation_id not in _conversation_agents:
-        # Create LLM config
-        llm_config = LLMConfig(
-            model=settings.llm_model,
-            api_base=settings.llm_api_base,
-            api_key=os.getenv("OPENAI_API_KEY") or settings.llm_api_key,
-            temperature=0.3,
-            max_tokens=2048,
-            timeout=60.0
-        )
-
-        # Load actual provider from database using connection_id
-        try:
-            connection_id = UUID(provider_id)
-        except ValueError:
-            raise ValueError(f"Invalid connection ID format: {provider_id}")
-
-        async with await get_session() as session:
-            # Query connection from database with eagerly loaded provider
-            from sqlalchemy.orm import selectinload
-            conn_stmt = select(Connection).options(selectinload(Connection.provider)).where(Connection.id == connection_id)
-            conn_result = await session.execute(conn_stmt)
-            connection = conn_result.scalar_one_or_none()
-
-            if not connection:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=ErrorResponse(
-                        error="not_found",
-                        message=f"Connection {provider_id} not found",
-                    ).model_dump(),
-                )
-
-            # Get provider type (now eagerly loaded)
-            provider_type = connection.provider.type
-
-            # Create appropriate provider based on type
-            if provider_type in [
-                ProviderType.POSTGRESQL,
-                ProviderType.MYSQL,
-                ProviderType.REDSHIFT,
-            ]:
-                # Create SQL provider
-                credentials = connection.credentials or {}
-                username = credentials.get("username", "")
-                password = credentials.get("password", "")
-
-                # Map provider type to dialect
-                dialect_map = {
-                    ProviderType.POSTGRESQL: "postgresql",
-                    ProviderType.MYSQL: "mysql",
-                    ProviderType.REDSHIFT: "postgresql",
-                }
-                dialect = dialect_map.get(provider_type, "postgresql")
-
-                sql_config = SQLConnectionConfig(
-                    host=connection.host,
-                    port=connection.port or 5432,
-                    database=connection.database,
-                    username=username,
-                    password=password,
-                    dialect=dialect,
-                    extra_params=connection.connection_options or {}
-                )
-
-                provider = SQLProvider(sql_config)
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=ErrorResponse(
-                        error="unsupported_provider",
-                        message=f"Provider type {provider_type.value} not supported for annotations",
-                    ).model_dump(),
-                )
-
-        # Create annotation repository
-        annotation_repo = SchemaAnnotationRepository()
-
-        # Create agent
-        agent = AnnotationAgent(
-            llm_config=llm_config,
-            provider=provider,
-            annotation_repo=annotation_repo
-        )
-
-        _conversation_agents[conversation_id] = agent
-
-    return _conversation_agents[conversation_id]
+# In-memory storage for conversation context (in production, use Redis or similar)
+# Maps conversation_id -> dict with context
+_conversation_context: Dict[UUID, Dict[str, Any]] = {}
 
 
 @router.post(
@@ -252,57 +148,70 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
                 f"conversation_id={conversation_id} (using AgentCore)"
             )
 
-            # Use AgentCore annotation_assistant instead of legacy agent
-            try:
-                # Get annotation_assistant agent from AgentCore
-                agentcore = app_state.agentcore
-                if not agentcore or not agentcore.is_started:
-                    raise RuntimeError("AgentCore not initialized")
+            # Get AgentCore annotation_assistant agent
+            agentcore = app_state.agentcore
+            if not agentcore or not agentcore.is_started:
+                raise RuntimeError("AgentCore not initialized")
 
-                # For now, fall back to legacy agent if AgentCore is not available
-                # In the future, this should be the only path
-                annotation_agent = agentcore.get_agent("annotation_assistant")
+            # Get or create annotation_assistant agent
+            from text2x.agentcore.agents.annotation_assistant import AnnotationAssistantAgent
 
-                # Use AgentCore agent's chat method
-                # Note: AgentCore agents use Strands SDK which has a different interface
-                # For now, we'll use the legacy path but log a migration notice
-                logger.info("AgentCore annotation_assistant found, using new path")
+            agent_name = f"annotation_assistant_{request.provider_id}"
 
-                # TODO: Implement AgentCore chat interface
-                # For now, fall through to legacy implementation
-                raise NotImplementedError("AgentCore chat interface not yet implemented")
+            # Check if agent already exists
+            if agent_name not in agentcore.agents:
+                # Create agent instance
+                agent = AnnotationAssistantAgent(agentcore, agent_name)
 
-            except (KeyError, RuntimeError, NotImplementedError) as e:
-                # Fall back to legacy agent
-                logger.warning(
-                    f"Falling back to legacy AnnotationAgent: {e}. "
-                    "Please complete AgentCore migration."
-                )
+                # Register agent with runtime
+                agentcore.agents[agent_name] = agent
+                logger.info(f"Created AnnotationAssistantAgent instance: {agent_name}")
+            else:
+                agent = agentcore.agents[agent_name]
 
-            # Get or create agent for this conversation (legacy path)
-            agent = await _get_or_create_agent(conversation_id, request.provider_id)
+            # Get or initialize conversation context
+            if conversation_id not in _conversation_context:
+                _conversation_context[conversation_id] = {
+                    "conversation_history": [],
+                    "provider_id": request.provider_id
+                }
+
+            context = _conversation_context[conversation_id]
 
             # Reset conversation if requested
             if request.reset_conversation:
-                agent.reset_conversation()
+                context["conversation_history"] = []
                 logger.info(f"Reset conversation {conversation_id}")
 
-            # Process user message
-            result = await agent.process({
+            # Add user message to history
+            context["conversation_history"].append({
+                "role": "user",
+                "content": request.user_message
+            })
+
+            # Process user message through AgentCore agent
+            agent_result = await agent.process({
                 "user_message": request.user_message,
                 "provider_id": request.provider_id,
                 "user_id": request.user_id,
-                "reset_conversation": False,  # Already handled above
+                "conversation_history": context["conversation_history"],
+            })
+
+            # Extract response and add to history
+            assistant_response = agent_result.get("response", "")
+            context["conversation_history"].append({
+                "role": "assistant",
+                "content": assistant_response
             })
 
             # Build response
             response = AnnotationChatResponse(
                 conversation_id=conversation_id,
-                response=result["response"],
-                tool_calls=[ToolCall(**tc) for tc in result.get("tool_calls", [])],
+                response=assistant_response,
+                tool_calls=[ToolCall(**tc) for tc in agent_result.get("tool_calls", [])],
                 conversation_history=[
                     ConversationMessage(**msg)
-                    for msg in result.get("conversation_history", [])
+                    for msg in context["conversation_history"]
                 ]
             )
 
@@ -353,11 +262,8 @@ async def end_conversation(conversation_id: UUID) -> None:
     try:
         logger.info(f"Ending annotation conversation {conversation_id}")
 
-        if conversation_id in _conversation_agents:
-            agent = _conversation_agents[conversation_id]
-            # Cleanup agent resources
-            await agent.cleanup()
-            del _conversation_agents[conversation_id]
+        if conversation_id in _conversation_context:
+            del _conversation_context[conversation_id]
             logger.info(f"Conversation {conversation_id} ended and cleaned up")
         else:
             logger.warning(f"Conversation {conversation_id} not found")
@@ -402,7 +308,7 @@ async def get_conversation_history(conversation_id: UUID) -> List[ConversationMe
         HTTPException: If conversation not found
     """
     try:
-        if conversation_id not in _conversation_agents:
+        if conversation_id not in _conversation_context:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=ErrorResponse(
@@ -411,8 +317,8 @@ async def get_conversation_history(conversation_id: UUID) -> List[ConversationMe
                 ).model_dump(),
             )
 
-        agent = _conversation_agents[conversation_id]
-        history = agent.get_conversation_history()
+        context = _conversation_context[conversation_id]
+        history = context.get("conversation_history", [])
 
         return [ConversationMessage(**msg) for msg in history]
 
@@ -655,8 +561,26 @@ async def auto_annotate_table(
         # Create conversation ID for this annotation session
         conversation_id = uuid4()
 
-        # Get or create agent for this conversation
-        agent = await _get_or_create_agent(conversation_id, str(connection_id))
+        # Get AgentCore annotation_assistant agent
+        agentcore = app_state.agentcore
+        if not agentcore or not agentcore.is_started:
+            raise RuntimeError("AgentCore not initialized")
+
+        # Get or create annotation_assistant agent
+        from text2x.agentcore.agents.annotation_assistant import AnnotationAssistantAgent
+
+        agent_name = f"annotation_assistant_{connection_id}"
+
+        # Check if agent already exists
+        if agent_name not in agentcore.agents:
+            # Create agent instance
+            agent = AnnotationAssistantAgent(agentcore, agent_name)
+
+            # Register agent with runtime
+            agentcore.agents[agent_name] = agent
+            logger.info(f"Created AnnotationAssistantAgent instance: {agent_name}")
+        else:
+            agent = agentcore.agents[agent_name]
 
         # Build prompt for auto-annotation
         prompt = f"""I need help annotating the table '{request.table_name}'.
@@ -681,7 +605,7 @@ IMPORTANT: After analyzing the data, end your response with a JSON code block co
             "user_message": prompt,
             "provider_id": str(connection_id),
             "user_id": "system",
-            "reset_conversation": True,
+            "conversation_history": [],
         })
 
         # Extract suggestions from response

@@ -50,10 +50,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await initialize_opensearch()
         logger.info("OpenSearch initialized successfully")
 
-        # Initialize Orchestrator
-        await initialize_orchestrator()
-        logger.info("Orchestrator initialized successfully")
-
         # Initialize AgentCore
         await initialize_agentcore()
         logger.info("AgentCore initialized successfully")
@@ -166,87 +162,6 @@ async def initialize_opensearch() -> None:
 
     except Exception as e:
         logger.error(f"Failed to initialize OpenSearch: {e}")
-        raise
-
-
-async def initialize_orchestrator() -> None:
-    """Initialize the global orchestrator agent."""
-    from typing import List
-    from text2x.agents.base import LLMConfig
-    from text2x.agents.orchestrator import OrchestratorAgent
-    from text2x.api.routes.query import set_orchestrator
-    from text2x.providers.base import (
-        QueryProvider,
-        ProviderCapability,
-        SchemaDefinition,
-        ValidationResult,
-    )
-
-    try:
-        # Create LLM config from settings
-        llm_config = LLMConfig(
-            model=settings.llm_model,
-            api_base="",  # Will be handled by provider-specific logic
-            api_key=None,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
-            timeout=float(settings.llm_timeout),
-        )
-
-        # Create a default provider for orchestrator initialization.
-        # This is a placeholder provider required because the OrchestratorAgent needs
-        # a provider instance at initialization time. The actual provider used for query
-        # processing is determined dynamically per-request based on the provider_id
-        # parameter in each query request. This approach allows the orchestrator to be
-        # instantiated once at startup while still supporting multiple database providers.
-        class DefaultProvider(QueryProvider):
-            """Default provider for orchestrator initialization.
-
-            This is a minimal provider implementation used only during application
-            startup. Real queries use provider instances looked up per-request based
-            on the provider_id in the query parameters.
-            """
-
-            def get_provider_id(self) -> str:
-                return "default"
-
-            def get_query_language(self) -> str:
-                return "SQL"
-
-            def get_capabilities(self) -> List[ProviderCapability]:
-                return [
-                    ProviderCapability.SCHEMA_INTROSPECTION,
-                    ProviderCapability.QUERY_VALIDATION,
-                ]
-
-            async def get_schema(self) -> SchemaDefinition:
-                return SchemaDefinition(tables=[], relationships=[])
-
-            async def validate_syntax(self, query: str) -> ValidationResult:
-                return ValidationResult(valid=True)
-
-        provider = DefaultProvider()
-
-        # Create orchestrator with config from settings
-        orchestrator = OrchestratorAgent(
-            llm_config=llm_config,
-            provider=provider,
-            opensearch_client=app_state.opensearch_client,
-            max_iterations=settings.max_iterations,
-            confidence_threshold=settings.confidence_threshold,
-            clarification_threshold=settings.low_confidence_threshold,
-        )
-
-        # Set the global orchestrator
-        set_orchestrator(orchestrator)
-
-        logger.info(
-            f"Orchestrator initialized with max_iterations={settings.max_iterations}, "
-            f"confidence_threshold={settings.confidence_threshold}"
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to initialize orchestrator: {e}")
         raise
 
 
@@ -510,30 +425,8 @@ async def query_websocket(websocket: WebSocket) -> None:
                 # Parse and validate request
                 request = WebSocketQueryRequest(**message)
 
-                # Get global orchestrator (same pattern as query route)
-                from text2x.api.routes.query import get_orchestrator
-
-                try:
-                    orchestrator = get_orchestrator()
-                except RuntimeError:
-                    # Orchestrator not initialized - send error
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "data": {
-                                "error": "initialization_error",
-                                "message": "Query orchestrator not initialized",
-                            },
-                        }
-                    )
-                    continue
-
-                # Process query and stream events
-                await handle_websocket_query(
-                    websocket,
-                    request,
-                    orchestrator=orchestrator
-                )
+                # Process query and stream events using AgentCore
+                await handle_websocket_query(websocket, request)
 
             except ValidationError as e:
                 logger.warning(f"Invalid WebSocket message: {e}")

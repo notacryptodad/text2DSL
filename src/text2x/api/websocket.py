@@ -12,8 +12,8 @@ from text2x.api.models import (
     TraceLevel,
     ValidationStatus,
 )
+from text2x.api.state import app_state
 from text2x.config import settings
-from text2x.agents.orchestrator import OrchestratorAgent  # DEPRECATED: Use AgentCore instead
 
 logger = logging.getLogger(__name__)
 
@@ -77,26 +77,17 @@ class ProgressStage:
 async def handle_websocket_query(
     websocket: WebSocket,
     request: WebSocketQueryRequest,
-    orchestrator: OrchestratorAgent,
 ) -> None:
     """
-    Process a query request and stream events to the WebSocket client.
+    Process a query request and stream events to the WebSocket client using AgentCore.
 
     Args:
         websocket: WebSocket connection
         request: Query request with natural language input
-        orchestrator: Orchestrator instance (injected from app state)
-                     DEPRECATED: This will be replaced with AgentCore query agent
 
     Yields:
         WebSocketEvent objects representing progress, clarification needs, results, or errors
     """
-    # Log deprecation warning
-    logger.warning(
-        "WebSocket query processing using OrchestratorAgent is deprecated. "
-        "Please migrate to AgentCore query agent."
-    )
-
     try:
         # Merge request options with defaults
         enable_execution = (
@@ -107,30 +98,140 @@ async def handle_websocket_query(
         trace_level = request.options.trace_level
 
         # Generate conversation ID if not provided
-        conversation_id = request.conversation_id
+        conversation_id = request.conversation_id or uuid4()
 
         logger.info(
             f"WebSocket query processing started: provider={request.provider_id}, "
             f"conversation_id={conversation_id}, query='{request.query[:50]}...'"
         )
 
-        # Stream events from orchestrator
-        async for event in orchestrator.process_query_stream(
-            user_query=request.query,
-            provider_id=request.provider_id,
-            conversation_id=conversation_id,
-            enable_execution=enable_execution,
-            trace_level=trace_level.value,
-            annotations={}
-        ):
-            # Send event to WebSocket client
-            await send_event(
-                websocket,
-                event["type"],
-                event["data"],
-                trace=event.get("trace") if trace_level != TraceLevel.NONE else None,
-                trace_level=trace_level,
-            )
+        # Send started event
+        await send_event(
+            websocket,
+            EventType.PROGRESS,
+            {
+                "stage": "started",
+                "message": "Query processing started",
+                "progress": 0.0
+            },
+            trace_level=trace_level,
+        )
+
+        # Get AgentCore runtime
+        runtime = app_state.agentcore
+        if not runtime or not runtime.is_started:
+            raise RuntimeError("AgentCore not initialized")
+
+        # Get or create QueryAgent instance
+        from text2x.agentcore.agents.query import QueryAgent
+        from text2x.repositories.provider import ProviderRepository
+        from text2x.providers.factory import get_provider_instance
+
+        agent_name = f"query_{request.provider_id}"
+
+        # Check if agent already exists
+        if agent_name not in runtime.agents:
+            # Get provider
+            provider_repo = ProviderRepository()
+            provider_uuid = UUID(request.provider_id)
+            provider = await provider_repo.get_by_id(provider_uuid)
+
+            if not provider:
+                raise ValueError(f"Provider {request.provider_id} not found")
+
+            # Create agent instance
+            agent = QueryAgent(runtime, agent_name)
+
+            # Set provider on agent
+            query_provider = await get_provider_instance(provider)
+            agent.set_provider(query_provider)
+
+            # Register agent with runtime
+            runtime.agents[agent_name] = agent
+            logger.info(f"Created QueryAgent instance: {agent_name}")
+        else:
+            agent = runtime.agents[agent_name]
+
+        # Send progress event
+        await send_event(
+            websocket,
+            EventType.PROGRESS,
+            {
+                "stage": "query_generation",
+                "message": "Generating query...",
+                "progress": 0.3
+            },
+            trace_level=trace_level,
+        )
+
+        # Get schema context
+        provider_repo = ProviderRepository()
+        provider = await provider_repo.get_by_id(UUID(request.provider_id))
+        schema_context = {}
+
+        if provider:
+            try:
+                schema = await provider.get_schema()
+                if schema:
+                    schema_context["tables"] = [
+                        {
+                            "name": table.name,
+                            "columns": [
+                                {"name": col.name, "type": col.type}
+                                for col in table.columns
+                            ],
+                        }
+                        for table in schema.tables
+                    ]
+            except Exception as e:
+                logger.warning(f"Failed to get schema: {e}")
+
+        # Process query through QueryAgent
+        agent_result = await agent.process({
+            "user_message": request.query,
+            "provider_id": request.provider_id,
+            "schema_context": schema_context,
+            "enable_execution": enable_execution,
+            "reset_conversation": not request.conversation_id,
+        })
+
+        # Send completion progress
+        await send_event(
+            websocket,
+            EventType.PROGRESS,
+            {
+                "stage": "completed",
+                "message": "Query processing completed",
+                "progress": 1.0
+            },
+            trace_level=trace_level,
+        )
+
+        # Build execution result if available
+        execution_result = agent_result.get("execution_result")
+        execution_data = None
+        if execution_result:
+            execution_data = {
+                "success": execution_result.get("success", False),
+                "row_count": execution_result.get("row_count", 0),
+                "execution_time_ms": execution_result.get("execution_time_ms", 0),
+                "error": execution_result.get("error"),
+            }
+
+        # Send final result
+        await send_event(
+            websocket,
+            EventType.RESULT,
+            {
+                "stage": "completed",
+                "message": "Query processing completed",
+                "conversation_id": str(conversation_id),
+                "generated_query": agent_result.get("generated_query", ""),
+                "query_explanation": agent_result.get("query_explanation", ""),
+                "execution_result": execution_data,
+            },
+            trace_level=trace_level,
+        )
 
         logger.info(f"WebSocket query processing completed")
 

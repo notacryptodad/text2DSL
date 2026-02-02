@@ -5,7 +5,6 @@ from text2x.agents.schema_expert import SchemaExpertAgent
 from text2x.agents.query_builder import QueryBuilderAgent
 from text2x.agents.validator import ValidatorAgent
 from text2x.agents.rag_retrieval import RAGRetrievalAgent
-from text2x.agents.orchestrator import OrchestratorAgent
 
 __all__ = [
     "BaseAgent",
@@ -17,5 +16,4 @@ __all__ = [
     "QueryBuilderAgent",
     "ValidatorAgent",
     "RAGRetrievalAgent",
-    "OrchestratorAgent",
 ]
