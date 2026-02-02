@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Database,
   Sparkles,
@@ -8,20 +9,24 @@ import {
   AlertCircle,
   User,
   Bot,
+  RefreshCw,
 } from 'lucide-react'
 import SchemaTree from '../components/SchemaTree'
 import AnnotationEditor from '../components/AnnotationEditor'
 
 function SchemaAnnotation() {
+  const [searchParams] = useSearchParams()
   const [workspaces, setWorkspaces] = useState([])
   const [selectedWorkspace, setSelectedWorkspace] = useState('')
   const [connections, setConnections] = useState([])
   const [selectedConnection, setSelectedConnection] = useState('')
+  const [selectedProviderId, setSelectedProviderId] = useState('')
   const [schema, setSchema] = useState([])
   const [annotations, setAnnotations] = useState({})
   const [selectedTable, setSelectedTable] = useState(null)
   const [showEditor, setShowEditor] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
 
   // Chat state
@@ -34,6 +39,14 @@ function SchemaAnnotation() {
   useEffect(() => {
     fetchWorkspaces()
   }, [])
+
+  // Handle URL params (from provider detail page)
+  useEffect(() => {
+    const wsParam = searchParams.get('workspace')
+    const connParam = searchParams.get('connection')
+    if (wsParam) setSelectedWorkspace(wsParam)
+    if (connParam) setSelectedConnection(connParam)
+  }, [searchParams])
 
   useEffect(() => {
     if (selectedWorkspace) {
@@ -73,16 +86,57 @@ function SchemaAnnotation() {
 
   const fetchConnections = async (workspaceId) => {
     try {
-      const response = await fetch(`${getApiUrl()}/api/v1/workspaces/${workspaceId}/connections`)
-      if (!response.ok) throw new Error('Failed to fetch connections')
-      const data = await response.json()
-      setConnections(data)
-      if (data.length > 0) {
-        setSelectedConnection(data[0].id)
+      const token = localStorage.getItem('access_token')
+      // First fetch providers for this workspace
+      const providersRes = await fetch(
+        `${getApiUrl()}/api/v1/workspaces/${workspaceId}/providers`,
+        {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }
+      )
+      if (!providersRes.ok) throw new Error('Failed to fetch providers')
+      const providers = await providersRes.json()
+      
+      // Fetch connections for each provider
+      const allConnections = []
+      for (const provider of providers) {
+        const connRes = await fetch(
+          `${getApiUrl()}/api/v1/workspaces/${workspaceId}/providers/${provider.id}/connections`,
+          {
+            headers: { 'Authorization': `Bearer ${token}` },
+          }
+        )
+        if (connRes.ok) {
+          const conns = await connRes.json()
+          conns.forEach(c => {
+            allConnections.push({ ...c, provider_id: provider.id, provider_name: provider.name })
+          })
+        }
+      }
+      
+      setConnections(allConnections)
+      
+      // Check URL param or select first
+      const connParam = searchParams.get('connection')
+      if (connParam && allConnections.find(c => c.id === connParam)) {
+        const conn = allConnections.find(c => c.id === connParam)
+        setSelectedConnection(connParam)
+        setSelectedProviderId(conn.provider_id)
+      } else if (allConnections.length > 0) {
+        setSelectedConnection(allConnections[0].id)
+        setSelectedProviderId(allConnections[0].provider_id)
       }
     } catch (err) {
       console.error('Error fetching connections:', err)
       setError('Failed to load connections')
+    }
+  }
+
+  const handleConnectionChange = (connId) => {
+    setSelectedConnection(connId)
+    const conn = connections.find(c => c.id === connId)
+    if (conn) {
+      setSelectedProviderId(conn.provider_id)
     }
   }
 
@@ -92,12 +146,18 @@ function SchemaAnnotation() {
     try {
       setLoading(true)
       setError(null)
+      const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${getApiUrl()}/api/v1/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema`
+        `${getApiUrl()}/api/v1/annotations/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
       )
       if (!response.ok) throw new Error('Failed to fetch schema')
       const data = await response.json()
-      setSchema(data)
+      setSchema(data.tables || data)
     } catch (err) {
       console.error('Error fetching schema:', err)
       setError('Failed to load schema')
@@ -106,12 +166,50 @@ function SchemaAnnotation() {
     }
   }
 
+  const handleRefreshSchema = async () => {
+    if (!selectedWorkspace || !selectedConnection || !selectedProviderId) {
+      setError('Provider ID is required to refresh schema')
+      return
+    }
+
+    try {
+      setRefreshing(true)
+      setError(null)
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(
+        `${getApiUrl()}/api/v1/workspaces/${selectedWorkspace}/providers/${selectedProviderId}/connections/${selectedConnection}/schema/refresh`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+      if (!response.ok) throw new Error('Failed to refresh schema')
+      const result = await response.json()
+      // Re-fetch schema after refresh
+      await fetchSchema()
+      alert(`Schema refreshed! Found ${result.table_count || 0} tables.`)
+    } catch (err) {
+      console.error('Error refreshing schema:', err)
+      setError('Failed to refresh schema')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   const fetchAnnotations = async () => {
     if (!selectedWorkspace || !selectedConnection) return
 
     try {
+      const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${getApiUrl()}/api/v1/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema/annotations`
+        `${getApiUrl()}/api/v1/annotations/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema/annotations`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
       )
       if (!response.ok) throw new Error('Failed to fetch annotations')
       const data = await response.json()
@@ -308,16 +406,26 @@ function SchemaAnnotation() {
 
             <select
               value={selectedConnection}
-              onChange={(e) => setSelectedConnection(e.target.value)}
+              onChange={(e) => handleConnectionChange(e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               disabled={!connections.length}
             >
               {connections.map((connection) => (
                 <option key={connection.id} value={connection.id}>
-                  {connection.name} ({connection.type})
+                  {connection.name} ({connection.host}:{connection.port}/{connection.database})
                 </option>
               ))}
             </select>
+
+            <button
+              onClick={handleRefreshSchema}
+              disabled={!selectedConnection || refreshing}
+              className="flex items-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh schema from database"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>{refreshing ? 'Refreshing...' : 'Refresh Schema'}</span>
+            </button>
 
             <button
               onClick={handleAutoAnnotate}

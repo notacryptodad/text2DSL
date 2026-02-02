@@ -370,18 +370,6 @@ function ProviderDetail() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleRefreshSchema(conn.id)}
-                        disabled={refreshingSchema === conn.id}
-                        className="p-2 text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded transition-colors disabled:opacity-50"
-                        title="Refresh schema"
-                      >
-                        {refreshingSchema === conn.id ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Database className="w-4 h-4" />
-                        )}
-                      </button>
                       <Link
                         to={`/schema-annotation?workspace=${workspaceId}&connection=${conn.id}`}
                         className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
