@@ -116,6 +116,23 @@ function ChatMessage({ message, conversationId }) {
               </pre>
             </div>
 
+            {/* Query Explanation */}
+            {message.explanation && (
+              <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+                <div className="flex items-start space-x-2">
+                  <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase block mb-1">
+                      Query Explanation
+                    </span>
+                    <p className="text-sm text-blue-900 dark:text-blue-100">
+                      {message.explanation}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Confidence Score */}
             {message.confidence !== undefined && (
               <div className="mb-3">

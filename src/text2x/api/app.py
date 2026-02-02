@@ -245,6 +245,8 @@ async def initialize_agentcore() -> None:
     """Initialize the AgentCore runtime."""
     from text2x.agentcore import AgentCore, AgentCoreConfig, get_registry
     from text2x.agentcore.agents.auto_annotation import AutoAnnotationAgent
+    from text2x.agentcore.agents.annotation_assistant import AnnotationAssistantAgent
+    from text2x.agentcore.agents.query import QueryAgent
     from text2x.agentcore.api.router import set_runtime
 
     try:
@@ -259,6 +261,8 @@ async def initialize_agentcore() -> None:
         # Register agents
         registry = get_registry()
         registry.register("auto_annotation", AutoAnnotationAgent)
+        registry.register("annotation_assistant", AnnotationAssistantAgent)
+        registry.register("query", QueryAgent)
 
         # Create and start runtime
         runtime = AgentCore(config)

@@ -328,17 +328,22 @@ function SchemaAnnotation() {
     setChatLoading(true)
 
     try {
+      const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${getApiUrl()}/api/v1/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema/chat`,
+        `${getApiUrl()}/api/v1/agentcore/annotation_assistant/chat`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
           body: JSON.stringify({
             message: userMessage.content,
             conversation_id: conversationId,
             context: {
               selected_table: selectedTable,
-              annotations: annotations,
+              provider_id: selectedProviderId,
+              user_id: 'current_user',
             },
           }),
         }
@@ -359,8 +364,12 @@ function SchemaAnnotation() {
         },
       ])
 
-      if (data.updated_annotations) {
-        setAnnotations({ ...annotations, ...data.updated_annotations })
+      // If tools were called (e.g., save_annotation), refresh annotations
+      if (data.tool_calls && data.tool_calls.length > 0) {
+        const hasAnnotationSave = data.tool_calls.some(tc => tc.tool === 'save_annotation')
+        if (hasAnnotationSave) {
+          await fetchAnnotations()
+        }
       }
     } catch (err) {
       console.error('Error sending message:', err)

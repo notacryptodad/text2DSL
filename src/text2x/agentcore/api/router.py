@@ -87,6 +87,22 @@ class AgentStatusResponse(BaseModel):
     )
 
 
+class ChatRequest(BaseModel):
+    """Request for chat endpoint."""
+
+    message: str = Field(..., description="User's message")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID for multi-turn")
+    context: Optional[Dict[str, Any]] = Field(None, description="Additional context (e.g., selected_table)")
+
+
+class ChatResponse(BaseModel):
+    """Response from chat endpoint."""
+
+    response: str = Field(..., description="Agent's response")
+    conversation_id: str = Field(..., description="Conversation ID")
+    tool_calls: Optional[List[Dict[str, Any]]] = Field(None, description="Tool calls made (if any)")
+
+
 # Endpoints
 @router.get("/", response_model=AgentListResponse)
 async def list_agents() -> AgentListResponse:
@@ -178,3 +194,58 @@ async def get_agent_status(agent_name: str) -> AgentStatusResponse:
         status="active" if runtime.is_started else "inactive",
         conversation_history_length=len(agent.get_history()),
     )
+
+
+@router.post("/{agent_name}/chat", response_model=ChatResponse)
+async def chat_with_agent(
+    agent_name: str,
+    request: ChatRequest,
+) -> ChatResponse:
+    """Chat with an agent (multi-turn conversation support).
+
+    Args:
+        agent_name: Name of the agent to chat with
+        request: Chat request containing message and optional conversation_id
+
+    Returns:
+        Agent response with conversation_id and optional tool_calls
+
+    Raises:
+        HTTPException: If agent not found or chat fails
+    """
+    runtime = get_runtime()
+
+    try:
+        agent = runtime.get_agent(agent_name)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent '{agent_name}' not found",
+        ) from e
+
+    try:
+        # Build input data for agent
+        context = request.context or {}
+        input_data = {
+            "message": request.message,
+            "conversation_id": request.conversation_id,
+            "context": context,
+            # Extract provider_id and user_id from context if present
+            "provider_id": context.get("provider_id", ""),
+            "user_id": context.get("user_id", "system"),
+        }
+
+        # Process message
+        output_data = await agent.process(input_data)
+
+        return ChatResponse(
+            response=output_data.get("response", ""),
+            conversation_id=output_data.get("conversation_id", ""),
+            tool_calls=output_data.get("tool_calls"),
+        )
+    except Exception as e:
+        logger.error(f"Chat with agent failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Chat with agent failed: {str(e)}",
+        ) from e

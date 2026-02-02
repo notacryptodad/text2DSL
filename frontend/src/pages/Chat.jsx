@@ -175,6 +175,7 @@ function Chat() {
           providerId: selectedProvider.id,
           iterations: result.iterations,
           turnId: result.turn_id,
+          explanation: result.query_explanation,
           timestamp: new Date(),
         })
         break

@@ -256,6 +256,10 @@ class QueryResponse(BaseModel):
         description="Questions for user clarification",
     )
     iterations: int = Field(..., ge=1, description="Number of refinement iterations performed")
+    query_explanation: Optional[str] = Field(
+        default=None,
+        description="Natural language explanation of what the query does",
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

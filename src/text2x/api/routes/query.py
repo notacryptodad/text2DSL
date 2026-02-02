@@ -73,6 +73,7 @@ def get_orchestrator():
 async def process_query(
     request: QueryRequest,
     current_user: Optional[User] = Depends(get_current_user),
+    use_agentcore: bool = False,
 ) -> QueryResponse:
     """
     Process a natural language query and generate executable database query.
@@ -86,6 +87,7 @@ async def process_query(
 
     Args:
         request: Query request with natural language input
+        use_agentcore: If True, use QueryAgent from AgentCore instead of orchestrator
 
     Returns:
         QueryResponse with generated query and metadata
@@ -110,7 +112,7 @@ async def process_query(
         ):
             logger.info(
                 f"Processing query for provider {request.provider_id}, "
-                f"conversation_id={conversation_id}"
+                f"conversation_id={conversation_id}, use_agentcore={use_agentcore}"
             )
 
             # Merge request options with defaults
@@ -123,6 +125,140 @@ async def process_query(
                 if request.options.enable_execution is not None
                 else settings.enable_execution
             )
+
+            # Extract user ID from auth context if available
+            user_id = current_user.id if current_user else "anonymous"
+
+            # Use AgentCore QueryAgent if requested
+            if use_agentcore:
+                from text2x.api.state import app_state
+                from text2x.repositories.provider import ProviderRepository
+                from uuid import UUID as PyUUID
+
+                # Get provider to access schema
+                provider_repo = ProviderRepository()
+                provider_uuid = PyUUID(request.provider_id) if request.provider_id else None
+                provider = await provider_repo.get_by_id(provider_uuid) if provider_uuid else None
+
+                if not provider:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=ErrorResponse(
+                            error="provider_not_found",
+                            message=f"Provider {request.provider_id} not found",
+                        ).model_dump(),
+                    )
+
+                # Get or create QueryAgent instance
+                runtime = app_state.agentcore
+                agent_name = f"query_{request.provider_id}"
+
+                # Check if agent already exists
+                if agent_name not in runtime.agents:
+                    from text2x.agentcore.agents.query import QueryAgent
+
+                    # Create agent instance
+                    agent = QueryAgent(runtime, agent_name)
+
+                    # Set provider on agent
+                    from text2x.providers.factory import get_provider_instance
+                    query_provider = await get_provider_instance(provider)
+                    agent.set_provider(query_provider)
+
+                    # Register agent with runtime
+                    runtime.agents[agent_name] = agent
+                    logger.info(f"Created QueryAgent instance: {agent_name}")
+                else:
+                    agent = runtime.agents[agent_name]
+
+                # Get schema context
+                schema_context = {}
+                try:
+                    schema = await provider.get_schema()
+                    if schema:
+                        schema_context["tables"] = [
+                            {
+                                "name": table.name,
+                                "columns": [
+                                    {"name": col.name, "type": col.type}
+                                    for col in table.columns
+                                ],
+                            }
+                            for table in schema.tables
+                        ]
+                except Exception as e:
+                    logger.warning(f"Failed to get schema: {e}")
+
+                # Process query through QueryAgent
+                agent_result = await agent.process({
+                    "user_message": request.query,
+                    "provider_id": request.provider_id,
+                    "schema_context": schema_context,
+                    "enable_execution": enable_execution,
+                    "reset_conversation": not request.conversation_id,
+                })
+
+                # Build API response from agent result
+                generated_query = agent_result.get("generated_query", "")
+                query_explanation = agent_result.get("query_explanation", "")
+                execution_result = agent_result.get("execution_result")
+
+                # Build validation result (simplified for AgentCore path)
+                from text2x.api.models import (
+                    ValidationResult as APIValidationResult,
+                    ExecutionResult as APIExecutionResult,
+                )
+
+                api_validation_status = ValidationStatus.VALID if generated_query else ValidationStatus.UNKNOWN
+                api_validation_result = APIValidationResult(
+                    status=api_validation_status,
+                    errors=[],
+                    warnings=[],
+                    suggestions=[],
+                )
+
+                # Build execution result if available
+                api_execution_result = None
+                if execution_result:
+                    api_execution_result = APIExecutionResult(
+                        success=execution_result.get("success", False),
+                        row_count=execution_result.get("row_count", 0),
+                        data=execution_result.get("rows"),
+                        error_message=execution_result.get("error"),
+                        execution_time_ms=int(execution_result.get("execution_time_ms", 0)),
+                    )
+
+                # Build final API response
+                api_response = QueryResponse(
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    generated_query=generated_query,
+                    confidence_score=1.0 if generated_query else 0.0,  # Simplified confidence
+                    validation_status=api_validation_status,
+                    validation_result=api_validation_result,
+                    execution_result=api_execution_result,
+                    reasoning_trace=None,
+                    needs_clarification=False,
+                    clarification_questions=[],
+                    iterations=1,
+                    query_explanation=query_explanation,  # Add explanation field
+                )
+
+                logger.info(
+                    f"Query processed via AgentCore: turn_id={turn_id}, "
+                    f"has_query={bool(generated_query)}"
+                )
+
+                # Record metrics
+                query_duration = time.time() - start_time
+                provider_type = provider.type.value if provider else "unknown"
+
+                record_query_success(provider_type)
+                record_query_latency(provider_type, query_duration)
+                record_iterations(provider_type, 1)
+                record_validation_result(provider_type, True)
+
+                return api_response
 
             # Get orchestrator and process query
             orchestrator = get_orchestrator()
