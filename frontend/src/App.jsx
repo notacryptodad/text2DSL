@@ -123,6 +123,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/admin/schema-annotation"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <SchemaAnnotation />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Default Redirect */}
           <Route path="/" element={<Navigate to="/app" replace />} />

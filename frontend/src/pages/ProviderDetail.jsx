@@ -371,7 +371,7 @@ function ProviderDetail() {
                     </div>
                     <div className="flex items-center space-x-2">
                       <Link
-                        to={`/schema-annotation?workspace=${workspaceId}&connection=${conn.id}`}
+                        to={`/admin/schema-annotation?workspace=${workspaceId}&connection=${conn.id}`}
                         className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
                         title="View & annotate schema"
                       >
