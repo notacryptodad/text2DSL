@@ -23,8 +23,12 @@ class User(BaseModel):
 
     id: str = Field(..., description="Unique user identifier")
     email: str = Field(..., description="User email address")
-    roles: list[str] = Field(default_factory=list, description="User roles")
+    name: str = Field(default="", description="User's full name")
+    role: str = Field(default="user", description="User role")
+    roles: list[str] = Field(default_factory=list, description="User roles (deprecated)")
     is_active: bool = Field(default=True, description="Whether user is active")
+    created_at: Optional[str] = Field(default=None, description="When user was created")
+    updated_at: Optional[str] = Field(default=None, description="When user was last updated")
 
 
 class TokenPayload(BaseModel):
@@ -246,8 +250,12 @@ async def get_current_user_from_token(
             user = User(
                 id=str(db_user.id),
                 email=db_user.email,
-                roles=[db_user.role.value],
+                name=db_user.name,
+                role=db_user.role.value if hasattr(db_user.role, 'value') else str(db_user.role),
+                roles=[db_user.role.value if hasattr(db_user.role, 'value') else str(db_user.role)],
                 is_active=db_user.is_active,
+                created_at=db_user.created_at.isoformat() if hasattr(db_user.created_at, 'isoformat') else str(db_user.created_at),
+                updated_at=db_user.updated_at.isoformat() if hasattr(db_user.updated_at, 'isoformat') else str(db_user.updated_at),
             )
             return user
     except Exception as e:

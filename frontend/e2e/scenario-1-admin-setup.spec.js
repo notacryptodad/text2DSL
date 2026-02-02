@@ -19,10 +19,8 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage.js';
 test.describe.configure({ mode: 'serial' });
 
 // Admin setup tests - frontend features implemented
-// Tests are skipped due to authentication issue: super_admin role redirects to /app
-// The frontend forms, buttons, and API integrations are complete and ready for testing
-// once the authentication/authorization issue is resolved
-test.describe.skip('Scenario 1: Admin Setup', () => {
+// Testing complete admin setup workflow with workspaces, providers, and connections
+test.describe('Scenario 1: Admin Setup', () => {
   // Use super admin authentication
   test.use({ storageState: './e2e/.auth/super_admin.json' });
 

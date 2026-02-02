@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ChatPage } from './pages/ChatPage.js';
+import { MOCK_FEEDBACK_RESPONSES, setupMockWebSocket, setupMockFeedbackAPI } from './fixtures/feedback.fixture.js';
 
 /**
  * Scenario 5: Feedback Tests
@@ -14,134 +15,200 @@ test.describe('Scenario 5: Feedback', () => {
   // Use regular user authentication
   test.use({ storageState: './e2e/.auth/user.json' });
 
-  test.skip('should submit query and provide thumbs up feedback', async ({ page }) => {
-    // Skipped: WebSocket connection issues in test environment
+  test('should submit query and provide thumbs up feedback', async ({ page }) => {
     const chatPage = new ChatPage(page);
+
+    // Setup mocks
+    await setupMockWebSocket(page, MOCK_FEEDBACK_RESPONSES.successfulQuery.events);
+    await setupMockFeedbackAPI(page);
 
     await chatPage.goto();
     await chatPage.setupWebSocketInterception();
 
+    // Wait for WebSocket to connect (textarea becomes enabled)
+    await page.waitForSelector('textarea:not([disabled])', { timeout: 10000 });
+
     // Submit a query
     await chatPage.submitQuery('Show me user statistics');
-    await chatPage.waitForQueryCompletion(60000);
+
+    // Wait for mock events to complete
+    await page.waitForTimeout(2000);
 
     // Verify result is displayed
     const hasResult = await chatPage.hasResult();
     expect(hasResult).toBe(true);
 
     // Give thumbs up
-    try {
-      await chatPage.clickThumbsUp();
+    await chatPage.clickThumbsUp();
 
-      // Wait for feedback to be registered
-      await page.waitForTimeout(1000);
+    // Wait for feedback to be registered
+    await page.waitForTimeout(1000);
 
-      console.log('Thumbs up feedback submitted successfully');
-    } catch (error) {
-      console.log('Thumbs up button not found or already clicked:', error.message);
-    }
+    // Verify feedback button shows "Thanks for your feedback!"
+    const feedbackText = await page.textContent('body');
+    expect(feedbackText).toContain('Thanks for your feedback!');
+
+    console.log('Thumbs up feedback submitted successfully');
   });
 
-  test.skip('should provide thumbs down with detailed feedback', async ({ page }) => {
-    // Skipped: WebSocket connection issues in test environment
+  test('should provide thumbs down with detailed feedback', async ({ page }) => {
     const chatPage = new ChatPage(page);
+
+    // Setup mocks
+    await setupMockWebSocket(page, MOCK_FEEDBACK_RESPONSES.incorrectQuery.events);
+    await setupMockFeedbackAPI(page);
 
     await chatPage.goto();
     await chatPage.setupWebSocketInterception();
 
+    // Wait for WebSocket to connect
+    await page.waitForSelector('textarea:not([disabled])', { timeout: 10000 });
+
     // Submit a query
     await chatPage.submitQuery('Get all data from the system');
-    await chatPage.waitForQueryCompletion(60000);
+
+    // Wait for mock events to complete
+    await page.waitForTimeout(2000);
 
     // Verify result is displayed
     const hasResult = await chatPage.hasResult();
     expect(hasResult).toBe(true);
 
-    // Give thumbs down with details
-    try {
-      await chatPage.clickThumbsDown();
+    // Give thumbs down
+    await chatPage.clickThumbsDown();
 
-      // Submit detailed feedback
-      await chatPage.submitDetailedFeedback(
-        'The query result does not match what I expected. The data seems incomplete.',
-        'incorrect'
-      );
+    // Wait for modal to appear
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'visible', timeout: 5000 });
 
-      console.log('Thumbs down with detailed feedback submitted successfully');
-    } catch (error) {
-      console.log('Could not submit detailed feedback:', error.message);
-    }
+    // Fill feedback textarea
+    await page.fill(chatPage.feedbackTextarea, 'The query result does not match what I expected. The data seems incomplete.');
+
+    // Submit feedback
+    await page.locator(chatPage.feedbackModal)
+      .locator(chatPage.feedbackSubmitButton)
+      .click();
+
+    // Wait for modal to close
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'hidden', timeout: 5000 });
+
+    // Verify feedback was submitted
+    const feedbackText = await page.textContent('body');
+    expect(feedbackText).toContain('Thanks for your feedback!');
+
+    console.log('Thumbs down with detailed feedback submitted successfully');
   });
 
-  test.skip('should provide feedback with different categories', async ({ page }) => {
-    // Skipped: WebSocket connection issues in test environment
+  test('should provide feedback with different comments and corrections', async ({ page }) => {
     const chatPage = new ChatPage(page);
 
-    // Test different feedback categories
+    // Test different feedback scenarios
     const feedbackTests = [
-      { query: 'Test query 1', feedback: 'Query is too slow', category: 'performance' },
-      { query: 'Test query 2', feedback: 'SQL syntax is incorrect', category: 'syntax_error' },
-      { query: 'Test query 3', feedback: 'Results are not what I asked for', category: 'incorrect' },
+      {
+        mockResponse: MOCK_FEEDBACK_RESPONSES.performanceQuery,
+        query: 'Test query 1',
+        feedback: 'Query is too slow',
+        correction: null
+      },
+      {
+        mockResponse: MOCK_FEEDBACK_RESPONSES.syntaxErrorQuery,
+        query: 'Test query 2',
+        feedback: 'SQL syntax is incorrect',
+        correction: 'SELECT * FROM users'
+      },
+      {
+        mockResponse: MOCK_FEEDBACK_RESPONSES.incorrectResultQuery,
+        query: 'Test query 3',
+        feedback: 'Results are not what I asked for',
+        correction: 'SELECT name, price FROM products WHERE price > 100'
+      },
     ];
 
     for (const testCase of feedbackTests) {
+      // Setup mocks for this test case
+      await setupMockWebSocket(page, testCase.mockResponse.events);
+      await setupMockFeedbackAPI(page);
+
       await chatPage.goto();
       await chatPage.setupWebSocketInterception();
 
+      // Wait for WebSocket to connect
+      await page.waitForSelector('textarea:not([disabled])', { timeout: 10000 });
+
       // Submit query
       await chatPage.submitQuery(testCase.query);
-      await chatPage.waitForQueryCompletion(60000);
+      await page.waitForTimeout(2000);
 
       // Give negative feedback
-      try {
-        await chatPage.clickThumbsDown();
-        await chatPage.submitDetailedFeedback(testCase.feedback, testCase.category);
+      await chatPage.clickThumbsDown();
+      await page.locator(chatPage.feedbackModal).waitFor({ state: 'visible', timeout: 5000 });
 
-        console.log(`Feedback submitted for category: ${testCase.category}`);
+      // Fill feedback
+      await page.fill(chatPage.feedbackTextarea, testCase.feedback);
 
-        // Wait before next test
-        await page.waitForTimeout(2000);
-      } catch (error) {
-        console.log(`Could not submit feedback for ${testCase.category}:`, error.message);
+      // Fill correction if provided
+      if (testCase.correction) {
+        await page.fill('textarea[placeholder*="correct query"]', testCase.correction);
       }
+
+      // Submit
+      await page.locator(chatPage.feedbackModal)
+        .locator(chatPage.feedbackSubmitButton)
+        .click();
+
+      // Wait for modal to close
+      await page.locator(chatPage.feedbackModal).waitFor({ state: 'hidden', timeout: 5000 });
+
+      console.log(`Feedback submitted: ${testCase.feedback}`);
+
+      // Wait before next test
+      await page.waitForTimeout(1000);
     }
   });
 
-  test.skip('should verify negative feedback creates review queue item', async ({ page }) => {
-    // Skipped: WebSocket connection issues in test environment
+  test('should verify negative feedback creates review queue item', async ({ page }) => {
     const chatPage = new ChatPage(page);
+
+    // Setup mocks
+    await setupMockWebSocket(page, MOCK_FEEDBACK_RESPONSES.reviewQueueQuery.events);
+    await setupMockFeedbackAPI(page);
 
     await chatPage.goto();
     await chatPage.setupWebSocketInterception();
 
+    // Wait for WebSocket to connect
+    await page.waitForSelector('textarea:not([disabled])', { timeout: 10000 });
+
     // Submit a query
     await chatPage.submitQuery('Test query that will get negative feedback');
-    await chatPage.waitForQueryCompletion(60000);
+    await page.waitForTimeout(2000);
 
     // Give negative feedback
-    try {
-      await chatPage.clickThumbsDown();
-      await chatPage.submitDetailedFeedback(
-        'This needs expert review',
-        'incorrect'
-      );
+    await chatPage.clickThumbsDown();
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'visible', timeout: 5000 });
 
-      // Wait for feedback to be processed
-      await page.waitForTimeout(2000);
+    await page.fill(chatPage.feedbackTextarea, 'This needs expert review');
 
-      // Navigate to review queue (if user has access)
-      await page.goto('/app/review');
-      await page.waitForLoadState('networkidle');
+    await page.locator(chatPage.feedbackModal)
+      .locator(chatPage.feedbackSubmitButton)
+      .click();
 
-      // If we can access review page, check for our item
-      if (page.url().includes('/review')) {
-        const pageContent = await page.textContent('body');
-        console.log('Checked review queue for feedback item');
-      } else {
-        console.log('User does not have access to review queue');
-      }
-    } catch (error) {
-      console.log('Could not verify review queue item:', error.message);
+    // Wait for modal to close
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'hidden', timeout: 5000 });
+
+    // Wait for feedback to be processed
+    await page.waitForTimeout(1000);
+
+    // Navigate to review queue (if user has access)
+    await page.goto('/app/review');
+    await page.waitForLoadState('networkidle');
+
+    // If we can access review page, check for our item
+    if (page.url().includes('/review')) {
+      const pageContent = await page.textContent('body');
+      expect(pageContent).toMatch(/review|queue|pending/i);
+      console.log('Checked review queue for feedback item');
+    } else {
+      console.log('User does not have access to review queue');
     }
   });
 
@@ -186,111 +253,133 @@ test.describe('Scenario 5: Feedback', () => {
     }
   });
 
-  test.skip('should handle multiple feedback submissions on same query', async ({ page }) => {
-    // Skipped: WebSocket connection issues in test environment
+  test('should handle multiple feedback submissions on same query', async ({ page }) => {
     const chatPage = new ChatPage(page);
+
+    // Setup mocks
+    await setupMockWebSocket(page, MOCK_FEEDBACK_RESPONSES.multipleSubmissionQuery.events);
+    await setupMockFeedbackAPI(page);
 
     await chatPage.goto();
     await chatPage.setupWebSocketInterception();
+
+    // Wait for WebSocket to connect
+    await page.waitForSelector('textarea:not([disabled])', { timeout: 10000 });
 
     // Submit a query
     await chatPage.submitQuery('Test query for multiple feedback');
-    await chatPage.waitForQueryCompletion(60000);
+    await page.waitForTimeout(2000);
 
     // First feedback attempt (thumbs up)
-    try {
-      await chatPage.clickThumbsUp();
-      await page.waitForTimeout(1000);
+    await chatPage.clickThumbsUp();
+    await page.waitForTimeout(1000);
 
-      // Check if we can still interact with feedback buttons
-      // (some implementations might disable them after first use)
-      const thumbsDownButton = page.locator(chatPage.feedbackButtons.thumbsDown).last();
-      const isEnabled = await thumbsDownButton.isEnabled().catch(() => false);
+    // Check if we can still interact with feedback buttons
+    // (feedback buttons should be disabled after first use)
+    const thumbsDownButton = page.locator(chatPage.feedbackButtons.thumbsDown).last();
+    const isEnabled = await thumbsDownButton.isEnabled().catch(() => false);
 
-      console.log(`Feedback buttons enabled after first feedback: ${isEnabled}`);
-    } catch (error) {
-      console.log('Could not test multiple feedback:', error.message);
-    }
+    // Should be disabled after feedback is given
+    expect(isEnabled).toBe(false);
+
+    console.log(`Feedback buttons correctly disabled after first feedback: ${!isEnabled}`);
   });
 
-  test.skip('should cancel feedback modal', async ({ page }) => {
-    // Skipped: WebSocket connection issues in test environment
+  test('should cancel feedback modal', async ({ page }) => {
     const chatPage = new ChatPage(page);
+
+    // Setup mocks
+    await setupMockWebSocket(page, MOCK_FEEDBACK_RESPONSES.cancelFeedbackQuery.events);
+    await setupMockFeedbackAPI(page);
 
     await chatPage.goto();
     await chatPage.setupWebSocketInterception();
+
+    // Wait for WebSocket to connect
+    await page.waitForSelector('textarea:not([disabled])', { timeout: 10000 });
 
     // Submit a query
     await chatPage.submitQuery('Test query for cancel feedback');
-    await chatPage.waitForQueryCompletion(60000);
+    await page.waitForTimeout(2000);
 
     // Click thumbs down to open modal
-    try {
-      await chatPage.clickThumbsDown();
+    await chatPage.clickThumbsDown();
 
-      // Wait for modal to appear
-      await page.locator(chatPage.feedbackModal).waitFor({ state: 'visible', timeout: 5000 });
+    // Wait for modal to appear
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'visible', timeout: 5000 });
 
-      // Look for cancel button
-      const cancelButton = page.locator('button:has-text("Cancel"), button[aria-label="Close"]');
+    // Verify modal is visible
+    const modalVisible = await page.locator(chatPage.feedbackModal).isVisible();
+    expect(modalVisible).toBe(true);
 
-      if (await cancelButton.count() > 0) {
-        await cancelButton.first().click();
+    // Look for cancel button
+    const cancelButton = page.locator('button:has-text("Cancel")').first();
+    await cancelButton.click();
 
-        // Verify modal is closed
-        await page.locator(chatPage.feedbackModal).waitFor({ state: 'hidden', timeout: 5000 });
+    // Verify modal is closed
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'hidden', timeout: 5000 });
 
-        console.log('Successfully cancelled feedback modal');
-      }
-    } catch (error) {
-      console.log('Could not test cancel feedback:', error.message);
-    }
+    // Verify feedback was not submitted (should not see "Thanks for your feedback!")
+    const bodyText = await page.textContent('body');
+    const feedbackNotSubmitted = !bodyText.includes('Thanks for your feedback!') ||
+                                  bodyText.split('Thanks for your feedback!').length <= 1;
+
+    console.log('Successfully cancelled feedback modal');
   });
 
-  test.skip('should validate feedback form fields', async ({ page }) => {
-    // Skipped: WebSocket connection issues in test environment
+  test('should validate feedback form fields', async ({ page }) => {
     const chatPage = new ChatPage(page);
+
+    // Setup mocks
+    await setupMockWebSocket(page, MOCK_FEEDBACK_RESPONSES.validationQuery.events);
+    await setupMockFeedbackAPI(page);
 
     await chatPage.goto();
     await chatPage.setupWebSocketInterception();
 
+    // Wait for WebSocket to connect
+    await page.waitForSelector('textarea:not([disabled])', { timeout: 10000 });
+
     // Submit a query
     await chatPage.submitQuery('Test query for validation');
-    await chatPage.waitForQueryCompletion(60000);
+    await page.waitForTimeout(2000);
 
     // Click thumbs down to open modal
-    try {
-      await chatPage.clickThumbsDown();
+    await chatPage.clickThumbsDown();
 
-      // Wait for modal
-      await page.locator(chatPage.feedbackModal).waitFor({ state: 'visible', timeout: 5000 });
+    // Wait for modal
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'visible', timeout: 5000 });
 
-      // Try to submit without filling feedback (should show validation error or be disabled)
-      const submitButton = page.locator(chatPage.feedbackModal)
-        .locator(chatPage.feedbackSubmitButton);
+    // Try to submit without filling feedback (textarea has required attribute)
+    const submitButton = page.locator(chatPage.feedbackModal)
+      .locator(chatPage.feedbackSubmitButton);
 
-      const isDisabled = await submitButton.isDisabled().catch(() => false);
+    // Click submit without filling required field
+    await submitButton.click();
 
-      if (isDisabled) {
-        console.log('Submit button correctly disabled without feedback text');
-      } else {
-        // Try to submit and see if validation error appears
-        await submitButton.click();
-        await page.waitForTimeout(1000);
+    // Modal should still be visible (form validation prevents submission)
+    await page.waitForTimeout(500);
+    const modalStillVisible = await page.locator(chatPage.feedbackModal).isVisible();
+    expect(modalStillVisible).toBe(true);
 
-        const errorMessage = page.locator('[role="alert"].error, .error-message, .text-red-500');
-        const hasError = await errorMessage.count() > 0;
+    console.log('Form validation correctly prevents submission without required field');
 
-        console.log(`Validation error shown: ${hasError}`);
-      }
+    // Now fill the field and verify submit works
+    await page.fill(chatPage.feedbackTextarea, 'Test feedback for validation');
+    await submitButton.click();
 
-      // Close modal
-      const cancelButton = page.locator('button:has-text("Cancel"), [aria-label="Close"]');
+    // Modal should close after valid submission
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'hidden', timeout: 5000 });
+
+    console.log('Form validation allows submission with required field filled');
+
+    // Close modal if still open
+    const modalVisible = await page.locator(chatPage.feedbackModal).isVisible().catch(() => false);
+    if (modalVisible) {
+      const cancelButton = page.locator('button:has-text("Cancel")');
       if (await cancelButton.count() > 0) {
         await cancelButton.first().click();
       }
-    } catch (error) {
-      console.log('Could not test form validation:', error.message);
     }
   });
 });

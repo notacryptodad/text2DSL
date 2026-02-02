@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { ReviewPage } from './pages/ReviewPage.js';
 import { ChatPage } from './pages/ChatPage.js';
+import { MOCK_FEEDBACK_RESPONSES, setupMockWebSocket, setupMockFeedbackAPI } from './fixtures/feedback.fixture.js';
 
 /**
  * Scenario 4: Review Queue Tests
@@ -45,31 +46,46 @@ test.describe('Scenario 4: Review Queue', () => {
     expect(pageContent).toMatch(/review|queue|pending|no items/i);
   });
 
-  test.skip('should create test item for review by submitting negative feedback', async ({ page }) => {
-    // Skipped: WebSocket connection issues in test environment
+  test('should create test item for review by submitting negative feedback', async ({ page }) => {
     // First, submit a query with negative feedback to populate review queue
     const chatPage = new ChatPage(page);
+
+    // Setup mocks
+    await setupMockWebSocket(page, MOCK_FEEDBACK_RESPONSES.reviewQueueQuery.events);
+    await setupMockFeedbackAPI(page);
 
     // Navigate to chat
     await chatPage.goto();
     await chatPage.setupWebSocketInterception();
 
+    // Wait for WebSocket to connect
+    await page.waitForSelector('textarea:not([disabled])', { timeout: 10000 });
+
     // Submit a simple query
     await chatPage.submitQuery('Test query for review');
-    await chatPage.waitForQueryCompletion(60000);
+    await page.waitForTimeout(2000);
 
     // Give negative feedback
-    try {
-      await chatPage.clickThumbsDown();
-      await chatPage.submitDetailedFeedback('This query result is incorrect', 'incorrect');
+    await chatPage.clickThumbsDown();
 
-      // Wait for feedback to be processed
-      await page.waitForTimeout(2000);
+    // Wait for modal to appear
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'visible', timeout: 5000 });
 
-      console.log('Created test item for review queue');
-    } catch (error) {
-      console.log('Could not create test item:', error.message);
-    }
+    // Fill feedback
+    await page.fill(chatPage.feedbackTextarea, 'This query result is incorrect');
+
+    // Submit feedback
+    await page.locator(chatPage.feedbackModal)
+      .locator(chatPage.feedbackSubmitButton)
+      .click();
+
+    // Wait for modal to close
+    await page.locator(chatPage.feedbackModal).waitFor({ state: 'hidden', timeout: 5000 });
+
+    // Wait for feedback to be processed
+    await page.waitForTimeout(1000);
+
+    console.log('Created test item for review queue');
   });
 
   test('should approve a query from review queue', async ({ page }) => {

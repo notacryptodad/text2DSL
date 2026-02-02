@@ -36,10 +36,23 @@ test.describe('Scenario 0: User Management', () => {
     expect(errorMessage.toLowerCase()).toMatch(/invalid|failed|incorrect|error/);
   });
 
-  test.skip('should allow super admin to access admin dashboard', async ({ page }) => {
-    // TODO: Fix admin role check in frontend
-    // The admin link doesn't appear even though user has super_admin role
-    // Skipping for now as admin dashboard functionality is tested elsewhere
+  test('should allow super admin to access admin dashboard', async ({ page }) => {
+    const loginPage = new LoginPage(page);
+
+    // Login as super admin
+    await loginPage.goto();
+    await loginViaUI(page, TEST_USERS.admin);
+
+    // Navigate to admin dashboard
+    await page.goto('/admin');
+    await page.waitForLoadState('networkidle');
+
+    // Verify we're on the admin dashboard
+    expect(page.url()).toContain('/admin');
+
+    // Verify admin dashboard content is visible
+    const pageContent = await page.textContent('body');
+    expect(pageContent).toContain('Admin Dashboard');
   });
 
   test('should prevent regular user from accessing admin dashboard', async ({ page }) => {
@@ -58,10 +71,24 @@ test.describe('Scenario 0: User Management', () => {
     expect(page.url()).not.toContain('/admin');
   });
 
-  test.skip('should display user information after login', async ({ page }) => {
-    // TODO: Fix user info display check
-    // User name/email visibility needs proper wait for React rendering
-    // Skipping for now as login functionality is verified by other tests
+  test('should display user information after login', async ({ page }) => {
+    const loginPage = new LoginPage(page);
+
+    // Login as regular user
+    await loginPage.goto();
+    await loginViaUI(page, TEST_USERS.user);
+
+    // Navigate to profile page
+    await page.goto('/app/profile');
+    await page.waitForLoadState('networkidle');
+
+    // Verify user profile page is displayed
+    const pageContent = await page.textContent('body');
+    expect(pageContent).toContain('Your Profile');
+
+    // Verify user information is displayed
+    expect(pageContent).toContain(TEST_USERS.user.name);
+    expect(pageContent).toContain(TEST_USERS.user.email);
   });
 
   test('should logout successfully', async ({ page }) => {

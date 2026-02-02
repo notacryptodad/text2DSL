@@ -1,6 +1,6 @@
 """Authentication endpoints."""
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -50,8 +50,11 @@ class UserResponse(BaseModel):
 
     id: str = Field(..., description="User ID")
     email: str = Field(..., description="User email")
-    roles: list[str] = Field(default_factory=list, description="User roles")
+    name: str = Field(..., description="User's full name")
+    role: str = Field(..., description="User role")
     is_active: bool = Field(..., description="User active status")
+    created_at: str = Field(..., description="When user was created")
+    updated_at: str = Field(..., description="When user was last updated")
 
 
 @router.post(
@@ -245,8 +248,11 @@ async def get_me(current_user: User = Depends(get_current_active_user)) -> UserR
         return UserResponse(
             id=current_user.id,
             email=current_user.email,
-            roles=current_user.roles,
+            name=current_user.name,
+            role=current_user.role,
             is_active=current_user.is_active,
+            created_at=current_user.created_at or datetime.now().isoformat(),
+            updated_at=current_user.updated_at or datetime.now().isoformat(),
         )
 
     except Exception as e:
