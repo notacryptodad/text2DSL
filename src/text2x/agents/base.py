@@ -32,6 +32,7 @@ class LLMConfig:
     temperature: float = 0.1
     max_tokens: int = 4096
     timeout: float = 120.0
+    use_litellm: bool = True  # Use LiteLLM by default
 
 
 @dataclass
@@ -51,7 +52,7 @@ class LLMResponse:
 
 
 class LLMClient:
-    """OpenAI-compatible LLM client"""
+    """OpenAI-compatible LLM client (legacy, use LiteLLMClient instead)"""
     
     def __init__(self, config: LLMConfig):
         self.config = config
@@ -104,12 +105,75 @@ class LLMClient:
         await self.client.aclose()
 
 
+class LiteLLMAdapter:
+    """Adapter to use LiteLLMClient with the same interface as LLMClient"""
+    
+    def __init__(self, config: LLMConfig):
+        self.config = config
+        # Import here to avoid circular imports
+        from text2x.llm.litellm_client import LiteLLMClient, DEFAULT_MODEL, DEFAULT_REGION
+        
+        # Use Bedrock model if no model specified or if it looks like an OpenAI model
+        model = config.model
+        if not model or model.startswith("gpt-") or model.startswith("text-"):
+            model = DEFAULT_MODEL
+        elif not model.startswith("bedrock/"):
+            model = f"bedrock/{model}"
+        
+        self.litellm_client = LiteLLMClient(
+            model=model,
+            region=DEFAULT_REGION,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+        )
+    
+    async def invoke(
+        self,
+        messages: List[LLMMessage],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> LLMResponse:
+        """Invoke LLM with messages using LiteLLM"""
+        temp = temperature if temperature is not None else self.config.temperature
+        max_tok = max_tokens if max_tokens is not None else self.config.max_tokens
+        
+        # Convert LLMMessage to dict format
+        message_dicts = [{"role": m.role, "content": m.content} for m in messages]
+        
+        try:
+            response = await self.litellm_client.acomplete(
+                messages=message_dicts,
+                temperature=temp,
+                max_tokens=max_tok,
+            )
+            
+            choice = response.choices[0]
+            return LLMResponse(
+                content=choice.message.content,
+                tokens_used=response.usage.total_tokens if response.usage else 0,
+                model=response.model or self.litellm_client.model,
+                finish_reason=choice.finish_reason or "stop"
+            )
+        except Exception as e:
+            raise RuntimeError(f"LiteLLM invocation failed: {str(e)}") from e
+    
+    async def close(self):
+        """No-op for LiteLLM (no persistent connection)"""
+        pass
+
+
 class BaseAgent(ABC):
     """Base class for all agents"""
     
     def __init__(self, llm_config: LLMConfig, agent_name: Optional[str] = None):
         self.llm_config = llm_config
-        self.llm_client = LLMClient(llm_config)
+        
+        # Use LiteLLM adapter by default, fall back to httpx client if explicitly disabled
+        if llm_config.use_litellm:
+            self.llm_client = LiteLLMAdapter(llm_config)
+        else:
+            self.llm_client = LLMClient(llm_config)
+        
         self.agent_name = agent_name or self.__class__.__name__
         self.reasoning_traces: List[ReasoningTrace] = []
     
