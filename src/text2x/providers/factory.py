@@ -22,10 +22,13 @@ async def get_provider_instance(provider_model) -> "QueryProvider":
     """
     provider_type = provider_model.type
     
-    # Get connection details from the provider's connection
-    connection = provider_model.connection
-    if not connection:
-        raise ValueError(f"Provider {provider_model.id} has no associated connection")
+    # Get connection details from the provider's connections (one-to-many)
+    connections = provider_model.connections
+    if not connections:
+        raise ValueError(f"Provider {provider_model.id} has no associated connections")
+    
+    # Use the first connection
+    connection = connections[0]
     
     credentials = connection.credentials or {}
     username = credentials.get("username", "")
