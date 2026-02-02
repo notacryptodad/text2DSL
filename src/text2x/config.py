@@ -169,6 +169,28 @@ class Settings(BaseSettings):
         default=False, validation_alias="ALLOW_SELF_REGISTRATION"
     )
 
+    # AgentCore Configuration
+    agentcore_mode: str = Field(
+        default="local",
+        validation_alias="AGENTCORE_MODE",
+        description="AgentCore mode: 'local' (in-process) or 'remote' (HTTP calls)"
+    )
+    agentcore_url: Optional[str] = Field(
+        default=None,
+        validation_alias="AGENTCORE_URL",
+        description="Base URL for remote AgentCore service"
+    )
+    agentcore_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias="AGENTCORE_API_KEY",
+        description="API key for remote AgentCore authentication"
+    )
+    agentcore_timeout: int = Field(
+        default=120,
+        validation_alias="AGENTCORE_TIMEOUT",
+        description="Timeout in seconds for AgentCore requests"
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:
