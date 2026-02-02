@@ -9,6 +9,7 @@ class AppState:
         self.db_engine = None
         self.redis_client = None
         self.opensearch_client = None
+        self.agentcore = None
         self.start_time = time.time()
 
 

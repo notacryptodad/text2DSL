@@ -54,6 +54,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await initialize_orchestrator()
         logger.info("Orchestrator initialized successfully")
 
+        # Initialize AgentCore
+        await initialize_agentcore()
+        logger.info("AgentCore initialized successfully")
+
         logger.info(
             f"Text2DSL API started successfully on {settings.api_host}:{settings.api_port}"
         )
@@ -82,6 +86,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if app_state.opensearch_client:
             await app_state.opensearch_client.close()
             logger.info("OpenSearch connection closed")
+
+        # Stop AgentCore
+        if app_state.agentcore:
+            await app_state.agentcore.stop()
+            logger.info("AgentCore stopped")
 
         logger.info("Text2DSL API shutdown complete")
 
@@ -229,6 +238,43 @@ async def initialize_orchestrator() -> None:
 
     except Exception as e:
         logger.error(f"Failed to initialize orchestrator: {e}")
+        raise
+
+
+async def initialize_agentcore() -> None:
+    """Initialize the AgentCore runtime."""
+    from text2x.agentcore import AgentCore, AgentCoreConfig, get_registry
+    from text2x.agentcore.agents.auto_annotation import AutoAnnotationAgent
+    from text2x.agentcore.api.router import set_runtime
+
+    try:
+        # Create configuration
+        config = AgentCoreConfig(
+            model=settings.llm_model if not settings.llm_model.startswith("gpt-") else "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0",
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+            timeout=float(settings.llm_timeout),
+        )
+
+        # Register agents
+        registry = get_registry()
+        registry.register("auto_annotation", AutoAnnotationAgent)
+
+        # Create and start runtime
+        runtime = AgentCore(config)
+        await runtime.start()
+
+        # Set runtime in app state and router
+        app_state.agentcore = runtime
+        set_runtime(runtime)
+
+        logger.info(
+            f"AgentCore initialized with {len(runtime.list_agents())} agents: "
+            f"{', '.join(runtime.list_agents())}"
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to initialize AgentCore: {e}")
         raise
 
 
@@ -384,6 +430,7 @@ async def root() -> dict[str, str]:
 
 # Include API routers
 from text2x.api.routes import admin, annotations, auth, conversations, feedback, providers, query, review, health, metrics, workspaces, users, rag
+from text2x.agentcore.api import router as agentcore_router
 
 app.include_router(auth.router, prefix=settings.api_prefix)  # Authentication endpoints
 app.include_router(users.router, prefix=settings.api_prefix)  # User management endpoints
@@ -396,6 +443,7 @@ app.include_router(feedback.router, prefix=settings.api_prefix)
 app.include_router(annotations.router, prefix=settings.api_prefix)
 app.include_router(rag.router, prefix=settings.api_prefix)  # RAG search endpoints
 app.include_router(admin.router, prefix=settings.api_prefix)  # Admin endpoints for super admin operations
+app.include_router(agentcore_router, prefix=settings.api_prefix)  # AgentCore runtime endpoints
 app.include_router(health.router)  # No prefix for health checks
 app.include_router(metrics.router)  # No prefix for metrics
 
