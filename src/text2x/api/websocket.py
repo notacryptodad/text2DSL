@@ -23,10 +23,10 @@ class WebSocketQueryRequest(BaseModel):
     """Request model for WebSocket query processing."""
 
     provider_id: str = Field(
-        ...,
+        default="demo",
         min_length=1,
         max_length=100,
-        description="ID of the database provider/connection",
+        description="ID of the database provider/connection (default: demo mode)",
     )
     query: str = Field(
         ...,
