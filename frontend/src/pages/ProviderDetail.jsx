@@ -127,12 +127,12 @@ function ProviderDetail() {
           },
           body: JSON.stringify({
             name: connectionFormData.name,
-            connection_string: buildConnectionString(),
-            settings: {
-              host: connectionFormData.host,
-              port: connectionFormData.port,
-              database: connectionFormData.database,
+            host: connectionFormData.host,
+            port: parseInt(connectionFormData.port) || null,
+            database: connectionFormData.database,
+            credentials: {
               username: connectionFormData.username,
+              password: connectionFormData.password,
             },
           }),
         }
@@ -140,7 +140,7 @@ function ProviderDetail() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.detail?.message || error.detail || 'Failed to add connection')
+        throw new Error(error.message || error.detail || 'Failed to add connection')
       }
 
       await fetchConnections()
@@ -332,7 +332,7 @@ function ProviderDetail() {
                           {conn.name}
                         </p>
                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                          {conn.settings?.host}:{conn.settings?.port}/{conn.settings?.database}
+                          {conn.host}:{conn.port}/{conn.database}
                         </p>
                       </div>
                     </div>
