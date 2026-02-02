@@ -227,6 +227,14 @@ class OrchestratorAgent(BaseAgent):
             trace=all_traces
         )
 
+        # Persist turn to database
+        await self._persist_conversation_turn(
+            conversation_id=conversation.id,
+            turn_number=len(conversation.turns),
+            user_input=user_query,
+            query_response=query_response,
+        )
+
         # Update conversation status
         if needs_clarification:
             conversation.status = ConversationStatus.ACTIVE
@@ -264,6 +272,78 @@ class OrchestratorAgent(BaseAgent):
             "all_traces": all_traces if trace_level == "full" else []
         }
 
+    async def _persist_conversation_turn(
+        self,
+        conversation_id: UUID,
+        turn_number: int,
+        user_input: str,
+        query_response: Any,
+    ) -> None:
+        """
+        Persist conversation turn to database.
+
+        Gracefully handles errors - logs but doesn't fail if DB write fails.
+        """
+        try:
+            from text2x.models.base import get_db
+            from text2x.models.conversation import ConversationTurn as DBConversationTurn
+
+            # Prepare turn data
+            execution_result_dict = None
+            if query_response.execution_result:
+                execution_result_dict = {
+                    "success": query_response.execution_result.success,
+                    "row_count": query_response.execution_result.row_count,
+                    "execution_time_ms": query_response.execution_result.execution_time_ms,
+                    "error": query_response.execution_result.error,
+                }
+
+            validation_result_dict = None
+            if hasattr(query_response, 'validation_status'):
+                validation_result_dict = {
+                    "status": query_response.validation_status.value,
+                }
+
+            # Convert reasoning trace to dict
+            reasoning_trace_dict = {}
+            if query_response.reasoning_trace:
+                reasoning_trace_dict = {
+                    "steps": [
+                        {
+                            "step": trace.step,
+                            "agent_name": trace.agent_name,
+                            "timestamp": trace.timestamp.isoformat(),
+                        }
+                        for trace in query_response.reasoning_trace
+                    ]
+                }
+
+            db = get_db()
+            async with db.session() as session:
+                db_turn = DBConversationTurn(
+                    conversation_id=conversation_id,
+                    turn_number=turn_number,
+                    user_input=user_input,
+                    generated_query=query_response.generated_query,
+                    confidence_score=query_response.confidence_score,
+                    reasoning_trace=reasoning_trace_dict,
+                    iterations=query_response.iterations,
+                    clarification_needed=query_response.clarification_needed,
+                    clarification_question=query_response.clarification_question,
+                    validation_result=validation_result_dict,
+                    execution_result=execution_result_dict,
+                )
+                session.add(db_turn)
+                await session.commit()
+
+            logger.debug(f"Turn {turn_number} for conversation {conversation_id} persisted to database")
+        except Exception as e:
+            logger.error(
+                f"Failed to persist turn {turn_number} for conversation {conversation_id} to database: {e}",
+                exc_info=True
+            )
+            # Continue - turn is still in memory
+
     async def _get_or_create_conversation(
         self,
         conversation_id: Optional[UUID],
@@ -289,8 +369,29 @@ class OrchestratorAgent(BaseAgent):
 
         self.conversations[new_conversation.id] = new_conversation
 
-        # TODO: Persist to database
-        # await db_repo.create_conversation(new_conversation)
+        # Persist to database (don't fail if DB write fails)
+        try:
+            from text2x.models.base import get_db
+            from text2x.models.conversation import Conversation as DBConversation
+
+            db = get_db()
+            async with db.session() as session:
+                db_conversation = DBConversation(
+                    id=new_conversation.id,
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    status=new_conversation.status,
+                )
+                session.add(db_conversation)
+                await session.commit()
+
+            logger.debug(f"Conversation {new_conversation.id} persisted to database")
+        except Exception as e:
+            logger.error(
+                f"Failed to persist conversation {new_conversation.id} to database: {e}",
+                exc_info=True
+            )
+            # Continue - conversation is still in memory
 
         return new_conversation, True
 
@@ -952,6 +1053,14 @@ You are analytical, precise, and focused on achieving the best possible results 
             user_input=user_query,
             response=domain_response,
             trace=all_traces
+        )
+
+        # Persist turn to database
+        await self._persist_conversation_turn(
+            conversation_id=conversation.id,
+            turn_number=len(conversation.turns),
+            user_input=user_query,
+            query_response=domain_response,
         )
 
         # Update conversation status

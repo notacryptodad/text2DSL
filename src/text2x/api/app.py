@@ -193,10 +193,19 @@ async def initialize_orchestrator() -> None:
             timeout=float(settings.llm_timeout),
         )
 
-        # Create a default/mock provider for initialization
-        # Note: In production, this should be replaced with actual provider lookup per request
+        # Create a default provider for orchestrator initialization.
+        # This is a placeholder provider required because the OrchestratorAgent needs
+        # a provider instance at initialization time. The actual provider used for query
+        # processing is determined dynamically per-request based on the provider_id
+        # parameter in each query request. This approach allows the orchestrator to be
+        # instantiated once at startup while still supporting multiple database providers.
         class DefaultProvider(QueryProvider):
-            """Default provider for orchestrator initialization."""
+            """Default provider for orchestrator initialization.
+
+            This is a minimal provider implementation used only during application
+            startup. Real queries use provider instances looked up per-request based
+            on the provider_id in the query parameters.
+            """
 
             def get_provider_id(self) -> str:
                 return "default"

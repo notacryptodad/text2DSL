@@ -223,21 +223,22 @@ Return ONLY a JSON array of keywords: ["keyword1", "keyword2", ...]"""
 
     async def _get_embedding(self, text: str) -> List[float]:
         """
-        Get embedding for semantic search using Bedrock Titan
+        Get embedding for semantic search using Bedrock Titan.
 
         Uses BedrockEmbeddingService to generate embeddings from AWS Bedrock.
         In development/debug mode only, falls back to mock embeddings if service fails.
 
         Raises:
             ValueError: If embedding service is not configured in production
-            Exception: If Bedrock API fails in production
+            RuntimeError: If Bedrock API fails in production
         """
         # Production mode: require real embeddings
-        if settings.environment == "production" and not self.embedding_service:
-            raise ValueError(
-                "Embedding service not configured. BedrockEmbeddingService is required "
-                "for production. Set BEDROCK_REGION and ensure AWS credentials are available."
-            )
+        if settings.environment == "production":
+            if not self.embedding_service:
+                raise ValueError(
+                    "Embedding service not configured. BedrockEmbeddingService is required "
+                    "for production. Set BEDROCK_REGION and ensure AWS credentials are available."
+                )
 
         # Try to use Bedrock embedding service
         if self.embedding_service:
@@ -254,16 +255,21 @@ Return ONLY a JSON array of keywords: ["keyword1", "keyword2", ...]"""
                         "Check AWS credentials and Bedrock service availability."
                     ) from e
 
-                # In development, log warning and fall back
-                logger.warning(f"Embedding service failed in {settings.environment} mode: {e}")
-                if settings.debug:
-                    logger.debug("Falling back to mock embeddings (development only)")
+                # In development, log warning and fall back to mock
+                logger.warning(
+                    f"Bedrock embedding service failed in {settings.environment} mode: {e}. "
+                    "Falling back to mock embeddings (development only)"
+                )
 
         # Development/debug-only fallback: Mock embedding for testing
-        if settings.environment != "production" and (settings.debug or not self.embedding_service):
+        # This branch is only reached if:
+        # 1. We're NOT in production, AND
+        # 2. Either no embedding service is configured OR it failed
+        if settings.environment != "production":
             logger.warning(
-                "Using mock embedding - this is only for development/testing. "
-                "Configure BedrockEmbeddingService for production use."
+                f"Using mock embedding in {settings.environment} mode - "
+                "this is only for development/testing. "
+                "Configure BedrockEmbeddingService with valid AWS credentials for production use."
             )
             import hashlib
             hash_obj = hashlib.md5(text.encode())
