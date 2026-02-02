@@ -11,6 +11,7 @@ import {
   Shield,
   AlertCircle,
   X,
+  Check,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import AdminSidebar from '../components/AdminSidebar'
@@ -26,6 +27,7 @@ function WorkspaceDetail() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [addingProvider, setAddingProvider] = useState(false)
+  const [toast, setToast] = useState(null) // { type: 'success' | 'error', message: string }
   const [providerFormData, setProviderFormData] = useState({
     name: '',
     type: '',
@@ -36,6 +38,11 @@ function WorkspaceDetail() {
     description: '',
     is_active: true,
   })
+
+  const showToast = (type, message) => {
+    setToast({ type, message })
+    setTimeout(() => setToast(null), 4000)
+  }
 
   useEffect(() => {
     if (workspaceId) {
@@ -113,10 +120,10 @@ function WorkspaceDetail() {
       }
 
       await fetchWorkspace()
-      alert('Workspace updated successfully')
+      showToast('success', 'Workspace updated successfully')
     } catch (err) {
       console.error('Error updating workspace:', err)
-      alert(err.message)
+      showToast('error', err.message)
     } finally {
       setSaving(false)
     }
@@ -126,7 +133,7 @@ function WorkspaceDetail() {
     e.preventDefault()
 
     if (!inviteEmail.trim()) {
-      alert('Please enter an email address')
+      showToast('error', 'Please enter an email address')
       return
     }
 
@@ -155,10 +162,10 @@ function WorkspaceDetail() {
       await fetchWorkspace()
       setShowInviteModal(false)
       setInviteEmail('')
-      alert('Admin invited successfully')
+      showToast('success', 'Admin invited successfully')
     } catch (err) {
       console.error('Error inviting admin:', err)
-      alert(err.message)
+      showToast('error', err.message)
     } finally {
       setInviting(false)
     }
@@ -190,7 +197,7 @@ function WorkspaceDetail() {
       await fetchWorkspace()
     } catch (err) {
       console.error('Error removing admin:', err)
-      alert('Failed to remove admin')
+      showToast('error', 'Failed to remove admin')
     }
   }
 
@@ -226,10 +233,10 @@ function WorkspaceDetail() {
       await fetchProviders()
       setShowAddProviderModal(false)
       setProviderFormData({ name: '', type: '', description: '' })
-      alert('Provider added successfully')
+      showToast('success', 'Provider added successfully')
     } catch (err) {
       console.error('Error adding provider:', err)
-      alert(err.message)
+      showToast('error', err.message)
     } finally {
       setAddingProvider(false)
     }
@@ -262,7 +269,7 @@ function WorkspaceDetail() {
       await fetchProviders()
     } catch (err) {
       console.error('Error deleting provider:', err)
-      alert(err.message)
+      showToast('error', err.message)
     }
   }
 
@@ -700,6 +707,28 @@ function WorkspaceDetail() {
               </form>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-4 right-4 z-50 flex items-center space-x-3 px-4 py-3 rounded-lg shadow-lg transition-all ${
+          toast.type === 'success' 
+            ? 'bg-green-500 text-white' 
+            : 'bg-red-500 text-white'
+        }`}>
+          {toast.type === 'success' ? (
+            <Check className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+          <span>{toast.message}</span>
+          <button 
+            onClick={() => setToast(null)}
+            className="ml-2 hover:opacity-80"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>
