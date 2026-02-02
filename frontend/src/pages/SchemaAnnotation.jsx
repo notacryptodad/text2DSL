@@ -65,7 +65,8 @@ function SchemaAnnotation() {
   }, [chatMessages])
 
   const getApiUrl = () => {
-    return import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin
+    // Use empty string to leverage Vite proxy - avoids CORS issues
+    return ''
   }
 
   const fetchWorkspaces = async () => {
