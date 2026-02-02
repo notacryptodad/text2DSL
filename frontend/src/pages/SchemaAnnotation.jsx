@@ -233,6 +233,12 @@ function SchemaAnnotation() {
           },
         }
       )
+      // Gracefully handle missing endpoint - annotations are optional
+      if (response.status === 404) {
+        console.log('Annotations endpoint not found, skipping')
+        setAnnotations({})
+        return
+      }
       if (!response.ok) throw new Error('Failed to fetch annotations')
       const data = await response.json()
 
@@ -243,6 +249,8 @@ function SchemaAnnotation() {
       setAnnotations(annotationsMap)
     } catch (err) {
       console.error('Error fetching annotations:', err)
+      // Don't show error for annotations - they're optional
+      setAnnotations({})
     }
   }
 
