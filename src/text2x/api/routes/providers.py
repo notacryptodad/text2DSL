@@ -1,9 +1,12 @@
 """Provider management endpoints."""
 import logging
 from datetime import datetime
-from uuid import uuid4
+from typing import Optional
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from text2x.api.models import (
     ErrorResponse,
@@ -11,13 +14,23 @@ from text2x.api.models import (
     ProviderSchema,
     TableInfo,
 )
-from text2x.config import settings
-from text2x.repositories.provider import ProviderRepository
+from text2x.api.state import app_state
+from text2x.models.workspace import Provider, Connection
 from text2x.services.schema_service import SchemaService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/providers", tags=["providers"])
+
+
+async def get_session() -> AsyncSession:
+    """Get database session from app state."""
+    session_maker = async_sessionmaker(
+        app_state.db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    return session_maker()
 
 
 @router.get(
@@ -26,9 +39,14 @@ router = APIRouter(prefix="/providers", tags=["providers"])
     summary="List all providers",
     description="Get list of all configured database providers/connections",
 )
-async def list_providers() -> list[ProviderInfo]:
+async def list_providers(
+    workspace_id: Optional[UUID] = Query(None, description="Filter by workspace ID")
+) -> list[ProviderInfo]:
     """
     List all configured database providers.
+
+    Args:
+        workspace_id: Optional workspace ID to filter providers
 
     Returns:
         List of provider information
@@ -37,52 +55,44 @@ async def list_providers() -> list[ProviderInfo]:
         HTTPException: If fetching providers fails
     """
     try:
-        logger.info("Fetching list of providers")
+        logger.info(f"Fetching list of providers for workspace: {workspace_id}")
 
-        # Note: Since we don't have workspace context in the current API,
-        # we need to decide how to list providers. For now, return empty list
-        # or implement workspace-aware API in the future.
-        # This is a placeholder that returns mock data until workspace context is added
+        async with await get_session() as session:
+            # Build query for providers with connection count
+            query = select(
+                Provider,
+                func.count(Connection.id).label("connection_count")
+            ).outerjoin(Connection).group_by(Provider.id)
 
-        # Mock response (replace with workspace-aware query when auth is implemented)
-        mock_providers = [
-            ProviderInfo(
-                id="postgres-main",
-                name="Main PostgreSQL Database",
-                type="postgresql",
-                description="Primary application database with user and transaction data",
-                connection_status="connected",
-                table_count=25,
-                last_schema_refresh=datetime.utcnow(),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            ),
-            ProviderInfo(
-                id="athena-analytics",
-                name="AWS Athena Analytics",
-                type="athena",
-                description="Data warehouse for analytics queries",
-                connection_status="connected",
-                table_count=50,
-                last_schema_refresh=datetime.utcnow(),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            ),
-            ProviderInfo(
-                id="opensearch-logs",
-                name="OpenSearch Logs",
-                type="opensearch",
-                description="Application logs and search indexes",
-                connection_status="connected",
-                table_count=10,
-                last_schema_refresh=datetime.utcnow(),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            ),
-        ]
+            # Filter by workspace if provided
+            if workspace_id:
+                query = query.where(Provider.workspace_id == workspace_id)
 
-        logger.info(f"Found {len(mock_providers)} providers")
-        return mock_providers
+            result = await session.execute(query)
+            rows = result.all()
+
+            # Build response models
+            providers = []
+            for provider, connection_count in rows:
+                # Determine connection status based on connections
+                connection_status = "connected" if connection_count > 0 else "disconnected"
+
+                providers.append(
+                    ProviderInfo(
+                        id=str(provider.id),
+                        name=provider.name,
+                        type=provider.type.value,
+                        description=provider.description or "",
+                        connection_status=connection_status,
+                        table_count=0,  # Would require schema introspection
+                        last_schema_refresh=None,  # Would need to track in database
+                        created_at=provider.created_at,
+                        updated_at=provider.updated_at,
+                    )
+                )
+
+            logger.info(f"Found {len(providers)} providers")
+            return providers
 
     except Exception as e:
         logger.error(f"Error fetching providers: {e}", exc_info=True)
@@ -100,12 +110,12 @@ async def list_providers() -> list[ProviderInfo]:
     response_model=ProviderInfo,
     summary="Get provider details",
 )
-async def get_provider(provider_id: str) -> ProviderInfo:
+async def get_provider(provider_id: UUID) -> ProviderInfo:
     """
     Get detailed information about a specific provider.
 
     Args:
-        provider_id: Provider identifier
+        provider_id: Provider UUID
 
     Returns:
         Provider information
@@ -116,52 +126,40 @@ async def get_provider(provider_id: str) -> ProviderInfo:
     try:
         logger.info(f"Fetching provider {provider_id}")
 
-        # Try to fetch from database if provider_id is a valid UUID
-        try:
-            from uuid import UUID as PyUUID
-            provider_uuid = PyUUID(provider_id)
-            provider_repo = ProviderRepository()
-            provider = await provider_repo.get_by_id(provider_uuid)
+        async with await get_session() as session:
+            # Query provider with connection count
+            query = select(
+                Provider,
+                func.count(Connection.id).label("connection_count")
+            ).outerjoin(Connection).where(Provider.id == provider_id).group_by(Provider.id)
 
-            if provider:
-                # Get connection count
-                connection_count = len(provider.connections) if provider.connections else 0
+            result = await session.execute(query)
+            row = result.one_or_none()
 
-                return ProviderInfo(
-                    id=str(provider.id),
-                    name=provider.name,
-                    type=provider.type.value,
-                    description=provider.description or "",
-                    connection_status="connected" if connection_count > 0 else "disconnected",
-                    table_count=0,  # Would need to query schema to get accurate count
-                    last_schema_refresh=None,  # Would need to track in database
-                    created_at=provider.created_at,
-                    updated_at=provider.updated_at,
+            if not row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Provider {provider_id} not found",
+                    ).model_dump(),
                 )
-        except (ValueError, AttributeError):
-            # Not a valid UUID, fall through to mock data
-            logger.debug(f"Provider ID {provider_id} is not a valid UUID, using mock data")
 
-        # Mock response for backward compatibility with string IDs
-        if provider_id == "postgres-main":
+            provider, connection_count = row
+
+            # Determine connection status
+            connection_status = "connected" if connection_count > 0 else "disconnected"
+
             return ProviderInfo(
-                id=provider_id,
-                name="Main PostgreSQL Database",
-                type="postgresql",
-                description="Primary application database with user and transaction data",
-                connection_status="connected",
-                table_count=25,
-                last_schema_refresh=datetime.utcnow(),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ErrorResponse(
-                    error="not_found",
-                    message=f"Provider {provider_id} not found",
-                ).model_dump(),
+                id=str(provider.id),
+                name=provider.name,
+                type=provider.type.value,
+                description=provider.description or "",
+                connection_status=connection_status,
+                table_count=0,  # Would require schema introspection
+                last_schema_refresh=None,  # Would need to track in database
+                created_at=provider.created_at,
+                updated_at=provider.updated_at,
             )
 
     except HTTPException:
@@ -183,7 +181,10 @@ async def get_provider(provider_id: str) -> ProviderInfo:
     summary="Get provider schema",
     description="Retrieve complete schema information for a provider including all tables and columns",
 )
-async def get_provider_schema(provider_id: str) -> ProviderSchema:
+async def get_provider_schema(
+    provider_id: UUID,
+    connection_id: Optional[UUID] = Query(None, description="Specific connection ID to introspect")
+) -> ProviderSchema:
     """
     Get complete schema information for a provider.
 
@@ -191,7 +192,9 @@ async def get_provider_schema(provider_id: str) -> ProviderSchema:
     Schema is typically cached in Redis for performance.
 
     Args:
-        provider_id: Provider identifier
+        provider_id: Provider UUID
+        connection_id: Optional connection UUID to use for schema introspection.
+                      If not provided, uses the first active connection.
 
     Returns:
         Complete schema information
@@ -200,163 +203,106 @@ async def get_provider_schema(provider_id: str) -> ProviderSchema:
         HTTPException: If provider not found or schema unavailable
     """
     try:
-        logger.info(f"Fetching schema for provider {provider_id}")
+        logger.info(f"Fetching schema for provider {provider_id}, connection {connection_id}")
 
-        # Try to fetch schema using SchemaService (with caching)
-        try:
-            from uuid import UUID as PyUUID
+        async with await get_session() as session:
+            # Verify provider exists
+            provider_stmt = select(Provider).where(Provider.id == provider_id)
+            provider_result = await session.execute(provider_stmt)
+            provider = provider_result.scalar_one_or_none()
 
-            # For now, provider_id might be a connection_id
-            # Try to parse as UUID to use SchemaService
-            connection_uuid = PyUUID(provider_id)
-            schema_service = SchemaService()
-
-            schema_def = await schema_service.get_schema(connection_uuid)
-
-            if schema_def:
-                # Convert SchemaDefinition to ProviderSchema API model
-                tables = [
-                    TableInfo(
-                        name=table.name,
-                        schema=table.schema,
-                        columns=[
-                            {
-                                "name": col.name,
-                                "type": col.type,
-                                "nullable": col.nullable,
-                                "primary_key": col.primary_key,
-                                "unique": col.unique,
-                                "comment": col.comment,
-                            }
-                            for col in table.columns
-                        ],
-                        primary_keys=table.primary_key or [],
-                        foreign_keys=[
-                            {
-                                "column": fk.constrained_columns[0] if fk.constrained_columns else "",
-                                "references_table": fk.referred_table,
-                                "references_column": fk.referred_columns[0] if fk.referred_columns else "",
-                            }
-                            for fk in table.foreign_keys
-                        ],
-                        row_count=table.row_count,
-                        description=table.comment or "",
-                    )
-                    for table in schema_def.tables
-                ]
-
-                return ProviderSchema(
-                    provider_id=provider_id,
-                    provider_type="postgresql",  # Would need to look up from connection
-                    tables=tables,
-                    metadata=schema_def.metadata,
-                    last_refreshed=datetime.utcnow(),
+            if not provider:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Provider {provider_id} not found",
+                    ).model_dump(),
                 )
-        except (ValueError, AttributeError, Exception) as e:
-            # Not a valid UUID or schema fetch failed, fall through to mock data
-            logger.debug(f"Could not fetch schema for {provider_id}: {e}")
 
-        # Mock response
-        if provider_id == "postgres-main":
+            # Find a connection to use for schema introspection
+            if connection_id:
+                # Use specified connection
+                conn_stmt = select(Connection).where(
+                    Connection.id == connection_id,
+                    Connection.provider_id == provider_id
+                )
+                conn_result = await session.execute(conn_stmt)
+                connection = conn_result.scalar_one_or_none()
+
+                if not connection:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=ErrorResponse(
+                            error="not_found",
+                            message=f"Connection {connection_id} not found for provider {provider_id}",
+                        ).model_dump(),
+                    )
+            else:
+                # Use first available connection for this provider
+                conn_stmt = select(Connection).where(Connection.provider_id == provider_id).limit(1)
+                conn_result = await session.execute(conn_stmt)
+                connection = conn_result.scalar_one_or_none()
+
+                if not connection:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=ErrorResponse(
+                            error="not_found",
+                            message=f"No connections found for provider {provider_id}",
+                        ).model_dump(),
+                    )
+
+            # Fetch schema using SchemaService
+            schema_service = SchemaService()
+            schema_def = await schema_service.get_schema(connection.id)
+
+            if not schema_def:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="schema_unavailable",
+                        message=f"Schema not available for provider {provider_id}. Try refreshing the schema first.",
+                    ).model_dump(),
+                )
+
+            # Convert SchemaDefinition to ProviderSchema API model
+            tables = [
+                TableInfo(
+                    name=table.name,
+                    schema=table.schema,
+                    columns=[
+                        {
+                            "name": col.name,
+                            "type": col.type,
+                            "nullable": col.nullable,
+                            "primary_key": col.primary_key,
+                            "unique": col.unique,
+                            "comment": col.comment,
+                        }
+                        for col in table.columns
+                    ],
+                    primary_keys=table.primary_key or [],
+                    foreign_keys=[
+                        {
+                            "column": fk.constrained_columns[0] if fk.constrained_columns else "",
+                            "references_table": fk.referred_table,
+                            "references_column": fk.referred_columns[0] if fk.referred_columns else "",
+                        }
+                        for fk in table.foreign_keys
+                    ],
+                    row_count=table.row_count,
+                    description=table.comment or "",
+                )
+                for table in schema_def.tables
+            ]
+
             return ProviderSchema(
-                provider_id=provider_id,
-                provider_type="postgresql",
-                tables=[
-                    TableInfo(
-                        name="users",
-                        schema="public",
-                        columns=[
-                            {
-                                "name": "id",
-                                "type": "integer",
-                                "nullable": False,
-                                "primary_key": True,
-                            },
-                            {
-                                "name": "username",
-                                "type": "varchar(255)",
-                                "nullable": False,
-                                "unique": True,
-                            },
-                            {
-                                "name": "email",
-                                "type": "varchar(255)",
-                                "nullable": False,
-                                "unique": True,
-                            },
-                            {
-                                "name": "age",
-                                "type": "integer",
-                                "nullable": True,
-                            },
-                            {
-                                "name": "created_at",
-                                "type": "timestamp",
-                                "nullable": False,
-                            },
-                        ],
-                        primary_keys=["id"],
-                        foreign_keys=[],
-                        row_count=10000,
-                        description="User account information",
-                    ),
-                    TableInfo(
-                        name="orders",
-                        schema="public",
-                        columns=[
-                            {
-                                "name": "id",
-                                "type": "integer",
-                                "nullable": False,
-                                "primary_key": True,
-                            },
-                            {
-                                "name": "user_id",
-                                "type": "integer",
-                                "nullable": False,
-                                "foreign_key": "users.id",
-                            },
-                            {
-                                "name": "total_amount",
-                                "type": "numeric(10,2)",
-                                "nullable": False,
-                            },
-                            {
-                                "name": "status",
-                                "type": "varchar(50)",
-                                "nullable": False,
-                            },
-                            {
-                                "name": "created_at",
-                                "type": "timestamp",
-                                "nullable": False,
-                            },
-                        ],
-                        primary_keys=["id"],
-                        foreign_keys=[
-                            {
-                                "column": "user_id",
-                                "references_table": "users",
-                                "references_column": "id",
-                            }
-                        ],
-                        row_count=50000,
-                        description="Customer orders",
-                    ),
-                ],
-                metadata={
-                    "database": "main_db",
-                    "version": "PostgreSQL 15.3",
-                },
+                provider_id=str(provider_id),
+                provider_type=provider.type.value,
+                tables=tables,
+                metadata=schema_def.metadata,
                 last_refreshed=datetime.utcnow(),
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ErrorResponse(
-                    error="not_found",
-                    message=f"Provider {provider_id} not found",
-                ).model_dump(),
             )
 
     except HTTPException:
@@ -378,7 +324,10 @@ async def get_provider_schema(provider_id: str) -> ProviderSchema:
     summary="Refresh provider schema",
     description="Trigger schema refresh for a provider (async operation)",
 )
-async def refresh_provider_schema(provider_id: str) -> dict[str, str]:
+async def refresh_provider_schema(
+    provider_id: UUID,
+    connection_id: Optional[UUID] = Query(None, description="Specific connection ID to refresh")
+) -> dict[str, str]:
     """
     Trigger a schema refresh for a provider.
 
@@ -386,7 +335,9 @@ async def refresh_provider_schema(provider_id: str) -> dict[str, str]:
     information by querying the database metadata.
 
     Args:
-        provider_id: Provider identifier
+        provider_id: Provider UUID
+        connection_id: Optional connection UUID to refresh.
+                      If not provided, refreshes all connections for the provider.
 
     Returns:
         Status message
@@ -395,33 +346,80 @@ async def refresh_provider_schema(provider_id: str) -> dict[str, str]:
         HTTPException: If provider not found or refresh fails
     """
     try:
-        logger.info(f"Triggering schema refresh for provider {provider_id}")
+        logger.info(f"Triggering schema refresh for provider {provider_id}, connection {connection_id}")
 
-        # Try to refresh schema using SchemaService
-        try:
-            from uuid import UUID as PyUUID
+        async with await get_session() as session:
+            # Verify provider exists
+            provider_stmt = select(Provider).where(Provider.id == provider_id)
+            provider_result = await session.execute(provider_stmt)
+            provider = provider_result.scalar_one_or_none()
 
-            connection_uuid = PyUUID(provider_id)
-            schema_service = SchemaService()
+            if not provider:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Provider {provider_id} not found",
+                    ).model_dump(),
+                )
 
-            # Refresh schema (invalidates cache and re-introspects)
-            schema_def = await schema_service.refresh_schema(connection_uuid)
+            # Get connections to refresh
+            if connection_id:
+                # Refresh specific connection
+                conn_stmt = select(Connection).where(
+                    Connection.id == connection_id,
+                    Connection.provider_id == provider_id
+                )
+                conn_result = await session.execute(conn_stmt)
+                connections = [conn_result.scalar_one_or_none()]
 
-            if schema_def:
-                logger.info(f"Schema refreshed successfully for {provider_id}")
+                if not connections[0]:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=ErrorResponse(
+                            error="not_found",
+                            message=f"Connection {connection_id} not found for provider {provider_id}",
+                        ).model_dump(),
+                    )
             else:
-                logger.warning(f"Schema refresh returned None for {provider_id}")
+                # Refresh all connections for provider
+                conn_stmt = select(Connection).where(Connection.provider_id == provider_id)
+                conn_result = await session.execute(conn_stmt)
+                connections = list(conn_result.scalars().all())
 
-        except (ValueError, AttributeError, Exception) as e:
-            logger.warning(f"Could not refresh schema for {provider_id}: {e}")
-            # Continue anyway to return accepted status
+                if not connections:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=ErrorResponse(
+                            error="not_found",
+                            message=f"No connections found for provider {provider_id}",
+                        ).model_dump(),
+                    )
 
-        return {
-            "status": "accepted",
-            "message": f"Schema refresh initiated for provider {provider_id}",
-            "provider_id": provider_id,
-        }
+            # Refresh schema for each connection
+            schema_service = SchemaService()
+            refreshed_count = 0
 
+            for connection in connections:
+                try:
+                    schema_def = await schema_service.refresh_schema(connection.id)
+                    if schema_def:
+                        refreshed_count += 1
+                        logger.info(f"Schema refreshed successfully for connection {connection.id}")
+                    else:
+                        logger.warning(f"Schema refresh returned None for connection {connection.id}")
+                except Exception as e:
+                    logger.warning(f"Could not refresh schema for connection {connection.id}: {e}")
+
+            return {
+                "status": "accepted",
+                "message": f"Schema refresh completed for {refreshed_count} connection(s)",
+                "provider_id": str(provider_id),
+                "connections_refreshed": refreshed_count,
+            }
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error triggering schema refresh: {e}", exc_info=True)
         raise HTTPException(
