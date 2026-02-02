@@ -124,6 +124,14 @@ function App() {
             }
           />
           <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <AdminUsers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/schema-annotation"
             element={
               <ProtectedRoute requireAdmin={true}>

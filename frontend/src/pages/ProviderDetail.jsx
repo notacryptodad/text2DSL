@@ -15,9 +15,11 @@ import {
 } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import AdminSidebar from '../components/AdminSidebar'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 function ProviderDetail() {
   const { workspaceId, providerId } = useParams()
+  const { selectConnection } = useWorkspace()
   const navigate = useNavigate()
   const [provider, setProvider] = useState(null)
   const [connections, setConnections] = useState([])
@@ -142,7 +144,7 @@ function ProviderDetail() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.message || error.detail || 'Failed to add connection')
+        throw new Error(error.detail || error.message || JSON.stringify(error))
       }
 
       await fetchConnections()
@@ -372,6 +374,7 @@ function ProviderDetail() {
                     <div className="flex items-center space-x-2">
                       <Link
                         to={`/admin/schema-annotation?workspace=${workspaceId}&connection=${conn.id}`}
+                        onClick={() => selectConnection({ id: conn.id, provider_id: providerId, ...conn })}
                         className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
                         title="View & annotate schema"
                       >

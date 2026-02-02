@@ -414,6 +414,15 @@ class AnnotationUpdate(BaseModel):
     sensitive: Optional[bool] = Field(None, description="Whether data is sensitive")
 
 
+class AnnotationRequest(BaseModel):
+    """Request model for saving a table annotation."""
+
+    table_name: str = Field(..., description="Table name")
+    description: Optional[str] = Field(None, description="Table description")
+    business_terms: Optional[List[str]] = Field(None, description="Business terms")
+    relationships: Optional[List[Any]] = Field(None, description="Relationships")
+    columns: Optional[List[Dict[str, Any]]] = Field(None, description="Column annotations")
+
 @router.get(
     "/workspaces/{workspace_id}/connections/{connection_id}/schema",
     response_model=SchemaResponse,
@@ -519,6 +528,105 @@ async def get_connection_schema(
                 details={"error": str(e)} if settings.debug else None,
             ).model_dump(),
         )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/connections/{connection_id}/schema/annotations",
+    status_code=status.HTTP_200_OK,
+    summary="Get all annotations for a connection",
+)
+async def get_annotations(
+    workspace_id: UUID,
+    connection_id: UUID,
+):
+    """Get all saved annotations for a connection."""
+    repo = SchemaAnnotationRepository()
+    annotations = await repo.list_by_provider(str(connection_id))
+    
+    # Group by table, nest column annotations
+    result = {}
+    for ann in annotations:
+        if ann.table_name and not ann.column_name:
+            # Table-level annotation
+            result[ann.table_name] = ann.to_dict()
+            result[ann.table_name]['columns'] = []
+    
+    # Add column annotations to their tables
+    for ann in annotations:
+        if ann.column_name and '.' in ann.column_name:
+            table_name = ann.column_name.split('.')[0]
+            col_name = ann.column_name.split('.')[1]
+            if table_name in result:
+                result[table_name]['columns'].append({
+                    'name': col_name,
+                    'description': ann.description,
+                    'sample_values': ann.examples[0] if ann.examples else ''
+                })
+    
+    return result
+
+
+@router.post(
+    "/workspaces/{workspace_id}/connections/{connection_id}/schema/annotations",
+    status_code=status.HTTP_200_OK,
+    summary="Save annotation for a table",
+)
+async def save_annotation(
+    workspace_id: UUID,
+    connection_id: UUID,
+    request: AnnotationRequest,
+):
+    """Save or update annotation for a table."""
+    repo = SchemaAnnotationRepository()
+    
+    # Check if table annotation exists
+    existing = await repo.list_by_provider(str(connection_id))
+    existing_ann = next((a for a in existing if a.table_name == request.table_name and not a.column_name), None)
+    
+    if existing_ann:
+        # Update existing table annotation
+        updated = await repo.update(
+            annotation_id=existing_ann.id,
+            description=request.description,
+            business_terms=request.business_terms,
+            relationships=[str(r) for r in request.relationships] if request.relationships else None,
+        )
+        result = updated.to_dict()
+    else:
+        # Create new table annotation
+        annotation = await repo.create(
+            provider_id=str(connection_id),
+            table_name=request.table_name,
+            description=request.description or "",
+            created_by="system",
+            business_terms=request.business_terms,
+            relationships=[str(r) for r in request.relationships] if request.relationships else None,
+        )
+        result = annotation.to_dict()
+    
+    # Save column annotations
+    if request.columns:
+        for col in request.columns:
+            col_name = f"{request.table_name}.{col.get('name')}"
+            existing_col = next((a for a in existing if a.column_name == col_name), None)
+            
+            if existing_col:
+                await repo.update(
+                    annotation_id=existing_col.id,
+                    description=col.get('description', ''),
+                    examples=[col.get('sample_values')] if col.get('sample_values') else None,
+                )
+            elif col.get('description'):
+                await repo.create(
+                    provider_id=str(connection_id),
+                    column_name=col_name,
+                    description=col.get('description', ''),
+                    created_by="system",
+                    examples=[col.get('sample_values')] if col.get('sample_values') else None,
+                )
+    
+    result['columns'] = request.columns or []
+    return result
 
 
 @router.post(

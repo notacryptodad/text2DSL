@@ -7,6 +7,10 @@ export function WorkspaceProvider({ children }) {
     const saved = localStorage.getItem('currentWorkspace')
     return saved ? JSON.parse(saved) : null
   })
+  const [currentConnection, setCurrentConnection] = useState(() => {
+    const saved = localStorage.getItem('currentConnection')
+    return saved ? JSON.parse(saved) : null
+  })
   const [workspaces, setWorkspaces] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -24,6 +28,13 @@ export function WorkspaceProvider({ children }) {
       localStorage.setItem('currentWorkspace', JSON.stringify(currentWorkspace))
     }
   }, [currentWorkspace])
+
+  useEffect(() => {
+    // Save current connection to localStorage
+    if (currentConnection) {
+      localStorage.setItem('currentConnection', JSON.stringify(currentConnection))
+    }
+  }, [currentConnection])
 
   const fetchWorkspaces = async () => {
     try {
@@ -63,6 +74,13 @@ export function WorkspaceProvider({ children }) {
 
   const selectWorkspace = (workspace) => {
     setCurrentWorkspace(workspace)
+    // Clear connection when workspace changes
+    setCurrentConnection(null)
+    localStorage.removeItem('currentConnection')
+  }
+
+  const selectConnection = (connection) => {
+    setCurrentConnection(connection)
   }
 
   const refreshWorkspaces = () => {
@@ -73,9 +91,11 @@ export function WorkspaceProvider({ children }) {
     <WorkspaceContext.Provider
       value={{
         currentWorkspace,
+        currentConnection,
         workspaces,
         loading,
         selectWorkspace,
+        selectConnection,
         refreshWorkspaces,
       }}
     >

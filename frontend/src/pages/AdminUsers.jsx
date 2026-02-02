@@ -17,6 +17,7 @@ import {
   Lock,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import AdminSidebar from '../components/AdminSidebar'
 
 function AdminUsers() {
   const { isSuperAdmin } = useAuth()
@@ -260,8 +261,9 @@ function AdminUsers() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+      <AdminSidebar />
+      <div className="flex-1 p-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
@@ -429,7 +431,6 @@ function AdminUsers() {
             </div>
           )}
         </div>
-      </div>
 
       {/* Create/Edit User Modal */}
       {showModal && (
@@ -538,7 +539,6 @@ function AdminUsers() {
                       disabled={formLoading || formSuccess}
                     >
                       <option value="user">User</option>
-                      <option value="admin">Admin</option>
                       <option value="super_admin">Super Admin</option>
                     </select>
                   </div>
@@ -596,6 +596,7 @@ function AdminUsers() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

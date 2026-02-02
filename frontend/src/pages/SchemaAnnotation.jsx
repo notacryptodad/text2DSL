@@ -13,9 +13,12 @@ import {
 } from 'lucide-react'
 import SchemaTree from '../components/SchemaTree'
 import AnnotationEditor from '../components/AnnotationEditor'
+import AdminSidebar from '../components/AdminSidebar'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 function SchemaAnnotation() {
   const [searchParams] = useSearchParams()
+  const { currentWorkspace, currentConnection, selectConnection } = useWorkspace()
   const [workspaces, setWorkspaces] = useState([])
   const [selectedWorkspace, setSelectedWorkspace] = useState('')
   const [connections, setConnections] = useState([])
@@ -28,6 +31,7 @@ function SchemaAnnotation() {
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
+  const [focusColumn, setFocusColumn] = useState(null)
 
   // Chat state
   const [chatMessages, setChatMessages] = useState([])
@@ -41,12 +45,24 @@ function SchemaAnnotation() {
     fetchWorkspaces()
   }, [])
 
-  // Handle URL params (from provider detail page)
-  // Only set workspace from URL - connection will be set after fetchConnections
+  // Initialize from context or URL params
   useEffect(() => {
     const wsParam = searchParams.get('workspace')
-    if (wsParam) setSelectedWorkspace(wsParam)
-  }, [searchParams])
+    const connParam = searchParams.get('connection')
+    
+    if (wsParam) {
+      setSelectedWorkspace(wsParam)
+    } else if (currentWorkspace?.id) {
+      setSelectedWorkspace(currentWorkspace.id)
+    }
+    
+    if (connParam) {
+      setSelectedConnection(connParam)
+    } else if (currentConnection?.id) {
+      setSelectedConnection(currentConnection.id)
+      setSelectedProviderId(currentConnection.provider_id)
+    }
+  }, [searchParams, currentWorkspace, currentConnection])
 
   useEffect(() => {
     if (selectedWorkspace) {
@@ -244,8 +260,17 @@ function SchemaAnnotation() {
       const data = await response.json()
 
       const annotationsMap = {}
-      data.forEach((ann) => {
-        annotationsMap[ann.table_name] = ann
+      // Check if data is array or object
+      const annList = Array.isArray(data) ? data : Object.values(data)
+      annList.forEach((ann) => {
+        if (ann.table_name) {
+          // Check if table still exists in schema
+          const tableExists = schema.some(t => (t.name || t.table_name) === ann.table_name)
+          annotationsMap[ann.table_name] = {
+            ...ann,
+            _orphaned: !tableExists && schema.length > 0
+          }
+        }
       })
       setAnnotations(annotationsMap)
     } catch (err) {
@@ -423,11 +448,15 @@ function SchemaAnnotation() {
     if (!selectedWorkspace || !selectedConnection) return
 
     try {
+      const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${getApiUrl()}/api/v1/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema/annotations`,
+        `${getApiUrl()}/api/v1/annotations/workspaces/${selectedWorkspace}/connections/${selectedConnection}/schema/annotations`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
           body: JSON.stringify(annotationData),
         }
       )
@@ -435,8 +464,6 @@ function SchemaAnnotation() {
       if (!response.ok) throw new Error('Failed to save annotation')
 
       await fetchAnnotations()
-      setShowEditor(false)
-      setSelectedTable(null)
       setAutoAnnotationSuggestions(null)
 
       setChatMessages([
@@ -461,8 +488,9 @@ function SchemaAnnotation() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+      <AdminSidebar />
+      <div className="flex-1 p-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
@@ -556,6 +584,13 @@ function SchemaAnnotation() {
                       setSelectedTable(tableName)
                       setShowEditor(true)
                       setAutoAnnotationSuggestions(null)
+                      setFocusColumn(null)
+                    }}
+                    onColumnSelect={(tableName, columnName) => {
+                      setSelectedTable(tableName)
+                      setShowEditor(true)
+                      setAutoAnnotationSuggestions(null)
+                      setFocusColumn(columnName)
                     }}
                     selectedTable={selectedTable}
                     annotations={annotations}
@@ -578,7 +613,9 @@ function SchemaAnnotation() {
                   setShowEditor(false)
                   setSelectedTable(null)
                   setAutoAnnotationSuggestions(null)
+                  setFocusColumn(null)
                 }}
+                focusColumn={focusColumn}
               />
             )}
 

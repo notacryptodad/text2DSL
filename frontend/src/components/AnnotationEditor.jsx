@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Save, X, AlertCircle, Link2, Plus, ChevronUp, ChevronDown } from 'lucide-react'
 
-function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
+function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel, focusColumn }) {
   const [description, setDescription] = useState('')
   const [businessTerms, setBusinessTerms] = useState([])
   const [newBusinessTerm, setNewBusinessTerm] = useState('')
@@ -10,12 +10,32 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
   const [columnAnnotations, setColumnAnnotations] = useState({})
   const [saving, setSaving] = useState(false)
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' })
+  const columnRefs = useRef({})
 
   // Support both API formats: table_name (old) and name (new)
   const tableSchema = schema?.find(t => (t.table_name || t.name) === tableName)
   
   // Get discovered foreign keys from schema
   const discoveredFKs = tableSchema?.foreign_keys || []
+  
+  // Get FKs not yet in relationships
+  const unadddedFKs = discoveredFKs.filter(fk => 
+    !relationships.some(r => 
+      r.source_column === fk.column && 
+      r.target_table === fk.references_table
+    )
+  )
+
+  const handleAddDiscoveredFK = (fk) => {
+    setRelationships([...relationships, {
+      source_column: fk.column,
+      target_table: fk.references_table,
+      target_column: fk.references_column,
+      type: 'many_to_one',
+      description: `FK: ${fk.column} → ${fk.references_table}.${fk.references_column}`,
+      is_discovered: true
+    }])
+  }
 
   useEffect(() => {
     if (annotation) {
@@ -49,6 +69,14 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
       setColumnAnnotations({})
     }
   }, [annotation, tableName, JSON.stringify(discoveredFKs)])
+
+  // Scroll and focus on column when focusColumn changes
+  useEffect(() => {
+    if (focusColumn && columnRefs.current[focusColumn]) {
+      columnRefs.current[focusColumn].scrollIntoView({ behavior: 'smooth', block: 'center' })
+      columnRefs.current[focusColumn].focus()
+    }
+  }, [focusColumn])
 
   const handleAddBusinessTerm = () => {
     if (newBusinessTerm.trim()) {
@@ -231,12 +259,28 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
         <div>
           <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
             Relationships
-            {discoveredFKs.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-green-600 dark:text-green-400">
-                ({discoveredFKs.length} auto-discovered from FK)
-              </span>
-            )}
           </label>
+          
+          {/* Unadded FK suggestions */}
+          {unadddedFKs.length > 0 && (
+            <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                Discovered from foreign keys (click to add):
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {unadddedFKs.map((fk, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleAddDiscoveredFK(fk)}
+                    className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    {fk.column} → {fk.references_table}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           
           {/* Existing relationships */}
           {relationships.length > 0 && (
@@ -378,6 +422,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
                         <td className="px-3 py-2">
                           <input
                             type="text"
+                            ref={el => columnRefs.current[columnName] = el}
                             value={columnAnnotations[columnName]?.description || ''}
                             onChange={(e) => handleColumnAnnotationChange(columnName, 'description', e.target.value)}
                             placeholder="Describe this column..."

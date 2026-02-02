@@ -172,15 +172,25 @@ class SQLProvider(QueryProvider):
                 )
                 foreign_keys.append(fk_info)
                 
-                # Build relationship
+                # Build relationship (many-to-one from FK table)
                 relationship = Relationship(
                     from_table=table_name,
                     to_table=fk["referred_table"],
                     from_columns=fk["constrained_columns"],
                     to_columns=fk["referred_columns"],
-                    relationship_type="many-to-one",  # Default, could be refined
+                    relationship_type="many-to-one",
                 )
                 relationships.append(relationship)
+                
+                # Build reverse relationship (one-to-many from referred table)
+                reverse_relationship = Relationship(
+                    from_table=fk["referred_table"],
+                    to_table=table_name,
+                    from_columns=fk["referred_columns"],
+                    to_columns=fk["constrained_columns"],
+                    relationship_type="one-to-many",
+                )
+                relationships.append(reverse_relationship)
             
             # Get table comment
             try:
