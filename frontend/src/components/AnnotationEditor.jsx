@@ -77,7 +77,8 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
     setSaving(false)
   }
 
-  const tableSchema = schema?.find(t => t.table_name === tableName)
+  // Support both API formats: table_name (old) and name (new)
+  const tableSchema = schema?.find(t => (t.table_name || t.name) === tableName)
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
@@ -223,23 +224,28 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
           </label>
           {tableSchema?.columns && tableSchema.columns.length > 0 ? (
             <div className="space-y-3 max-h-96 overflow-y-auto">
-              {tableSchema.columns.map((column) => (
-                <div key={column.column_name} className="space-y-1">
-                  <label className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-                    {column.column_name}
-                    <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-mono">
-                      {column.data_type}
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    value={columnAnnotations[column.column_name] || ''}
-                    onChange={(e) => handleColumnAnnotationChange(column.column_name, e.target.value)}
-                    placeholder="Describe this column..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-              ))}
+              {tableSchema.columns.map((column) => {
+                // Support both API formats
+                const columnName = column.column_name || column.name
+                const dataType = column.data_type || column.type
+                return (
+                  <div key={columnName} className="space-y-1">
+                    <label className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                      {columnName}
+                      <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-mono">
+                        {dataType}
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      value={columnAnnotations[columnName] || ''}
+                      onChange={(e) => handleColumnAnnotationChange(columnName, e.target.value)}
+                      placeholder="Describe this column..."
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div className="flex items-center space-x-2 text-sm text-yellow-600 dark:text-yellow-400">
