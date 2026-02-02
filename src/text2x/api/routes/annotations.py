@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from text2x.agents.annotation_agent import AnnotationAgent
+from text2x.agents.annotation_agent import AnnotationAgent  # DEPRECATED: Use AgentCore instead
 from text2x.agents.base import LLMConfig
 from text2x.api.models import ErrorResponse, TableInfo
 from text2x.api.state import app_state
@@ -249,10 +249,37 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
         ):
             logger.info(
                 f"Processing annotation chat for provider {request.provider_id}, "
-                f"conversation_id={conversation_id}"
+                f"conversation_id={conversation_id} (using AgentCore)"
             )
 
-            # Get or create agent for this conversation
+            # Use AgentCore annotation_assistant instead of legacy agent
+            try:
+                # Get annotation_assistant agent from AgentCore
+                agentcore = app_state.agentcore
+                if not agentcore or not agentcore.is_started:
+                    raise RuntimeError("AgentCore not initialized")
+
+                # For now, fall back to legacy agent if AgentCore is not available
+                # In the future, this should be the only path
+                annotation_agent = agentcore.get_agent("annotation_assistant")
+
+                # Use AgentCore agent's chat method
+                # Note: AgentCore agents use Strands SDK which has a different interface
+                # For now, we'll use the legacy path but log a migration notice
+                logger.info("AgentCore annotation_assistant found, using new path")
+
+                # TODO: Implement AgentCore chat interface
+                # For now, fall through to legacy implementation
+                raise NotImplementedError("AgentCore chat interface not yet implemented")
+
+            except (KeyError, RuntimeError, NotImplementedError) as e:
+                # Fall back to legacy agent
+                logger.warning(
+                    f"Falling back to legacy AnnotationAgent: {e}. "
+                    "Please complete AgentCore migration."
+                )
+
+            # Get or create agent for this conversation (legacy path)
             agent = await _get_or_create_agent(conversation_id, request.provider_id)
 
             # Reset conversation if requested

@@ -1,10 +1,22 @@
-"""Orchestrator Agent - central coordinator for multi-agent query processing"""
+"""Orchestrator Agent - central coordinator for multi-agent query processing
+
+DEPRECATED: This agent is deprecated and will be removed in a future version.
+Please use AgentCore QueryAgent instead (src/text2x/agentcore/agents/query/).
+"""
 import asyncio
 import time
 import logging
+import warnings
 from datetime import datetime
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from uuid import UUID, uuid4
+
+# Issue deprecation warning when module is imported
+warnings.warn(
+    "OrchestratorAgent is deprecated. Use AgentCore QueryAgent instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 from text2x.agents.base import BaseAgent, LLMConfig, LLMMessage
 from text2x.agents.schema_expert import SchemaExpertAgent

@@ -73,7 +73,7 @@ def get_orchestrator():
 async def process_query(
     request: QueryRequest,
     current_user: Optional[User] = Depends(get_current_user),
-    use_agentcore: bool = False,
+    use_agentcore: bool = True,
 ) -> QueryResponse:
     """
     Process a natural language query and generate executable database query.
@@ -129,7 +129,7 @@ async def process_query(
             # Extract user ID from auth context if available
             user_id = current_user.id if current_user else "anonymous"
 
-            # Use AgentCore QueryAgent if requested
+            # Use AgentCore QueryAgent (default path)
             if use_agentcore:
                 from text2x.api.state import app_state
                 from text2x.repositories.provider import ProviderRepository
@@ -259,6 +259,12 @@ async def process_query(
                 record_validation_result(provider_type, True)
 
                 return api_response
+            else:
+                # Legacy path - log warning
+                logger.warning(
+                    "Using legacy orchestrator path. This is deprecated and will be removed. "
+                    "Please migrate to AgentCore by setting use_agentcore=True"
+                )
 
             # Get orchestrator and process query
             orchestrator = get_orchestrator()

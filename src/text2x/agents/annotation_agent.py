@@ -1,5 +1,9 @@
 """Annotation Agent - assists experts in annotating database schemas.
 
+DEPRECATED: This agent is deprecated and will be removed in a future version.
+Please use AgentCore AnnotationAssistantAgent instead
+(src/text2x/agentcore/agents/annotation_assistant/).
+
 This agent provides tools to help experts understand and annotate database schemas:
 - sample_data: Get sample rows from a table to understand data patterns
 - column_stats: Get statistics about column values (distinct count, nulls, etc.)
@@ -9,7 +13,16 @@ Supports multi-turn chat for interactive schema exploration and annotation.
 """
 import json
 import time
+import warnings
 from typing import Dict, Any, List, Optional, Callable
+
+# Issue deprecation warning when module is imported
+warnings.warn(
+    "AnnotationAgent is deprecated. Use AgentCore AnnotationAssistantAgent instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
 from text2x.agents.base import BaseAgent, LLMConfig, LLMMessage
 from text2x.providers.base import QueryProvider
 from text2x.repositories.annotation import SchemaAnnotationRepository

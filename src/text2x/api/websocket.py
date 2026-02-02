@@ -13,7 +13,7 @@ from text2x.api.models import (
     ValidationStatus,
 )
 from text2x.config import settings
-from text2x.agents.orchestrator import OrchestratorAgent
+from text2x.agents.orchestrator import OrchestratorAgent  # DEPRECATED: Use AgentCore instead
 
 logger = logging.getLogger(__name__)
 
@@ -86,10 +86,17 @@ async def handle_websocket_query(
         websocket: WebSocket connection
         request: Query request with natural language input
         orchestrator: Orchestrator instance (injected from app state)
+                     DEPRECATED: This will be replaced with AgentCore query agent
 
     Yields:
         WebSocketEvent objects representing progress, clarification needs, results, or errors
     """
+    # Log deprecation warning
+    logger.warning(
+        "WebSocket query processing using OrchestratorAgent is deprecated. "
+        "Please migrate to AgentCore query agent."
+    )
+
     try:
         # Merge request options with defaults
         enable_execution = (
