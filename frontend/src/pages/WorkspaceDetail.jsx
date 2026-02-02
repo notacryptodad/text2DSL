@@ -18,6 +18,7 @@ import AdminSidebar from '../components/AdminSidebar'
 function WorkspaceDetail() {
   const { workspaceId } = useParams()
   const [workspace, setWorkspace] = useState(null)
+  const [providers, setProviders] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
@@ -39,8 +40,28 @@ function WorkspaceDetail() {
   useEffect(() => {
     if (workspaceId) {
       fetchWorkspace()
+      fetchProviders()
     }
   }, [workspaceId])
+
+  const fetchProviders = async () => {
+    try {
+      const apiUrl = ''
+      const token = localStorage.getItem('access_token')
+
+      const response = await fetch(`${apiUrl}/api/v1/workspaces/${workspaceId}/providers`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setProviders(data)
+      }
+    } catch (err) {
+      console.error('Error fetching providers:', err)
+    }
+  }
 
   const fetchWorkspace = async () => {
     try {
@@ -202,7 +223,7 @@ function WorkspaceDetail() {
         throw new Error(error.detail?.message || error.detail || 'Failed to add provider')
       }
 
-      await fetchWorkspace()
+      await fetchProviders()
       setShowAddProviderModal(false)
       setProviderFormData({ name: '', type: '', description: '' })
       alert('Provider added successfully')
@@ -369,12 +390,12 @@ function WorkspaceDetail() {
                   </button>
                 </div>
                 <div className="p-6">
-                  {workspace.providers && workspace.providers.length > 0 ? (
+                  {providers.length > 0 ? (
                     <div className="space-y-3">
-                      {workspace.providers.map((provider) => (
+                      {providers.map((provider) => (
                         <Link
                           key={provider.id}
-                          to={`/admin/providers/${provider.id}`}
+                          to={`/admin/workspaces/${workspaceId}/providers/${provider.id}`}
                           className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
                         >
                           <div className="flex items-center space-x-3">
@@ -386,7 +407,7 @@ function WorkspaceDetail() {
                                 {provider.name}
                               </p>
                               <p className="text-sm text-gray-600 dark:text-gray-400">
-                                {provider.provider_type}
+                                {provider.type}
                               </p>
                             </div>
                           </div>
