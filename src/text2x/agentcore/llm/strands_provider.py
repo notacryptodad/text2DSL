@@ -25,10 +25,13 @@ def create_litellm_model(config: Optional[AgentCoreConfig] = None) -> LiteLLMMod
         config = AgentCoreConfig.from_env()
 
     # Create LiteLLM model with Bedrock configuration
+    # Temperature and max_tokens are passed via client_args for LiteLLM
     model = LiteLLMModel(
         model_id=config.model,
-        temperature=config.temperature,
-        max_tokens=config.max_tokens,
+        client_args={
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+        },
     )
 
     logger.info(f"Created Strands LiteLLM model provider: {config.model}")
