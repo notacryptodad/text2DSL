@@ -20,9 +20,8 @@ function useWebSocket({ onMessage, onError, onOpen, onClose }) {
       const port = window.location.port || (protocol === 'wss:' ? '443' : '80')
 
       // In development, connect to proxy which forwards to backend
-      const wsUrl = import.meta.env.DEV
-        ? `ws://localhost:3000/ws/query`
-        : `${protocol}//${host}:${port}/ws/query`
+      // Use current window location to work with port forwarding
+      const wsUrl = `${protocol}//${host}:${port}/ws/query`
 
       console.log('Connecting to WebSocket:', wsUrl)
       setConnectionState('connecting')

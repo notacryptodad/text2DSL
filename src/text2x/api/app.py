@@ -383,7 +383,7 @@ async def root() -> dict[str, str]:
 
 
 # Include API routers
-from text2x.api.routes import admin, annotations, auth, conversations, feedback, providers, query, review, health, metrics, workspaces, users
+from text2x.api.routes import admin, annotations, auth, conversations, feedback, providers, query, review, health, metrics, workspaces, users, rag
 
 app.include_router(auth.router, prefix=settings.api_prefix)  # Authentication endpoints
 app.include_router(users.router, prefix=settings.api_prefix)  # User management endpoints
@@ -394,6 +394,7 @@ app.include_router(conversations.router, prefix=settings.api_prefix)
 app.include_router(review.router, prefix=settings.api_prefix)
 app.include_router(feedback.router, prefix=settings.api_prefix)
 app.include_router(annotations.router, prefix=settings.api_prefix)
+app.include_router(rag.router, prefix=settings.api_prefix)  # RAG search endpoints
 app.include_router(admin.router, prefix=settings.api_prefix)  # Admin endpoints for super admin operations
 app.include_router(health.router)  # No prefix for health checks
 app.include_router(metrics.router)  # No prefix for metrics
