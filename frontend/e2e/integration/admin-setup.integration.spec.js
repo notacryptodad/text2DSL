@@ -25,7 +25,6 @@ const createdResources = {
 let authToken = '';
 
 test.describe('Integration: Admin Setup', () => {
-  test.describe.configure({ mode: 'serial' });
   test.beforeAll(async ({ request }) => {
     // Verify backend is healthy
     const healthResponse = await request.get('http://localhost:8000/health');
