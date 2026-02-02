@@ -2,6 +2,7 @@
 from typing import TYPE_CHECKING
 
 from text2x.providers.sql_provider import SQLProvider, SQLConnectionConfig
+from text2x.models.workspace import ProviderType
 
 if TYPE_CHECKING:
     from text2x.providers.base import QueryProvider
@@ -19,8 +20,6 @@ async def get_provider_instance(provider_model) -> "QueryProvider":
     Raises:
         ValueError: If provider type is not supported
     """
-    from text2x.models.enums import ProviderType
-    
     provider_type = provider_model.type
     
     # Get connection details from the provider's connection
