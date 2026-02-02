@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Save, X, AlertCircle, Link2, Plus } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Save, X, AlertCircle, Link2, Plus, ChevronUp, ChevronDown } from 'lucide-react'
 
 function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
   const [description, setDescription] = useState('')
@@ -9,6 +9,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
   const [newRelationship, setNewRelationship] = useState({ target_table: '', type: 'many_to_one', description: '', source_column: '' })
   const [columnAnnotations, setColumnAnnotations] = useState({})
   const [saving, setSaving] = useState(false)
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' })
 
   // Support both API formats: table_name (old) and name (new)
   const tableSchema = schema?.find(t => (t.table_name || t.name) === tableName)
@@ -111,6 +112,53 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
   // Get all table names for relationship dropdown
   const allTables = schema?.map(t => t.table_name || t.name).filter(t => t !== tableName) || []
 
+  // Sorting logic
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }))
+  }
+
+  const sortedColumns = useMemo(() => {
+    if (!tableSchema?.columns) return []
+    
+    const columns = [...tableSchema.columns]
+    
+    if (sortConfig.key) {
+      columns.sort((a, b) => {
+        let aVal, bVal
+        
+        switch (sortConfig.key) {
+          case 'name':
+            aVal = (a.column_name || a.name || '').toLowerCase()
+            bVal = (b.column_name || b.name || '').toLowerCase()
+            break
+          case 'type':
+            aVal = (a.data_type || a.type || '').toLowerCase()
+            bVal = (b.data_type || b.type || '').toLowerCase()
+            break
+          default:
+            return 0
+        }
+        
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+    
+    return columns
+  }, [tableSchema?.columns, sortConfig])
+
+  const SortIcon = ({ columnKey }) => {
+    if (sortConfig.key !== columnKey) {
+      return <ChevronUp className="w-3 h-3 text-gray-300" />
+    }
+    return sortConfig.direction === 'asc' 
+      ? <ChevronUp className="w-3 h-3 text-primary-500" />
+      : <ChevronDown className="w-3 h-3 text-primary-500" />
+  }
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
       <div className="flex items-center justify-between mb-6">
@@ -283,14 +331,30 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel }) {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-1/5">Column</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-1/6">Type</th>
+                    <th 
+                      className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-1/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none"
+                      onClick={() => handleSort('name')}
+                    >
+                      <div className="flex items-center space-x-1">
+                        <span>Column</span>
+                        <SortIcon columnKey="name" />
+                      </div>
+                    </th>
+                    <th 
+                      className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-1/6 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none"
+                      onClick={() => handleSort('type')}
+                    >
+                      <div className="flex items-center space-x-1">
+                        <span>Type</span>
+                        <SortIcon columnKey="type" />
+                      </div>
+                    </th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-2/5">Description</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 w-1/4">Sample Values</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {tableSchema.columns.map((column) => {
+                  {sortedColumns.map((column) => {
                     const columnName = column.column_name || column.name
                     const dataType = column.data_type || column.type
                     const isNullable = column.is_nullable !== false && column.nullable !== false
