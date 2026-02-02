@@ -215,6 +215,10 @@ function AdminUsers() {
         text: 'Super Admin',
         color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
       },
+      expert: {
+        text: 'Expert',
+        color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+      },
       admin: {
         text: 'Admin',
         color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
@@ -539,8 +543,12 @@ function AdminUsers() {
                       disabled={formLoading || formSuccess}
                     >
                       <option value="user">User</option>
+                      <option value="expert">Expert (System-wide)</option>
                       <option value="super_admin">Super Admin</option>
                     </select>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Expert can review/approve queries across all workspaces
+                    </p>
                   </div>
 
                   {/* Active Status */}

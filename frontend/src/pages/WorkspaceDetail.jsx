@@ -25,6 +25,7 @@ function WorkspaceDetail() {
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showAddProviderModal, setShowAddProviderModal] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('member')
   const [inviting, setInviting] = useState(false)
   const [addingProvider, setAddingProvider] = useState(false)
   const [toast, setToast] = useState(null) // { type: 'success' | 'error', message: string }
@@ -150,7 +151,7 @@ function WorkspaceDetail() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
-          body: JSON.stringify({ email: inviteEmail }),
+          body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
         }
       )
 
@@ -162,6 +163,7 @@ function WorkspaceDetail() {
       await fetchWorkspace()
       setShowInviteModal(false)
       setInviteEmail('')
+      setInviteRole('member')
       showToast('success', 'Admin invited successfully')
     } catch (err) {
       console.error('Error inviting admin:', err)
@@ -590,6 +592,25 @@ function WorkspaceDetail() {
                       required
                     />
                   </div>
+                </div>
+
+                <div className="px-6 py-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Role
+                  </label>
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="member">Member (Read access)</option>
+                    <option value="expert">Expert (Review queries)</option>
+                    <option value="admin">Admin (Manage settings)</option>
+                    <option value="owner">Owner (Full control)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Expert can mark good/bad queries and provide corrections
+                  </p>
                 </div>
 
                 <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end space-x-3">
