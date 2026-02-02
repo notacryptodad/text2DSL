@@ -11,6 +11,7 @@ import {
   X,
   RefreshCw,
   TestTube,
+  FileText,
 } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import AdminSidebar from '../components/AdminSidebar'
@@ -24,6 +25,7 @@ function ProviderDetail() {
   const [showAddConnectionModal, setShowAddConnectionModal] = useState(false)
   const [addingConnection, setAddingConnection] = useState(false)
   const [testingConnection, setTestingConnection] = useState(null)
+  const [refreshingSchema, setRefreshingSchema] = useState(null)
   const [toast, setToast] = useState(null)
   const [connectionFormData, setConnectionFormData] = useState({
     name: '',
@@ -202,6 +204,37 @@ function ProviderDetail() {
     }
   }
 
+  const handleRefreshSchema = async (connectionId) => {
+    try {
+      setRefreshingSchema(connectionId)
+      const apiUrl = ''
+      const token = localStorage.getItem('access_token')
+
+      const response = await fetch(
+        `${apiUrl}/api/v1/workspaces/${workspaceId}/providers/${providerId}/connections/${connectionId}/schema/refresh`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+
+      const result = await response.json()
+      if (response.ok) {
+        const tableCount = result.tables?.length || result.table_count || 0
+        showToast('success', `Schema refreshed! Found ${tableCount} tables.`)
+      } else {
+        showToast('error', result.message || result.detail || 'Failed to refresh schema')
+      }
+    } catch (err) {
+      console.error('Error refreshing schema:', err)
+      showToast('error', 'Failed to refresh schema')
+    } finally {
+      setRefreshingSchema(null)
+    }
+  }
+
   const handleDeleteConnection = async (connectionId, connectionName) => {
     if (!confirm(`Are you sure you want to delete "${connectionName}"?`)) {
       return
@@ -337,6 +370,25 @@ function ProviderDetail() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleRefreshSchema(conn.id)}
+                        disabled={refreshingSchema === conn.id}
+                        className="p-2 text-purple-500 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded transition-colors disabled:opacity-50"
+                        title="Refresh schema"
+                      >
+                        {refreshingSchema === conn.id ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Database className="w-4 h-4" />
+                        )}
+                      </button>
+                      <Link
+                        to={`/schema-annotation?workspace=${workspaceId}&connection=${conn.id}`}
+                        className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
+                        title="View & annotate schema"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Link>
                       <button
                         onClick={() => handleTestConnection(conn.id)}
                         disabled={testingConnection === conn.id}
