@@ -15,9 +15,12 @@ function AdminDashboard() {
     try {
       setLoading(true)
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       // Fetch overview statistics
-      const response = await fetch(`${apiUrl}/api/v1/admin/stats`)
+      const response = await fetch(`${apiUrl}/api/v1/admin/stats`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      })
       if (response.ok) {
         const data = await response.json()
         setStats(data)

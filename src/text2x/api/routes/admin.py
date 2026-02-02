@@ -115,9 +115,75 @@ class AcceptInvitationResponse(BaseModel):
     admin: Optional[AdminResponse] = None
 
 
+class AdminStatsResponse(BaseModel):
+    """Response model for admin dashboard statistics."""
+
+    total_workspaces: int = Field(description="Total number of workspaces")
+    total_users: int = Field(description="Total number of users")
+    queries_today: int = Field(description="Number of queries made today")
+    active_connections: int = Field(description="Number of active database connections")
+
+
 # ============================================================================
 # Admin Endpoints
 # ============================================================================
+
+
+@router.get(
+    "/stats",
+    response_model=AdminStatsResponse,
+    summary="Get admin dashboard statistics",
+    dependencies=[Depends(require_role("super_admin"))],
+)
+async def get_admin_stats() -> AdminStatsResponse:
+    """
+    Get statistics for the admin dashboard.
+
+    Returns counts of workspaces, users, today's queries, and active connections.
+    """
+    try:
+        from sqlalchemy import select, func
+        from datetime import date
+        from text2x.models.workspace import Provider, Connection
+        from text2x.models.user import User as UserModel
+
+        async with await get_session() as session:
+            # Count workspaces
+            workspace_count = await session.scalar(
+                select(func.count()).select_from(Workspace)
+            )
+
+            # Count users
+            user_count = await session.scalar(
+                select(func.count()).select_from(UserModel)
+            )
+
+            # Count active connections
+            active_connections = await session.scalar(
+                select(func.count()).select_from(Connection).where(
+                    Connection.status == "connected"
+                )
+            )
+
+            # Count queries today (placeholder - would need query log table)
+            queries_today = 0
+
+            return AdminStatsResponse(
+                total_workspaces=workspace_count or 0,
+                total_users=user_count or 0,
+                queries_today=queries_today,
+                active_connections=active_connections or 0,
+            )
+
+    except Exception as e:
+        logger.exception(f"Failed to get admin stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="internal_error",
+                message="Failed to retrieve admin statistics",
+            ).model_dump(mode='json'),
+        )
 
 
 @router.post(
