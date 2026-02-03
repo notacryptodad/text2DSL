@@ -674,6 +674,10 @@ async def auto_annotate_table(
         if not agentcore or not agentcore.is_started:
             raise RuntimeError("AgentCore not initialized")
 
+        # Get the connection and create a provider for database access
+        from text2x.providers.factory import get_provider_by_connection_id
+        provider = await get_provider_by_connection_id(connection_id, workspace_id)
+
         # Get or create annotation_assistant agent
         from text2x.agentcore.agents.annotation_assistant import AnnotationAssistantAgent
 
@@ -681,32 +685,37 @@ async def auto_annotate_table(
 
         # Check if agent already exists
         if agent_name not in agentcore.agents:
-            # Create agent instance
-            agent = AnnotationAssistantAgent(agentcore, agent_name)
+            # Create agent instance with provider
+            agent = AnnotationAssistantAgent(agentcore, agent_name, provider=provider)
 
             # Register agent with runtime
             agentcore.agents[agent_name] = agent
             logger.info(f"Created AnnotationAssistantAgent instance: {agent_name}")
         else:
             agent = agentcore.agents[agent_name]
+            # Update provider in case connection changed
+            agent.set_provider(provider)
 
         # Build prompt for auto-annotation
         prompt = f"""I need help annotating the table '{request.table_name}'.
 
 Please:
 1. Sample some data from this table to understand its structure
-2. Analyze the columns and their data types
+2. Analyze ALL columns and their data types
 3. Provide a JSON response with the following structure:
 
 {{
   "table_description": "A concise description of what this table represents",
   "columns": [
     {{"name": "column_name", "description": "What this column represents"}},
-    ...
+    ...for EVERY column in the table
   ]
 }}
 
-IMPORTANT: After analyzing the data, end your response with a JSON code block containing the structured annotations."""
+IMPORTANT: 
+- Include descriptions for ALL columns in the table, not just a subset
+- After analyzing the data, return ONLY the JSON (no markdown code blocks)
+- Make sure every column from the table schema is included in the response"""
 
         # Process the request
         result = await agent.process({
