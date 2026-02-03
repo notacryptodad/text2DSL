@@ -1,6 +1,8 @@
 """Annotation chat endpoints for schema annotation assistance."""
+import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
@@ -696,26 +698,42 @@ async def auto_annotate_table(
             # Update provider in case connection changed
             agent.set_provider(provider)
 
-        # Build prompt for auto-annotation
-        prompt = f"""I need help annotating the table '{request.table_name}'.
+        # Pre-fetch table data for the LLM to analyze
+        sample_data = {}
+        try:
+            sample_result = await agent._sample_data({"table_name": request.table_name, "limit": 5})
+            sample_data = sample_result
+        except Exception as e:
+            logger.warning(f"Failed to sample data: {e}")
+            sample_data = {"error": str(e)}
 
-Please:
-1. Sample some data from this table to understand its structure
-2. Analyze ALL columns and their data types
-3. Provide a JSON response with the following structure:
+        # Build prompt with actual data included
+        prompt = f"""Generate annotations for the table '{request.table_name}'.
+
+TABLE DATA (sample rows):
+{json.dumps(sample_data, indent=2, default=str)}
+
+Based on the sample data above, provide annotations in this EXACT JSON format:
 
 {{
-  "table_description": "A concise description of what this table represents",
+  "table_description": "Clear description of what this table represents",
   "columns": [
-    {{"name": "column_name", "description": "What this column represents"}},
-    ...for EVERY column in the table
+    {{
+      "name": "column_name",
+      "description": "What this column stores",
+      "sensitive": false,
+      "business_terms": []
+    }}
   ]
 }}
 
-IMPORTANT: 
-- Include descriptions for ALL columns in the table, not just a subset
-- After analyzing the data, return ONLY the JSON (no markdown code blocks)
-- Make sure every column from the table schema is included in the response"""
+REQUIREMENTS:
+1. Include a description for EVERY column shown in the sample data
+2. Mark columns as sensitive=true if they contain: passwords, emails, personal info, etc.
+3. Add business_terms array with alternative names users might search for
+4. Return ONLY the JSON object - no markdown, no explanation, no other text
+
+JSON OUTPUT:"""
 
         # Process the request
         result = await agent.process({
@@ -727,8 +745,6 @@ IMPORTANT:
 
         # Extract suggestions from response
         # Parse JSON from the LLM response
-        import json
-        import re
 
         llm_response = result["response"]
         suggestions = {
