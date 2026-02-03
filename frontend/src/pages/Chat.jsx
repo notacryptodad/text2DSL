@@ -60,7 +60,7 @@ function Chat() {
 
       try {
         const token = localStorage.getItem('access_token')
-        const response = await fetch(`/api/v1/admin/workspaces/${currentWorkspace.id}/providers`, {
+        const response = await fetch(`/api/v1/workspaces/${currentWorkspace.id}/providers`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -72,8 +72,8 @@ function Chat() {
           const formattedProviders = data.map(provider => ({
             id: provider.id,
             name: provider.name,
-            type: provider.provider_type.toUpperCase(),
-            icon: getProviderIcon(provider.provider_type),
+            type: (provider.type || provider.provider_type || 'unknown').toUpperCase(),
+            icon: getProviderIcon(provider.type || provider.provider_type || 'postgresql'),
           }))
           setProviders(formattedProviders)
 

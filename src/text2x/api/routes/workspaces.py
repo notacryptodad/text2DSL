@@ -49,6 +49,7 @@ class WorkspaceUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     settings: Optional[dict] = None
+    is_active: Optional[bool] = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -59,6 +60,7 @@ class WorkspaceResponse(BaseModel):
     slug: str
     description: Optional[str]
     settings: Optional[dict]
+    is_active: bool = True
     provider_count: int = 0
     created_at: datetime
     updated_at: datetime

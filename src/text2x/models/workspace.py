@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Enum as SQLEnum,
@@ -78,6 +79,7 @@ class Workspace(Base, UUIDMixin, TimestampMixin):
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     settings: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True, default=dict)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     
     # Relationships
     providers: Mapped[List["Provider"]] = relationship(

@@ -106,8 +106,8 @@ function WorkspaceDetail() {
       const apiUrl = ''
       const token = localStorage.getItem('access_token')
 
-      const response = await fetch(`${apiUrl}/api/v1/admin/workspaces/${workspaceId}`, {
-        method: 'PUT',
+      const response = await fetch(`${apiUrl}/api/v1/workspaces/${workspaceId}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
