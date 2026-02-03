@@ -254,11 +254,12 @@ When you want to use a tool, respond with JSON in this format:
         return base_prompt
 
     async def _sample_data(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Tool: Get sample rows from a table.
+        """Tool: Get random sample rows from a table.
 
         Parameters:
             - table_name: Name of the table
-            - limit: Number of rows to return (default: 10, max: 100)
+            - limit: Number of rows to return (default: 5, max: 50)
+            - random: Whether to randomize (default: True)
 
         Returns:
             Sample rows and column information
@@ -267,17 +268,32 @@ When you want to use a tool, respond with JSON in this format:
             return {"error": "Provider not configured"}
 
         table_name = params.get("table_name")
-        limit = min(params.get("limit", 10), 100)
+        limit = min(params.get("limit", 5), 50)
+        use_random = params.get("random", True)
 
         if not table_name:
             return {"error": "table_name is required"}
 
         try:
-            # Build SELECT query with limit
-            query = f"SELECT * FROM {table_name} LIMIT {limit}"
+            # Build SELECT query - use TABLESAMPLE for PostgreSQL (fast random sampling)
+            # Falls back to ORDER BY RANDOM() for other DBs
+            if use_random:
+                # Try PostgreSQL's efficient TABLESAMPLE first
+                # BERNOULLI samples ~1% of rows randomly, then we LIMIT
+                query = f"SELECT * FROM {table_name} TABLESAMPLE BERNOULLI(10) LIMIT {limit}"
+            else:
+                query = f"SELECT * FROM {table_name} LIMIT {limit}"
 
             # Execute query
-            result = await self.provider.execute_query(query, limit=limit)
+            try:
+                result = await self.provider.execute_query(query, limit=limit)
+            except Exception:
+                # TABLESAMPLE not supported, fall back to ORDER BY RANDOM()
+                if use_random:
+                    query = f"SELECT * FROM {table_name} ORDER BY RANDOM() LIMIT {limit}"
+                    result = await self.provider.execute_query(query, limit=limit)
+                else:
+                    raise
 
             if result and result.success:
                 return {
