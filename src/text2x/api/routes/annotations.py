@@ -157,6 +157,7 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
 
             # Get or create annotation_assistant agent
             from text2x.agentcore.agents.annotation_assistant import AnnotationAssistantAgent
+            from text2x.providers.factory import get_provider_by_connection_id
 
             agent_name = f"annotation_assistant_{request.provider_id}"
 
@@ -170,6 +171,21 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
                 logger.info(f"Created AnnotationAssistantAgent instance: {agent_name}")
             else:
                 agent = agentcore.agents[agent_name]
+
+            # Set provider for database access (needed for tools)
+            # Try to get workspace_id from existing conversation context
+            context = _conversation_context.get(conversation_id, {})
+            workspace_id = context.get("workspace_id")
+            
+            if workspace_id:
+                try:
+                    provider = await get_provider_by_connection_id(
+                        UUID(request.provider_id), 
+                        UUID(workspace_id)
+                    )
+                    agent.set_provider(provider)
+                except Exception as e:
+                    logger.warning(f"Failed to set provider: {e}")
 
             # Get or initialize conversation context
             if conversation_id not in _conversation_context:
@@ -193,7 +209,7 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
 
             # Process user message through AgentCore agent
             agent_result = await agent.process({
-                "user_message": request.user_message,
+                "message": request.user_message,
                 "provider_id": request.provider_id,
                 "user_id": request.user_id,
                 "conversation_history": context["conversation_history"],
@@ -810,14 +826,25 @@ JSON OUTPUT:"""
         suggestions["llm_response"] = llm_response
         suggestions["tool_calls"] = result.get("tool_calls", [])
 
+        # Store conversation context so chat endpoint can continue it
+        _conversation_context[conversation_id] = {
+            "conversation_history": [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": llm_response}
+            ],
+            "provider_id": str(connection_id),
+            "workspace_id": str(workspace_id),  # Needed for chat to get provider
+            "table_name": request.table_name,
+            "suggestions": suggestions,  # Store initial suggestions for reference
+        }
+
         response = AutoAnnotateResponse(
             conversation_id=conversation_id,
             table_name=request.table_name,
             suggestions=suggestions,
             message=(
-                f"Auto-annotation started for table '{request.table_name}'. "
-                f"Continue the conversation using conversation_id {conversation_id} "
-                "to review and refine the suggestions."
+                f"Auto-annotation completed for table '{request.table_name}'. "
+                f"You can continue chatting to refine the annotations, then ask me to save them."
             ),
         )
 
