@@ -57,6 +57,7 @@ class AnnotationAssistantAgent(AgentCoreBaseAgent):
         self.register_tool("column_stats", self._column_stats)
         self.register_tool("save_annotation", self._save_annotation)
         self.register_tool("list_annotations", self._list_annotations)
+        self.register_tool("get_table_annotation", self._get_table_annotation)
 
         logger.info(f"AnnotationAssistantAgent '{name}' initialized with {len(self.tools)} tools")
 
@@ -517,4 +518,69 @@ When you want to use a tool, respond with JSON in this format:
             return {
                 "success": False,
                 "error": f"Failed to list annotations: {str(e)}",
+            }
+
+    async def _get_table_annotation(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Tool: Get annotation for a specific table (useful for FK context).
+
+        Parameters:
+            - provider_id: Provider ID (injected by process method)
+            - table_name: Name of the table to get annotations for
+
+        Returns:
+            Table description and column annotations if available
+        """
+        provider_id = params.get("provider_id")
+        table_name = params.get("table_name")
+
+        if not provider_id:
+            return {"error": "provider_id is required"}
+        if not table_name:
+            return {"error": "table_name is required"}
+
+        try:
+            # Get annotations from repository
+            annotations = await self.annotation_repo.get_by_provider(provider_id)
+            
+            # Filter for this table
+            table_annotations = [
+                ann for ann in annotations
+                if ann.table_name == table_name or ann.target == table_name
+            ]
+            
+            if not table_annotations:
+                return {
+                    "success": True,
+                    "table_name": table_name,
+                    "exists": False,
+                    "message": f"No annotations found for table '{table_name}'"
+                }
+            
+            # Find table-level annotation
+            table_desc = None
+            column_annotations = []
+            
+            for ann in table_annotations:
+                if ann.target_type == "table":
+                    table_desc = ann.description
+                elif ann.target_type == "column":
+                    column_annotations.append({
+                        "name": ann.column_name or ann.target.split(".")[-1],
+                        "description": ann.description,
+                        "sensitive": ann.sensitive,
+                        "business_terms": ann.business_terms,
+                    })
+            
+            return {
+                "success": True,
+                "table_name": table_name,
+                "exists": True,
+                "table_description": table_desc,
+                "columns": column_annotations,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get table annotation: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Failed to get annotation: {str(e)}",
             }

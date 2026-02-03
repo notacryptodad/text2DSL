@@ -714,40 +714,49 @@ async def auto_annotate_table(
             # Update provider in case connection changed
             agent.set_provider(provider)
 
-        # Pre-fetch table data for the LLM to analyze
-        sample_data = {}
-        try:
-            sample_result = await agent._sample_data({"table_name": request.table_name, "limit": 5})
-            sample_data = sample_result
-        except Exception as e:
-            logger.warning(f"Failed to sample data: {e}")
-            sample_data = {"error": str(e)}
+        # Build rich context for the LLM
+        from text2x.api.routes.annotation_context import (
+            build_annotation_context, 
+            format_context_as_prompt
+        )
+        
+        context = await build_annotation_context(
+            provider=provider,
+            table_name=request.table_name,
+            connection_id=str(connection_id),
+            annotation_repo=agent.annotation_repo
+        )
+        context_prompt = format_context_as_prompt(context)
 
-        # Build prompt with actual data included
-        prompt = f"""Generate annotations for the table '{request.table_name}'.
+        # Build prompt with rich context (no tool instructions for auto-annotate)
+        prompt = f"""You are an expert database annotator. Analyze this table and generate annotations.
 
-TABLE DATA (sample rows):
-{json.dumps(sample_data, indent=2, default=str)}
+{context_prompt}
 
-Based on the sample data above, provide annotations in this EXACT JSON format:
+## Your Task
+Generate annotations for ALL columns in this table based on the information above.
+
+## Response Format
+Return ONLY valid JSON (no markdown code blocks, no explanation text):
 
 {{
-  "table_description": "Clear description of what this table represents",
+  "table_description": "Clear description of what this table represents and its purpose",
   "columns": [
     {{
       "name": "column_name",
-      "description": "What this column stores",
+      "description": "Clear description of what this column stores",
       "sensitive": false,
-      "business_terms": []
+      "business_terms": ["alternative", "names", "users might search"]
     }}
   ]
 }}
 
-REQUIREMENTS:
-1. Include a description for EVERY column shown in the sample data
-2. Mark columns as sensitive=true if they contain: passwords, emails, personal info, etc.
-3. Add business_terms array with alternative names users might search for
-4. Return ONLY the JSON object - no markdown, no explanation, no other text
+## Guidelines
+1. Include ALL columns from the schema above
+2. Mark sensitive=true for: passwords, emails, PII, tokens, secrets
+3. Add business_terms for columns with common alternative names
+4. For FK columns, mention the relationship (e.g., "References users table")
+5. Be specific - use the sample data to understand actual content
 
 JSON OUTPUT:"""
 
