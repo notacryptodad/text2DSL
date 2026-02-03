@@ -55,13 +55,17 @@ export function WorkspaceProvider({ children }) {
         setWorkspaces(data)
 
         // If no workspace is selected, select the first one
-        if (!currentWorkspace && data.length > 0) {
-          setCurrentWorkspace(data[0])
-        }
-        // If current workspace is no longer available, select first one
-        else if (currentWorkspace && !data.find(w => w.id === currentWorkspace.id)) {
-          setCurrentWorkspace(data.length > 0 ? data[0] : null)
-        }
+        // Use functional update to get latest state
+        setCurrentWorkspace(prev => {
+          if (!prev && data.length > 0) {
+            return data[0]
+          }
+          // If current workspace is no longer available, select first one
+          if (prev && !data.find(w => w.id === prev.id)) {
+            return data.length > 0 ? data[0] : null
+          }
+          return prev
+        })
       } else {
         console.error('Failed to fetch workspaces')
       }
