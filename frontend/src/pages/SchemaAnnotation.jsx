@@ -58,11 +58,16 @@ function SchemaAnnotation() {
     
     if (connParam) {
       setSelectedConnection(connParam)
+      // Find provider_id from connections if already loaded
+      const conn = connections.find(c => c.id === connParam)
+      if (conn) {
+        setSelectedProviderId(conn.provider_id)
+      }
     } else if (currentConnection?.id) {
       setSelectedConnection(currentConnection.id)
       setSelectedProviderId(currentConnection.provider_id)
     }
-  }, [searchParams, currentWorkspace, currentConnection])
+  }, [searchParams, currentWorkspace, currentConnection, connections])
 
   useEffect(() => {
     if (selectedWorkspace) {

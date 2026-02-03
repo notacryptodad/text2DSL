@@ -1389,13 +1389,16 @@ async def refresh_connection_schema(
 
             # Introspect schema using service
             from text2x.services.connection_service import ConnectionService
+            from text2x.services.schema_service import SchemaService
 
             introspection_result = await ConnectionService.introspect_schema(connection)
 
-            if introspection_result.success:
+            if introspection_result.success and introspection_result.schema:
+                # Cache the refreshed schema
+                schema_service = SchemaService(session)
+                await schema_service.cache_schema(connection_id, introspection_result.schema)
+                
                 # Update connection with schema cache info
-                # In a production system, you'd store the schema in Redis or similar
-                # For now, just update the timestamp and store a cache key
                 connection.schema_cache_key = f"schema:{connection_id}"
                 connection.schema_last_refreshed = datetime.utcnow()
 

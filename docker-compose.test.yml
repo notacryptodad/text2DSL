@@ -15,6 +15,8 @@ services:
       POSTGRES_DB: text2x
     ports:
       - "5433:5432"  # Different port to avoid conflict with backend
+    volumes:
+      - ./docker/postgres-test/seed.sql:/docker-entrypoint-initdb.d/seed.sql
     tmpfs:
       - /var/lib/postgresql/data  # Use tmpfs for faster tests, no persistence needed
     healthcheck:
