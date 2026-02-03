@@ -870,14 +870,46 @@ JSON OUTPUT:"""
                 
                 return patterns
             
-            def is_likely_enum(col_name, values, patterns, row_estimate):
+            def is_likely_enum(col_name, values, patterns, row_estimate, table_name):
                 """Check if column is likely a categorical enum."""
                 # Skip if pattern indicates non-enum
                 if any(p in ["UUID format", "email format", "URL format", "timestamp"] for p in patterns):
                     return False
                 
+                # Combine table + column context
+                full_context = f"{table_name}.{col_name}".lower()
+                
+                # Table-specific patterns that are likely enums
+                enum_table_column_patterns = [
+                    # User/account related
+                    ('user', 'role'), ('user', 'status'), ('user', 'type'),
+                    ('account', 'status'), ('account', 'type'),
+                    # Order/transaction related  
+                    ('order', 'status'), ('order', 'state'), ('order', 'type'),
+                    ('transaction', 'status'), ('transaction', 'type'),
+                    ('payment', 'status'), ('payment', 'method'),
+                    # Content related
+                    ('post', 'status'), ('article', 'status'),
+                    ('comment', 'status'), ('review', 'status'),
+                    # Task/workflow related
+                    ('task', 'status'), ('task', 'priority'),
+                    ('ticket', 'status'), ('ticket', 'priority'),
+                    ('job', 'status'), ('job', 'state'),
+                    # General patterns
+                    ('log', 'level'), ('log', 'action'), ('log', 'type'),
+                    ('event', 'type'), ('event', 'status'),
+                    ('notification', 'type'), ('notification', 'status'),
+                ]
+                
+                for tbl_pattern, col_pattern in enum_table_column_patterns:
+                    if tbl_pattern in table_name.lower() and col_pattern in col_name.lower():
+                        return True
+                
                 # Skip common non-enum column names
-                non_enum_names = ['id', 'name', 'email', 'password', 'hash', 'token', 'created', 'updated', 'timestamp', 'date', 'time', 'description', 'comment', 'note', 'title', 'content', 'body', 'message']
+                non_enum_names = ['id', 'name', 'email', 'password', 'hash', 'token', 'created', 'updated', 
+                                  'timestamp', 'date', 'time', 'description', 'comment', 'note', 'title', 
+                                  'content', 'body', 'message', 'text', 'url', 'path', 'key', 'value',
+                                  'address', 'phone', 'code', 'number']
                 if any(n in col_name.lower() for n in non_enum_names):
                     return False
                 
@@ -905,14 +937,16 @@ JSON OUTPUT:"""
                     return False  # Too unique relative to sample, probably not an enum
                 
                 # Common enum patterns: status, type, role, state, category, level, priority
-                enum_like_names = ['status', 'type', 'role', 'state', 'category', 'level', 'priority', 'kind', 'mode', 'active', 'enabled', 'flag']
+                enum_like_names = ['status', 'type', 'role', 'state', 'category', 'level', 'priority', 
+                                   'kind', 'mode', 'active', 'enabled', 'flag', 'tier', 'grade', 'rank']
                 if any(n in col_name.lower() for n in enum_like_names):
                     return True
                 
                 return False
             
-            # Get row estimate for smarter enum detection
+            # Get row estimate and table name for smarter enum detection
             row_estimate = context.get("row_estimate")
+            table_name = request.table_name
             
             # Build column -> sample values and patterns mapping
             col_samples = {}
@@ -941,7 +975,7 @@ JSON OUTPUT:"""
                         col_patterns[col_name] = patterns
                     
                     # Check if enum
-                    if is_likely_enum(col_name, values, patterns, row_estimate):
+                    if is_likely_enum(col_name, values, patterns, row_estimate, table_name):
                         col_enum_values[col_name] = sorted(unique_values)
                         col_samples[col_name] = ", ".join(sorted(unique_values))
                     else:
