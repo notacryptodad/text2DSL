@@ -20,6 +20,23 @@ export function WorkspaceProvider({ children }) {
   useEffect(() => {
     // Fetch workspaces on mount
     fetchWorkspaces()
+    
+    // Poll for token changes (handles login in same tab)
+    const checkToken = setInterval(() => {
+      const token = localStorage.getItem('access_token')
+      const hasWorkspaces = localStorage.getItem('currentWorkspace')
+      if (token && !hasWorkspaces) {
+        fetchWorkspaces()
+      }
+    }, 1000)
+    
+    // Stop polling after 30 seconds
+    const cleanup = setTimeout(() => clearInterval(checkToken), 30000)
+    
+    return () => {
+      clearInterval(checkToken)
+      clearTimeout(cleanup)
+    }
   }, [])
 
   useEffect(() => {
