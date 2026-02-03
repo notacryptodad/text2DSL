@@ -741,12 +741,17 @@ Return ONLY valid JSON (no markdown code blocks, no explanation text):
 
 {{
   "table_description": "Clear description of what this table represents and its purpose",
+  "represents": "business_concept",
+  "primary_lookup_column": "column_name_for_entity_lookup",
   "columns": [
     {{
       "name": "column_name",
       "description": "Clear description of what this column stores",
       "sensitive": false,
-      "business_terms": ["alternative", "names", "users might search"]
+      "business_terms": ["alternative", "names", "users might search"],
+      "is_searchable": true,
+      "search_type": "exact|like|range",
+      "aggregation": "SUM|COUNT|AVG|null"
     }}
   ]
 }}
@@ -757,6 +762,13 @@ Return ONLY valid JSON (no markdown code blocks, no explanation text):
 3. Add business_terms for columns with common alternative names
 4. For FK columns, mention the relationship (e.g., "References users table")
 5. Be specific - use the sample data to understand actual content
+
+## Query Generation Hints
+- **represents**: What business concept does this table represent? (e.g., "sales_event", "customer", "product")
+- **primary_lookup_column**: Which column is used to look up entities by name? (e.g., "name" for products)
+- **is_searchable**: Is this column likely used in WHERE clauses?
+- **search_type**: "exact" for IDs/codes, "like" for names/text, "range" for dates/numbers
+- **aggregation**: Default aggregation for numeric columns (e.g., "SUM" for amounts, "COUNT" for IDs)
 
 JSON OUTPUT:"""
 
@@ -786,6 +798,9 @@ JSON OUTPUT:"""
                 if "table_description" in parsed_json or "columns" in parsed_json:
                     suggestions["table_description"] = parsed_json.get("table_description", "")
                     suggestions["columns"] = parsed_json.get("columns", [])
+                    # Extract query generation hints
+                    suggestions["represents"] = parsed_json.get("represents")
+                    suggestions["primary_lookup_column"] = parsed_json.get("primary_lookup_column")
             except json.JSONDecodeError:
                 logger.warning("Failed to parse JSON from code block")
         
@@ -824,6 +839,9 @@ JSON OUTPUT:"""
                         if "table_description" in parsed_json and "columns" in parsed_json:
                             suggestions["table_description"] = parsed_json.get("table_description", "")
                             suggestions["columns"] = parsed_json.get("columns", [])
+                            # Extract query generation hints
+                            suggestions["represents"] = parsed_json.get("represents")
+                            suggestions["primary_lookup_column"] = parsed_json.get("primary_lookup_column")
                             logger.info(f"Extracted annotations: {len(suggestions['columns'])} columns")
                             break
                     except json.JSONDecodeError:

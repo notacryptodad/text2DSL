@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, Column, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 from .base import Base, TimestampMixin, UUIDMixin
 
@@ -37,7 +37,7 @@ class SchemaAnnotation(Base, UUIDMixin, TimestampMixin):
     
     # Annotation content
     description = Column(Text, nullable=False)
-    business_terms = Column(ARRAY(String), nullable=True)
+    business_terms = Column(ARRAY(String), nullable=True)  # Natural language mappings
     examples = Column(ARRAY(String), nullable=True)
     relationships = Column(ARRAY(String), nullable=True)
     
@@ -45,6 +45,21 @@ class SchemaAnnotation(Base, UUIDMixin, TimestampMixin):
     date_format = Column(String(100), nullable=True)
     enum_values = Column(ARRAY(String), nullable=True)
     sensitive = Column(Boolean, nullable=False, default=False)
+    
+    # ===== NEW: Query generation hints =====
+    
+    # Table-level hints
+    primary_lookup_column = Column(String(255), nullable=True)  # Main column for entity lookup (e.g., "name" for products)
+    represents = Column(String(255), nullable=True)  # Business concept this table represents (e.g., "sales_event")
+    
+    # Column-level hints
+    is_searchable = Column(Boolean, nullable=True)  # Column used in WHERE clauses
+    search_type = Column(String(50), nullable=True)  # "exact", "like", "full_text", "range"
+    aggregation = Column(String(50), nullable=True)  # Default aggregation: "SUM", "COUNT", "AVG", "MIN", "MAX"
+    data_format = Column(String(100), nullable=True)  # "currency_usd", "percentage", "phone", etc.
+    
+    # Join path hints (stored as JSONB for flexibility)
+    join_hints = Column(JSONB, nullable=True)  # {"target_table": "orders", "join_column": "product_id", "cardinality": "1:N"}
     
     # Creation metadata
     created_by = Column(String(255), nullable=False)
