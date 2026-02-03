@@ -89,7 +89,7 @@ async def process_query(
         ):
             logger.info(
                 f"Processing query for provider {request.provider_id}, "
-                f"conversation_id={conversation_id}, use_agentcore={use_agentcore}"
+                f"conversation_id={conversation_id}"
             )
 
             # Merge request options with defaults
