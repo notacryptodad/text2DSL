@@ -149,7 +149,7 @@ class AnnotationAssistantAgent(AgentCoreBaseAgent):
                         # Get follow-up response from LLM with tool result
                         tool_result_message = (
                             f"\n\nTool '{tool_name}' executed successfully. Result:\n"
-                            f"{json.dumps(tool_result, indent=2)}\n\n"
+                            f"{json.dumps(tool_result, indent=2, default=str)}\n\n"
                             f"Please provide a helpful summary for the user based on this result."
                         )
                         messages.append({"role": "assistant", "content": assistant_response})

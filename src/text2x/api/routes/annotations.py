@@ -838,12 +838,68 @@ JSON OUTPUT:"""
             col_names = sample_data["columns"]
             rows = sample_data["rows"]
             
-            # Build column -> sample values mapping
+            # Helper to detect patterns
+            def detect_pattern(values):
+                """Detect common patterns in values."""
+                if not values:
+                    return []
+                patterns = []
+                str_values = [str(v) for v in values if v is not None]
+                if not str_values:
+                    return []
+                
+                # Email pattern
+                email_count = sum(1 for v in str_values if re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', v))
+                if email_count >= len(str_values) * 0.8:
+                    patterns.append("email format")
+                
+                # UUID pattern
+                uuid_count = sum(1 for v in str_values if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', v.lower()))
+                if uuid_count >= len(str_values) * 0.8:
+                    patterns.append("UUID format")
+                
+                # URL pattern
+                url_count = sum(1 for v in str_values if re.match(r'^https?://', v))
+                if url_count >= len(str_values) * 0.8:
+                    patterns.append("URL format")
+                
+                # ISO date/timestamp pattern
+                ts_count = sum(1 for v in str_values if re.match(r'^\d{4}-\d{2}-\d{2}', v))
+                if ts_count >= len(str_values) * 0.8:
+                    patterns.append("timestamp")
+                
+                return patterns
+            
+            def is_likely_enum(col_name, values, patterns):
+                """Check if column is likely a categorical enum."""
+                # Skip if pattern indicates non-enum
+                if any(p in ["UUID format", "email format", "URL format", "timestamp"] for p in patterns):
+                    return False
+                
+                # Skip common non-enum column names
+                non_enum_names = ['id', 'name', 'email', 'password', 'hash', 'token', 'created', 'updated', 'timestamp', 'date', 'time', 'description', 'comment', 'note']
+                if any(n in col_name.lower() for n in non_enum_names):
+                    return False
+                
+                # Check distinct count vs total - enums have low cardinality
+                unique_count = len(set(str(v) for v in values))
+                if unique_count > 10:
+                    return False
+                
+                # For very small samples, be conservative
+                if unique_count >= len(values) * 0.8 and len(values) > 3:
+                    return False  # Too unique, probably not an enum
+                
+                return True
+            
+            # Build column -> sample values and patterns mapping
             col_samples = {}
+            col_patterns = {}
+            col_enum_values = {}
+            
             for col_name in col_names:
-                values = set()
-                for row in rows[:5]:  # Use up to 5 rows
-                    # row can be a dict or tuple
+                values = []
+                for row in rows:
                     if isinstance(row, dict):
                         val = row.get(col_name)
                     else:
@@ -851,20 +907,45 @@ JSON OUTPUT:"""
                         val = row[col_idx] if col_idx < len(row) else None
                     
                     if val is not None:
-                        val_str = str(val)
-                        if len(val_str) <= 50:  # Skip very long values
-                            values.add(val_str[:30])  # Truncate individual values
+                        values.append(val)
                 
                 if values:
-                    col_samples[col_name] = ", ".join(list(values)[:3])  # Top 3 unique values
+                    # Get unique values (skip long ones)
+                    unique_values = list(set(str(v)[:30] for v in values if len(str(v)) <= 50))
+                    
+                    # Detect patterns
+                    patterns = detect_pattern(values)
+                    if patterns:
+                        col_patterns[col_name] = patterns
+                    
+                    # Check if enum
+                    if is_likely_enum(col_name, values, patterns):
+                        col_enum_values[col_name] = sorted(unique_values)
+                        col_samples[col_name] = ", ".join(sorted(unique_values))
+                    else:
+                        col_samples[col_name] = ", ".join(unique_values[:3])
             
-            logger.info(f"Sample values mapping: {col_samples}")
+            logger.info(f"Sample values: {col_samples}")
+            logger.info(f"Detected patterns: {col_patterns}")
+            logger.info(f"Enum columns: {list(col_enum_values.keys())}")
             
-            # Add sample_values to each column annotation
+            # Add sample_values and pattern info to each column annotation
             for col in suggestions.get("columns", []):
                 col_name = col.get("name", "")
                 if col_name in col_samples:
                     col["sample_values"] = col_samples[col_name]
+                
+                # Mark if enum
+                if col_name in col_enum_values:
+                    col["is_enum"] = True
+                    col["enum_values"] = col_enum_values[col_name]
+                
+                # Add pattern to description if detected
+                if col_name in col_patterns:
+                    pattern_str = ", ".join(col_patterns[col_name])
+                    existing_desc = col.get("description", "")
+                    if pattern_str.lower() not in existing_desc.lower():
+                        col["description"] = f"{existing_desc} (Format: {pattern_str})"
         else:
             logger.warning(f"No sample data available for {request.table_name}")
 
