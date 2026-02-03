@@ -710,7 +710,7 @@ IMPORTANT: After analyzing the data, end your response with a JSON code block co
 
         # Process the request
         result = await agent.process({
-            "user_message": prompt,
+            "message": prompt,
             "provider_id": str(connection_id),
             "user_id": "system",
             "conversation_history": [],
@@ -728,26 +728,53 @@ IMPORTANT: After analyzing the data, end your response with a JSON code block co
             "columns": [],
         }
 
-        # Try to extract JSON from code blocks or direct JSON
+        # Try to extract JSON from code blocks first
         json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', llm_response, re.DOTALL)
         if json_match:
             try:
                 parsed_json = json.loads(json_match.group(1))
-                suggestions["table_description"] = parsed_json.get("table_description", "")
-                suggestions["columns"] = parsed_json.get("columns", [])
+                if "table_description" in parsed_json or "columns" in parsed_json:
+                    suggestions["table_description"] = parsed_json.get("table_description", "")
+                    suggestions["columns"] = parsed_json.get("columns", [])
             except json.JSONDecodeError:
-                logger.warning("Failed to parse JSON from LLM response")
-        else:
-            # Fallback: try to find JSON without code blocks
+                logger.warning("Failed to parse JSON from code block")
+        
+        # If no table_description found, try to find JSON without code blocks
+        if not suggestions["table_description"] and not suggestions["columns"]:
             try:
-                # Find the last JSON object in the response
-                json_objects = re.findall(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', llm_response, re.DOTALL)
-                for json_str in reversed(json_objects):
+                # Find JSON that contains table_description or columns (our target structure)
+                # Use a more robust approach - find balanced braces
+                def find_json_objects(text):
+                    """Find all balanced JSON objects in text."""
+                    objects = []
+                    i = 0
+                    while i < len(text):
+                        if text[i] == '{':
+                            depth = 1
+                            start = i
+                            i += 1
+                            while i < len(text) and depth > 0:
+                                if text[i] == '{':
+                                    depth += 1
+                                elif text[i] == '}':
+                                    depth -= 1
+                                i += 1
+                            if depth == 0:
+                                objects.append(text[start:i])
+                        else:
+                            i += 1
+                    return objects
+                
+                json_objects = find_json_objects(llm_response)
+                
+                # Find the JSON with table_description (not tool calls)
+                for json_str in json_objects:
                     try:
                         parsed_json = json.loads(json_str)
-                        if "table_description" in parsed_json or "columns" in parsed_json:
+                        if "table_description" in parsed_json and "columns" in parsed_json:
                             suggestions["table_description"] = parsed_json.get("table_description", "")
                             suggestions["columns"] = parsed_json.get("columns", [])
+                            logger.info(f"Extracted annotations: {len(suggestions['columns'])} columns")
                             break
                     except json.JSONDecodeError:
                         continue
