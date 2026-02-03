@@ -831,6 +831,43 @@ JSON OUTPUT:"""
             except Exception as e:
                 logger.warning(f"Failed to extract JSON from response: {e}")
 
+        # Populate sample_values from context data
+        sample_data = context.get("sample_data", {})
+        logger.info(f"Sample data for {request.table_name}: columns={sample_data.get('columns')}, rows_count={len(sample_data.get('rows', []))}")
+        if sample_data.get("columns") and sample_data.get("rows"):
+            col_names = sample_data["columns"]
+            rows = sample_data["rows"]
+            
+            # Build column -> sample values mapping
+            col_samples = {}
+            for col_name in col_names:
+                values = set()
+                for row in rows[:5]:  # Use up to 5 rows
+                    # row can be a dict or tuple
+                    if isinstance(row, dict):
+                        val = row.get(col_name)
+                    else:
+                        col_idx = col_names.index(col_name)
+                        val = row[col_idx] if col_idx < len(row) else None
+                    
+                    if val is not None:
+                        val_str = str(val)
+                        if len(val_str) <= 50:  # Skip very long values
+                            values.add(val_str[:30])  # Truncate individual values
+                
+                if values:
+                    col_samples[col_name] = ", ".join(list(values)[:3])  # Top 3 unique values
+            
+            logger.info(f"Sample values mapping: {col_samples}")
+            
+            # Add sample_values to each column annotation
+            for col in suggestions.get("columns", []):
+                col_name = col.get("name", "")
+                if col_name in col_samples:
+                    col["sample_values"] = col_samples[col_name]
+        else:
+            logger.warning(f"No sample data available for {request.table_name}")
+
         # Include full response for debugging
         suggestions["llm_response"] = llm_response
         suggestions["tool_calls"] = result.get("tool_calls", [])

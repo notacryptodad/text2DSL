@@ -52,18 +52,19 @@ async def build_annotation_context(
                 context["columns"] = [
                     {
                         "name": col.name,
-                        "type": col.type,  # ColumnInfo uses 'type' not 'data_type'
+                        "type": col.type,
                         "nullable": col.nullable,
-                        "is_pk": col.primary_key,  # ColumnInfo uses 'primary_key'
+                        "is_pk": col.primary_key,
                         "default": col.default
                     }
                     for col in table.columns
                 ]
+                # ForeignKeyInfo is a dataclass with: constrained_columns, referred_table, referred_columns
                 context["foreign_keys_out"] = [
                     {
-                        "column": fk.get("column"),
-                        "references_table": fk.get("references_table"),
-                        "references_column": fk.get("references_column")
+                        "column": fk.constrained_columns[0] if fk.constrained_columns else None,
+                        "references_table": fk.referred_table,
+                        "references_column": fk.referred_columns[0] if hasattr(fk, 'referred_columns') and fk.referred_columns else None
                     }
                     for fk in (table.foreign_keys or [])
                 ]
@@ -73,11 +74,11 @@ async def build_annotation_context(
         for table in schema.tables:
             if table.name != table_name:
                 for fk in (table.foreign_keys or []):
-                    if fk.get("references_table") == table_name:
+                    if fk.referred_table == table_name:
                         context["foreign_keys_in"].append({
                             "from_table": table.name,
-                            "from_column": fk.get("column"),
-                            "to_column": fk.get("references_column")
+                            "from_column": fk.constrained_columns[0] if fk.constrained_columns else None,
+                            "to_column": fk.referred_columns[0] if hasattr(fk, 'referred_columns') and fk.referred_columns else None
                         })
     except Exception as e:
         logger.warning(f"Failed to get schema: {e}")
@@ -85,27 +86,18 @@ async def build_annotation_context(
     
     # 2. Get sample data (random 5 rows)
     try:
-        # Try PostgreSQL's efficient TABLESAMPLE first
-        query = f"SELECT * FROM {table_name} TABLESAMPLE BERNOULLI(10) LIMIT 5"
+        # Use simple LIMIT query first - TABLESAMPLE can be unreliable on small tables
+        query = f"SELECT * FROM {table_name} ORDER BY RANDOM() LIMIT 5"
         result = await provider.execute_query(query, limit=5)
+        logger.info(f"Sample query result for {table_name}: success={result.success if result else 'None'}, cols={result.columns if result else 'None'}, rows={len(result.sample_rows) if result and result.sample_rows else 0}")
         if result and result.success:
             context["sample_data"] = {
                 "columns": result.columns or [],
-                "rows": result.sample_rows or []  # ExecutionResult uses 'sample_rows'
+                "rows": result.sample_rows or []
             }
-    except Exception:
-        # Fallback to ORDER BY RANDOM()
-        try:
-            query = f"SELECT * FROM {table_name} ORDER BY RANDOM() LIMIT 5"
-            result = await provider.execute_query(query, limit=5)
-            if result and result.success:
-                context["sample_data"] = {
-                    "columns": result.columns or [],
-                    "rows": result.sample_rows or []
-                }
-        except Exception as e:
-            logger.warning(f"Failed to sample data: {e}")
-            context["sample_error"] = str(e)
+    except Exception as e:
+        logger.warning(f"Sample query failed: {e}")
+        context["sample_error"] = str(e)
     
     # 3. Get row count estimate (PostgreSQL-specific)
     try:
