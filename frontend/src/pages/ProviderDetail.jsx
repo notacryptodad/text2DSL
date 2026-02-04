@@ -277,7 +277,7 @@ function ProviderDetail() {
   }
 
   const breadcrumbItems = [
-    { label: 'Admin', path: ROUTES.ADMIN },
+    { label: 'Admin', path: ROUTES.ADMIN_DASHBOARD },
     { label: 'Workspaces', path: ROUTES.ADMIN_WORKSPACES },
     { label: workspace?.name || '...', path: buildRoute.workspaceDetail(workspaceId) },
     { label: 'Providers', path: buildRoute.workspaceDetail(workspaceId) },
