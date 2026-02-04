@@ -46,9 +46,18 @@ function FeedbackStats() {
     return import.meta.env.DEV ? 'http://localhost:8000' : window.location.origin
   }
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('access_token')
+    return {
+      'Authorization': `Bearer ${token}`,
+    }
+  }
+
   const fetchWorkspaces = async () => {
     try {
-      const response = await fetch(`${getApiUrl()}/api/v1/workspaces`)
+      const response = await fetch(`${getApiUrl()}/api/v1/workspaces`, {
+        headers: getAuthHeaders(),
+      })
       if (response.ok) {
         const data = await response.json()
         setWorkspaces(data)
@@ -70,7 +79,9 @@ function FeedbackStats() {
         params.append('workspace_id', selectedWorkspace)
       }
 
-      const response = await fetch(`${getApiUrl()}/api/v1/feedback/stats?${params}`)
+      const response = await fetch(`${getApiUrl()}/api/v1/feedback/stats?${params}`, {
+        headers: getAuthHeaders(),
+      })
       if (!response.ok) throw new Error('Failed to fetch feedback statistics')
 
       const data = await response.json()
@@ -94,7 +105,9 @@ function FeedbackStats() {
         params.append('workspace_id', selectedWorkspace)
       }
 
-      const response = await fetch(`${getApiUrl()}/api/v1/feedback?${params}`)
+      const response = await fetch(`${getApiUrl()}/api/v1/feedback?${params}`, {
+        headers: getAuthHeaders(),
+      })
       if (!response.ok) throw new Error('Failed to fetch feedback list')
 
       const data = await response.json()
