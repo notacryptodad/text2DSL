@@ -32,13 +32,13 @@ export const isAdminRoute = (pathname) => {
   return pathname.startsWith('/app/admin')
 }
 
-// Helper function to check if a path needs workspace selector
+// Helper function to check if a path needs workspace selector in the navbar
+// Note: schema-annotation has its own workspace dropdown in the page content
 export const needsWorkspaceSelector = (pathname) => {
-  const workspacePages = ['/app', '/app/schema-annotation']
-  return workspacePages.some(
-    page => pathname === page || pathname.startsWith(page + '/')
-  )
+  // Only the main chat page needs the navbar workspace selector
+  // Other pages either don't need it or have their own
+  return pathname === '/app' || pathname === '/app/'
 }
 
 // Array of pages that need workspace selector (for backward compatibility)
-export const PAGES_NEEDING_WORKSPACE = ['/app', '/app/schema-annotation']
+export const PAGES_NEEDING_WORKSPACE = ['/app']

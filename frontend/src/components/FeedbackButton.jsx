@@ -33,7 +33,8 @@ function FeedbackButton({ conversationId, turnId, onFeedbackSubmit }) {
   }
 
   const submitFeedback = async (feedbackData) => {
-    const apiUrl = import.meta.env.DEV ? 'http://localhost:8000' : ''
+    // Use empty string to leverage Vite proxy - avoids CORS issues
+    const apiUrl = ''
 
     const response = await fetch(
       `${apiUrl}/api/v1/query/conversations/${conversationId}/feedback`,
