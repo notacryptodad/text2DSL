@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LayoutDashboard, FolderKanban, Users, Database, Network, ChevronLeft, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Users, Database, Network, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
 function AdminSidebar() {
@@ -45,6 +45,16 @@ function AdminSidebar() {
       </div>
 
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+        {/* Back to App link */}
+        <Link
+          to="/app"
+          title={collapsed ? 'Back to App' : undefined}
+          className={`flex items-center ${collapsed ? 'justify-center' : 'space-x-3'} px-3 py-2.5 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 mb-2 border-b border-gray-200 dark:border-gray-700 pb-3`}
+        >
+          <ArrowLeft className="w-5 h-5 flex-shrink-0" />
+          {!collapsed && <span className="font-medium text-sm">Back to App</span>}
+        </Link>
+
         {navItems.map((item) => {
           const Icon = item.icon
           const active = isActive(item.path)
