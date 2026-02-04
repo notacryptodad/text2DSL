@@ -16,6 +16,7 @@ import {
   User,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import Breadcrumb from '../components/Breadcrumb'
 
 function AdminUsers() {
   const { isSuperAdmin } = useAuth()
@@ -255,16 +256,24 @@ function AdminUsers() {
             Access Denied
           </h2>
           <p className="text-gray-600 dark:text-gray-400">
-            You don't have permission to access this page.
+            You don&apos;t have permission to access this page.
           </p>
         </div>
       </div>
     )
   }
 
+  const breadcrumbItems = [
+    { label: 'Admin', path: '/app/admin' },
+    { label: 'Users', path: '/app/admin/users' },
+  ]
+
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="flex-1 p-8">
+        {/* Breadcrumb */}
+        <Breadcrumb items={breadcrumbItems} />
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">

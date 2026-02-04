@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { LayoutDashboard, FolderKanban, Users, Database, Network, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
+import * as ROUTES from '../constants/routes'
 
 function AdminSidebar() {
   const location = useLocation()
@@ -15,15 +16,15 @@ function AdminSidebar() {
   }
 
   const navItems = [
-    { name: 'Dashboard', path: '/app/admin', icon: LayoutDashboard },
-    { name: 'Workspaces', path: '/app/admin/workspaces', icon: FolderKanban },
-    { name: 'Providers', path: '/app/admin/providers', icon: Database },
-    { name: 'Connections', path: '/app/admin/connections', icon: Network },
-    { name: 'Users', path: '/app/admin/users', icon: Users },
+    { name: 'Dashboard', path: ROUTES.ADMIN_DASHBOARD, icon: LayoutDashboard },
+    { name: 'Workspaces', path: ROUTES.ADMIN_WORKSPACES, icon: FolderKanban },
+    { name: 'Providers', path: ROUTES.ADMIN_PROVIDERS, icon: Database },
+    { name: 'Connections', path: ROUTES.ADMIN_CONNECTIONS, icon: Network },
+    { name: 'Users', path: ROUTES.ADMIN_USERS, icon: Users },
   ]
 
   const isActive = (path) => {
-    if (path === '/app/admin') return location.pathname === '/app/admin'
+    if (path === ROUTES.ADMIN_DASHBOARD) return location.pathname === ROUTES.ADMIN_DASHBOARD
     return location.pathname.startsWith(path)
   }
 
@@ -47,7 +48,7 @@ function AdminSidebar() {
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {/* Back to App link */}
         <Link
-          to="/app"
+          to={ROUTES.APP}
           title={collapsed ? 'Back to App' : undefined}
           className={`flex items-center ${collapsed ? 'justify-center' : 'space-x-3'} px-3 py-2.5 rounded-lg transition-colors text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 mb-2 border-b border-gray-200 dark:border-gray-700 pb-3`}
         >

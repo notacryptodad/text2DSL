@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { Loader2 } from 'lucide-react'
+import * as ROUTES from '../constants/routes'
 
 function ProtectedRoute({ children, requireAdmin = false }) {
   const { isAuthenticated, loading, isAdmin } = useAuth()
@@ -18,11 +19,11 @@ function ProtectedRoute({ children, requireAdmin = false }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />
+    return <Navigate to={ROUTES.LOGIN} state={{ from: location }} replace />
   }
 
   if (requireAdmin && !isAdmin) {
-    return <Navigate to="/app" replace />
+    return <Navigate to={ROUTES.APP} replace />
   }
 
   return children

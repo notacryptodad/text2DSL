@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import {
-  ArrowLeft,
   Database,
   Plus,
   Trash2,
@@ -14,11 +13,13 @@ import {
 } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import Breadcrumb from '../components/Breadcrumb'
 
 function ProviderDetail() {
   const { workspaceId, providerId } = useParams()
   const { selectConnection } = useWorkspace()
   const navigate = useNavigate()
+  const [workspace, setWorkspace] = useState(null)
   const [provider, setProvider] = useState(null)
   const [connections, setConnections] = useState([])
   const [loading, setLoading] = useState(true)
@@ -42,10 +43,33 @@ function ProviderDetail() {
 
   useEffect(() => {
     if (workspaceId && providerId) {
+      fetchWorkspace()
       fetchProvider()
       fetchConnections()
     }
   }, [workspaceId, providerId])
+
+  const fetchWorkspace = async () => {
+    try {
+      const apiUrl = ''
+      const token = localStorage.getItem('access_token')
+
+      const response = await fetch(
+        `${apiUrl}/api/v1/admin/workspaces/${workspaceId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+      if (response.ok) {
+        const data = await response.json()
+        setWorkspace(data)
+      }
+    } catch (err) {
+      console.error('Error fetching workspace:', err)
+    }
+  }
 
   const fetchProvider = async () => {
     try {
@@ -250,19 +274,22 @@ function ProviderDetail() {
     )
   }
 
+  const breadcrumbItems = [
+    { label: 'Admin', path: '/app/admin' },
+    { label: 'Workspaces', path: '/app/admin/workspaces' },
+    { label: workspace?.name || '...', path: `/app/admin/workspaces/${workspaceId}` },
+    { label: 'Providers', path: `/app/admin/workspaces/${workspaceId}` },
+    { label: provider.name, path: `/app/admin/workspaces/${workspaceId}/providers/${providerId}` },
+  ]
+
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <main className="flex-1 p-8">
+        {/* Breadcrumb */}
+        <Breadcrumb items={breadcrumbItems} />
+
         {/* Header */}
         <div className="mb-8">
-          <Link
-            to={`/app/admin/workspaces/${workspaceId}`}
-            className="inline-flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Workspace
-          </Link>
-
           <div className="flex items-center space-x-4">
             <div className="bg-primary-100 dark:bg-primary-900/30 p-3 rounded-lg">
               <Database className="w-8 h-8 text-primary-600 dark:text-primary-400" />

@@ -14,6 +14,8 @@ import {
   Check,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
+import Breadcrumb from '../components/Breadcrumb'
+import * as ROUTES from '../constants/routes'
 
 function WorkspaceDetail() {
   const { workspaceId } = useParams()
@@ -295,7 +297,7 @@ function WorkspaceDetail() {
             <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
             <p className="text-gray-600 dark:text-gray-400">Workspace not found</p>
             <Link
-              to="/app/admin/workspaces"
+              to={ROUTES.ADMIN_WORKSPACES}
               className="mt-4 inline-flex items-center text-primary-600 dark:text-primary-400 hover:underline"
             >
               <ArrowLeft className="w-4 h-4 mr-1" />
@@ -307,19 +309,21 @@ function WorkspaceDetail() {
     )
   }
 
+  const breadcrumbItems = [
+    { label: 'Admin', path: ROUTES.ADMIN_DASHBOARD },
+    { label: 'Workspaces', path: ROUTES.ADMIN_WORKSPACES },
+    { label: workspace.name, path: ROUTES.buildRoute.workspaceDetail(workspaceId) },
+  ]
+
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Breadcrumb */}
+          <Breadcrumb items={breadcrumbItems} />
+
           {/* Header */}
           <div className="mb-8">
-            <Link
-              to="/app/admin/workspaces"
-              className="inline-flex items-center text-primary-600 dark:text-primary-400 hover:underline mb-4"
-            >
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to Workspaces
-            </Link>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
               {workspace.name}
             </h1>
@@ -433,7 +437,7 @@ function WorkspaceDetail() {
                           className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
                         >
                           <Link
-                            to={`/app/admin/workspaces/${workspaceId}/providers/${provider.id}`}
+                            to={ROUTES.buildRoute.providerDetail(workspaceId, provider.id)}
                             className="flex items-center space-x-3 flex-1 hover:opacity-80 transition-opacity"
                           >
                             <div className="bg-primary-100 dark:bg-primary-900/30 p-2 rounded">

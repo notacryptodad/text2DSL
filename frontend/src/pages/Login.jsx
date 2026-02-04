@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { LogIn, Mail, Lock, AlertCircle, Loader2, Zap } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import * as ROUTES from '../constants/routes'
 
 function Login() {
   const navigate = useNavigate()
@@ -15,7 +16,7 @@ function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const from = location.state?.from?.pathname || '/app'
+  const from = location.state?.from?.pathname || ROUTES.APP
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -153,7 +154,7 @@ function Login() {
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Don't have an account?{' '}
               <Link
-                to="/register"
+                to={ROUTES.REGISTER}
                 className="font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500 dark:hover:text-primary-300 transition-colors"
               >
                 Sign up

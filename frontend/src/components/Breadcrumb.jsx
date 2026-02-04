@@ -1,5 +1,6 @@
 import { ChevronRight, Home } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import * as ROUTES from '../constants/routes'
 
 function Breadcrumb({ items }) {
   if (!items || items.length === 0) return null
@@ -7,7 +8,7 @@ function Breadcrumb({ items }) {
   return (
     <nav className="flex items-center space-x-1 text-sm mb-4">
       <Link
-        to="/app"
+        to={ROUTES.APP}
         className="flex items-center text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
       >
         <Home className="w-4 h-4" />

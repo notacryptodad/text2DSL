@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { UserPlus, Mail, Lock, User, AlertCircle, CheckCircle, Loader2, Zap } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import * as ROUTES from '../constants/routes'
 
 function Register() {
   const navigate = useNavigate()
@@ -49,7 +50,7 @@ function Register() {
         setSuccess(true)
         // Redirect to login after 2 seconds
         setTimeout(() => {
-          navigate('/login', {
+          navigate(ROUTES.LOGIN, {
             state: { message: 'Registration successful! Please sign in.' },
           })
         }, 2000)
@@ -244,7 +245,7 @@ function Register() {
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Already have an account?{' '}
               <Link
-                to="/login"
+                to={ROUTES.LOGIN}
                 className="font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500 dark:hover:text-primary-300 transition-colors"
               >
                 Sign in

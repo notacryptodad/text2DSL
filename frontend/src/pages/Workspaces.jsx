@@ -3,6 +3,7 @@ import { FolderKanban, Plus, Search, Users, Database, X, Calendar } from 'lucide
 import { Link } from 'react-router-dom'
 import Breadcrumb from '../components/Breadcrumb'
 import { useAuth } from '../hooks/useAuth'
+import * as ROUTES from '../constants/routes'
 
 function Workspaces() {
   const { user } = useAuth()

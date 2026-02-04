@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Building2, ChevronDown, Settings } from 'lucide-react'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import * as ROUTES from '../constants/routes'
 
 function WorkspaceSelector() {
   const { currentWorkspace, workspaces, selectWorkspace } = useWorkspace()
@@ -88,7 +89,7 @@ function WorkspaceSelector() {
             </div>
             <div className="border-t border-gray-200 dark:border-gray-700">
               <Link
-                to="/app/admin/workspaces"
+                to={ROUTES.ADMIN_WORKSPACES}
                 onClick={() => setShowDropdown(false)}
                 className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
