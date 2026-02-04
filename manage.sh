@@ -66,6 +66,22 @@ start_frontend() {
         echo "Frontend already running (PID: $(cat $FRONTEND_PID_FILE))"
         return
     fi
+
+    echo "Checking frontend dependencies..."
+    if [ ! -d "frontend/node_modules" ] || [ ! -f "frontend/node_modules/.package-lock.json" ]; then
+        echo "Installing frontend dependencies..."
+        cd frontend
+        npm install
+        cd ..
+        if [ $? -ne 0 ]; then
+            echo "Failed to install frontend dependencies"
+            return 1
+        fi
+        echo "✓ Dependencies installed"
+    else
+        echo "✓ Dependencies already installed"
+    fi
+
     echo "Starting frontend..."
     cd frontend
     npm run dev > "../$FRONTEND_LOG" 2>&1 &

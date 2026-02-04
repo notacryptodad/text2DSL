@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` in your browser.
+Open `http://localhost:5173` in your browser.
 
 ## First Query
 
@@ -48,7 +48,7 @@ npm run preview         # Preview production build
 npm run lint            # Run ESLint
 
 # Testing (manual)
-# Open http://localhost:3000 and test features
+# Open http://localhost:5173 and test features
 ```
 
 ## Troubleshooting
@@ -68,7 +68,7 @@ cd .. && make run-dev
 
 ### Port Already in Use
 
-**Problem**: Port 3000 is already in use
+**Problem**: Port 5173 is already in use
 
 **Solution**:
 ```bash
@@ -135,7 +135,7 @@ sorted by segment size
 ## Architecture
 
 ```
-Browser (Port 3000)
+Browser (Port 5173)
        ↓
    WebSocket
        ↓

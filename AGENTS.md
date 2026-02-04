@@ -33,7 +33,7 @@ The project requires Docker containers for PostgreSQL, Redis, OpenSearch, and te
 
 # Or start individually
 ./manage.sh start backend   # Backend API on port 8000
-./manage.sh start frontend  # Frontend dev server on port 3000
+./manage.sh start frontend  # Frontend dev server on port 5173
 ```
 
 The backend uses `uv` to manage the Python virtual environment automatically.
@@ -157,7 +157,7 @@ docker compose -f docker-compose.test.yml down
 - Ensure `.env` file is configured correctly
 
 ### Frontend won't start
-- Check if port 3000 is available
+- Check if port 5173 is available
 - Check frontend logs: `./manage.sh logs frontend`
 - Try `cd frontend && npm install` to reinstall dependencies
 
@@ -175,7 +175,7 @@ docker compose -f docker-compose.test.yml down
 1. Start infrastructure: `./manage.sh start infra test-infra`
 2. Start servers: `./manage.sh start`
 3. Access the application:
-   - Frontend: http://localhost:3000
+   - Frontend: http://localhost:5173
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
 4. Make changes (servers auto-reload)

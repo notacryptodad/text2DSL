@@ -8,7 +8,7 @@ This document explains how the Text2DSL frontend integrates with the backend API
 ┌─────────────────┐         WebSocket          ┌─────────────────┐
 │                 │ ←─────────────────────────→ │                 │
 │  React Frontend │                             │  FastAPI Backend│
-│  (Port 3000)    │         REST API            │  (Port 8000)    │
+│  (Port 5173)    │         REST API            │  (Port 8000)    │
 │                 │ ←─────────────────────────→ │                 │
 └─────────────────┘                             └─────────────────┘
 ```
@@ -26,7 +26,7 @@ ws://localhost:8000/ws/query
 In development, Vite proxies this through:
 
 ```
-ws://localhost:3000/ws/query → ws://localhost:8000/ws/query
+ws://localhost:5173/ws/query → ws://localhost:8000/ws/query
 ```
 
 ### Message Format
@@ -176,7 +176,7 @@ The backend must be configured to allow requests from the frontend:
 # In backend/src/text2x/api/app.py
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -202,11 +202,11 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:3000`.
+The frontend will be available at `http://localhost:5173`.
 
 ### 3. Test Connection
 
-1. Open `http://localhost:3000` in your browser
+1. Open `http://localhost:5173` in your browser
 2. Check the connection indicator (should be green)
 3. Try sending a query
 

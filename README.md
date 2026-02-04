@@ -44,7 +44,7 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:3000`.
+The frontend will be available at `http://localhost:5173`.
 
 See [frontend/README.md](./frontend/README.md) for detailed frontend documentation.
 
