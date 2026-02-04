@@ -24,6 +24,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import WorkspaceSelector from './WorkspaceSelector'
 import NavigationProgress from './NavigationProgress'
 import KeyboardShortcutsHelp from './KeyboardShortcutsHelp'
+import MobileNav from './MobileNav'
 import * as ROUTES from '../constants/routes'
 
 function AppLayout({ children, darkMode, toggleDarkMode }) {
@@ -193,6 +194,9 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
             </div>
 
             <div className="flex items-center space-x-4">
+              {/* Mobile Navigation */}
+              <MobileNav isSuperAdmin={isSuperAdmin} />
+
               {/* Dark Mode Toggle */}
               <button
                 onClick={toggleDarkMode}
