@@ -156,8 +156,7 @@ class FeedbackService:
 
             confidence = turn.confidence_score
             logger.info(
-                f"Auto-queue evaluation: rating={rating.value}, "
-                f"confidence={confidence:.2f}"
+                f"Auto-queue evaluation: rating={rating.value}, confidence={confidence:.2f}"
             )
 
             # Check if RAG example already exists for this turn
@@ -172,12 +171,9 @@ class FeedbackService:
                 if confidence >= 0.9:
                     # Auto-approve to RAG
                     logger.info(
-                        f"Auto-approving turn {turn_id} to RAG "
-                        f"(confidence={confidence:.2f})"
+                        f"Auto-approving turn {turn_id} to RAG (confidence={confidence:.2f})"
                     )
-                    await self._auto_approve_to_rag(
-                        session, turn, existing_example, feedback_text
-                    )
+                    await self._auto_approve_to_rag(session, turn, existing_example, feedback_text)
                 else:
                     # Queue for review with low priority
                     logger.info(
@@ -363,8 +359,10 @@ class FeedbackService:
             cutoff_date = datetime.utcnow() - timedelta(days=days)
 
             # Count total feedback
-            stmt = select(func.count()).select_from(UserFeedback).where(
-                UserFeedback.created_at >= cutoff_date
+            stmt = (
+                select(func.count())
+                .select_from(UserFeedback)
+                .where(UserFeedback.created_at >= cutoff_date)
             )
             result = await session.execute(stmt)
             total_feedback = result.scalar() or 0
@@ -391,9 +389,7 @@ class FeedbackService:
             by_category = {category.value: count for category, count in result}
 
             # Calculate approval rate
-            approval_rate = (
-                thumbs_up / total_feedback if total_feedback > 0 else 0.0
-            )
+            approval_rate = thumbs_up / total_feedback if total_feedback > 0 else 0.0
 
             # Calculate average confidence for thumbs up
             stmt = (
@@ -458,3 +454,39 @@ class FeedbackService:
             return await self.feedback_repo.list_by_rating(rating_filter, limit)
         else:
             return await self.feedback_repo.list_recent(limit)
+
+    async def get_feedback_list(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        days: Optional[int] = None,
+        rating_filter: Optional[FeedbackRating] = None,
+        workspace_id: Optional[str] = None,
+    ) -> tuple[List[UserFeedback], int]:
+        """
+        Get paginated feedback list with optional filters.
+
+        Args:
+            page: Page number (1-indexed)
+            page_size: Items per page
+            days: Optional filter by days ago
+            rating_filter: Optional filter by rating
+            workspace_id: Optional filter by workspace (requires join)
+
+        Returns:
+            Tuple of (list of feedback items, total count)
+        """
+        logger.info(
+            f"Fetching feedback list (page={page}, page_size={page_size}, "
+            f"days={days}, rating={rating_filter}, workspace={workspace_id})"
+        )
+
+        items, total = await self.feedback_repo.list_paginated(
+            page=page,
+            page_size=page_size,
+            days=days,
+            rating_filter=rating_filter,
+        )
+
+        logger.info(f"Fetched feedback list: {len(items)} items, total {total}")
+        return items, total

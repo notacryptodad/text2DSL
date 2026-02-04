@@ -207,13 +207,62 @@ class FeedbackRepository:
         """
         db = get_db()
         async with db.session() as session:
-            stmt = (
-                select(UserFeedback)
-                .order_by(UserFeedback.created_at.desc())
-                .limit(limit)
-            )
+            stmt = select(UserFeedback).order_by(UserFeedback.created_at.desc()).limit(limit)
             result = await session.execute(stmt)
             return list(result.scalars().all())
+
+    async def list_paginated(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        days: Optional[int] = None,
+        rating_filter: Optional[FeedbackRating] = None,
+    ) -> tuple[List[UserFeedback], int]:
+        """
+        List feedback with pagination and optional filters.
+
+        Args:
+            page: Page number (1-indexed)
+            page_size: Items per page
+            days: Optional filter by days ago
+            rating_filter: Optional filter by rating
+
+        Returns:
+            Tuple of (list of feedback items, total count)
+        """
+        db = get_db()
+        async with db.session() as session:
+            # Build count query
+            count_stmt = select(UserFeedback)
+            if days:
+                from datetime import datetime, timedelta
+
+                cutoff = datetime.utcnow() - timedelta(days=days)
+                count_stmt = count_stmt.where(UserFeedback.created_at >= cutoff)
+            if rating_filter:
+                count_stmt = count_stmt.where(UserFeedback.rating == rating_filter)
+
+            count_result = await session.execute(count_stmt)
+            total = len(count_result.scalars().all())
+
+            # Build main query with pagination
+            offset = (page - 1) * page_size
+            stmt = select(UserFeedback).offset(offset).limit(page_size)
+
+            if days:
+                from datetime import datetime, timedelta
+
+                cutoff = datetime.utcnow() - timedelta(days=days)
+                stmt = stmt.where(UserFeedback.created_at >= cutoff)
+            if rating_filter:
+                stmt = stmt.where(UserFeedback.rating == rating_filter)
+
+            stmt = stmt.order_by(UserFeedback.created_at.desc())
+
+            result = await session.execute(stmt)
+            items = list(result.scalars().all())
+
+            return items, total
 
     async def update(
         self,

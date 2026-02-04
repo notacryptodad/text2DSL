@@ -280,7 +280,6 @@ function ProviderDetail() {
     { label: 'Admin', path: ROUTES.ADMIN_DASHBOARD },
     { label: 'Workspaces', path: ROUTES.ADMIN_WORKSPACES },
     { label: workspace?.name || '...', path: buildRoute.workspaceDetail(workspaceId) },
-    { label: 'Providers', path: buildRoute.workspaceDetail(workspaceId) },
     { label: provider.name, path: buildRoute.providerDetail(workspaceId, providerId) },
   ]
 

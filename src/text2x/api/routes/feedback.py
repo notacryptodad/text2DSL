@@ -1,4 +1,5 @@
 """User feedback endpoints."""
+
 import logging
 from typing import Optional
 from uuid import UUID
@@ -148,6 +149,137 @@ async def get_feedback_stats(
             detail=ErrorResponse(
                 error="fetch_error",
                 message="Failed to fetch feedback statistics",
+            ).model_dump(),
+        )
+
+
+class FeedbackListItem(BaseModel):
+    """Response model for feedback list items."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    turn_id: str
+    conversation_id: Optional[str] = None
+    rating: str
+    category: str
+    feedback_text: Optional[str]
+    user_id: str
+    created_at: str
+
+
+class FeedbackListResponse(BaseModel):
+    """Response model for paginated feedback list."""
+
+    items: list[FeedbackListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+@router.get(
+    "",
+    response_model=list[dict],
+    summary="Get paginated feedback list",
+    description="Get a paginated list of feedback items with optional filters",
+)
+async def list_feedback(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    date_range: Optional[str] = Query(
+        None,
+        description="Date range filter (e.g., '7d', '30d', '90d')",
+    ),
+    rating: Optional[str] = Query(
+        None,
+        description="Filter by rating ('up' or 'down')",
+        pattern="^(up|down)$",
+    ),
+    workspace_id: Optional[str] = Query(
+        None,
+        description="Filter by workspace ID",
+    ),
+) -> list[dict]:
+    """
+    Get a paginated list of feedback items.
+
+    Supports filtering by date range, rating, and workspace.
+
+    Args:
+        page: Page number (default 1)
+        page_size: Items per page (default 20, max 100)
+        date_range: Optional date range filter (e.g., '7d', '30d', '90d')
+        rating: Optional rating filter ('up' or 'down')
+        workspace_id: Optional workspace ID filter
+
+    Returns:
+        Paginated list of feedback items
+
+    Raises:
+        HTTPException: If fetch fails (500)
+    """
+    try:
+        # Parse date range to days
+        days = None
+        if date_range:
+            try:
+                days = int(date_range.rstrip("d"))
+            except ValueError:
+                pass
+
+        # Convert rating filter if provided
+        rating_filter = None
+        if rating:
+            try:
+                rating_filter = FeedbackRating(rating)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorResponse(
+                        error="invalid_rating",
+                        message=f"Invalid rating filter: {rating}",
+                    ).model_dump(),
+                )
+
+        service = FeedbackService()
+        items, total = await service.get_feedback_list(
+            page=page,
+            page_size=page_size,
+            days=days,
+            rating_filter=rating_filter,
+            workspace_id=workspace_id,
+        )
+
+        # Build response matching frontend expectations
+        response = [
+            {
+                "id": str(item.id),
+                "turn_id": str(item.turn_id),
+                "conversation_id": str(item.turn_id),  # Use turn_id as conversation proxy
+                "helpful": item.rating == FeedbackRating.UP,
+                "rating": item.rating.value if hasattr(item.rating, "value") else str(item.rating),
+                "category": item.feedback_category.value if item.feedback_category else "",
+                "feedback_text": item.feedback_text,
+                "comment": item.feedback_text,
+                "query": None,
+                "user_id": item.user_id,
+                "created_at": item.created_at.isoformat() if item.created_at else "",
+            }
+            for item in items
+        ]
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching feedback list: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="fetch_error",
+                message="Failed to fetch feedback list",
             ).model_dump(),
         )
 
