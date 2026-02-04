@@ -17,22 +17,27 @@ import {
   FolderKanban,
   Database,
   Network,
+  Keyboard,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import WorkspaceSelector from './WorkspaceSelector'
 import NavigationProgress from './NavigationProgress'
+import KeyboardShortcutsHelp from './KeyboardShortcutsHelp'
+import * as ROUTES from '../constants/routes'
 
 function AppLayout({ children, darkMode, toggleDarkMode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout, isSuperAdmin } = useAuth()
+  const { showHelpModal, setShowHelpModal } = useKeyboardShortcuts()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showAdminMenu, setShowAdminMenu] = useState(false)
   const adminMenuRef = useRef(null)
 
   const handleLogout = () => {
     logout()
-    navigate('/login')
+    navigate(ROUTES.LOGIN)
   }
 
   const isActive = (path) => {
@@ -40,7 +45,7 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
   }
 
   const isAdminActive = () => {
-    return location.pathname.startsWith('/app/admin')
+    return ROUTES.isAdminRoute(location.pathname)
   }
 
   // Close admin menu when clicking outside
@@ -55,17 +60,14 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
   }, [])
 
   // Pages that need workspace selector (workspace-scoped operations)
-  const pagesNeedingWorkspace = ['/app', '/app/schema-annotation']
-  const showWorkspaceSelector = pagesNeedingWorkspace.some(
-    page => location.pathname === page || location.pathname.startsWith(page + '/')
-  )
+  const showWorkspaceSelector = ROUTES.needsWorkspaceSelector(location.pathname)
 
   const adminMenuItems = [
-    { name: 'Dashboard', path: '/app/admin', icon: LayoutDashboard },
-    { name: 'Workspaces', path: '/app/admin/workspaces', icon: FolderKanban },
-    { name: 'Providers', path: '/app/admin/providers', icon: Database },
-    { name: 'Connections', path: '/app/admin/connections', icon: Network },
-    { name: 'Users', path: '/app/admin/users', icon: Users },
+    { name: 'Dashboard', path: ROUTES.ADMIN_DASHBOARD, icon: LayoutDashboard },
+    { name: 'Workspaces', path: ROUTES.ADMIN_WORKSPACES, icon: FolderKanban },
+    { name: 'Providers', path: ROUTES.ADMIN_PROVIDERS, icon: Database },
+    { name: 'Connections', path: ROUTES.ADMIN_CONNECTIONS, icon: Network },
+    { name: 'Users', path: ROUTES.ADMIN_USERS, icon: Users },
   ]
 
   return (
@@ -78,7 +80,7 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
-              <Link to="/app" className="flex items-center space-x-3">
+              <Link to={ROUTES.APP} className="flex items-center space-x-3">
                 <div className="bg-primary-500 p-2 rounded-lg">
                   <Zap className="w-6 h-6 text-white" />
                 </div>
@@ -98,9 +100,9 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
               {/* Navigation Tabs */}
               <nav className="hidden md:flex items-center space-x-1 border-l border-gray-200 dark:border-gray-700 pl-6">
                 <Link
-                  to="/app"
+                  to={ROUTES.CHAT}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                    isActive('/app')
+                    isActive(ROUTES.CHAT)
                       ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
                       : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
@@ -109,9 +111,9 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                   <span className="font-medium">Chat</span>
                 </Link>
                 <Link
-                  to="/app/review"
+                  to={ROUTES.REVIEW}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                    isActive('/app/review')
+                    isActive(ROUTES.REVIEW)
                       ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
                       : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
@@ -120,9 +122,9 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                   <span className="font-medium">Review</span>
                 </Link>
                 <Link
-                  to="/app/schema-annotation"
+                  to={ROUTES.SCHEMA_ANNOTATION}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                    isActive('/app/schema-annotation')
+                    isActive(ROUTES.SCHEMA_ANNOTATION)
                       ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
                       : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
@@ -131,9 +133,9 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                   <span className="font-medium">Schema</span>
                 </Link>
                 <Link
-                  to="/app/feedback-stats"
+                  to={ROUTES.FEEDBACK_STATS}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                    isActive('/app/feedback-stats')
+                    isActive(ROUTES.FEEDBACK_STATS)
                       ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
                       : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
@@ -163,10 +165,10 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                       <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-30">
                         {adminMenuItems.map((item) => {
                           const Icon = item.icon
-                          const active = item.path === '/app/admin' 
-                            ? location.pathname === '/app/admin'
+                          const active = item.path === ROUTES.ADMIN_DASHBOARD
+                            ? location.pathname === ROUTES.ADMIN_DASHBOARD
                             : location.pathname.startsWith(item.path)
-                          
+
                           return (
                             <Link
                               key={item.path}
@@ -204,6 +206,16 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                 )}
               </button>
 
+              {/* Keyboard Shortcuts Button */}
+              <button
+                onClick={() => setShowHelpModal(true)}
+                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                aria-label="Keyboard shortcuts"
+                title="Keyboard shortcuts (?)"
+              >
+                <Keyboard className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+              </button>
+
               {/* User Menu */}
               <div className="relative">
                 <button
@@ -236,7 +248,7 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                         </p>
                       </div>
                       <Link
-                        to="/app/profile"
+                        to={ROUTES.PROFILE}
                         onClick={() => setShowUserMenu(false)}
                         className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                       >
@@ -261,6 +273,12 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
 
       {/* Main Content */}
       <main>{children}</main>
+
+      {/* Keyboard Shortcuts Help Modal */}
+      <KeyboardShortcutsHelp
+        isOpen={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
+      />
     </div>
   )
 }
