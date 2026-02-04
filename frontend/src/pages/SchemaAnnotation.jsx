@@ -573,10 +573,14 @@ function SchemaAnnotation() {
           </div>
         )}
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Schema Tree */}
-          <div className="lg:col-span-1">
+        {/* Main Content - Responsive layout:
+            - Mobile: stacked
+            - lg (1024px+): Schema | Editor+Chat stacked
+            - 2xl (1536px+): Schema | Editor | Chat (3 columns)
+        */}
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Schema Tree - fixed width on larger screens */}
+          <div className="w-full lg:w-80 2xl:w-72 flex-shrink-0">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sticky top-4">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 Schema
@@ -609,8 +613,8 @@ function SchemaAnnotation() {
             </div>
           </div>
 
-          {/* Annotation Editor / Chat */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* Middle section: Editor (+ Chat on non-ultra-wide) */}
+          <div className="flex-1 min-w-0 space-y-6 2xl:space-y-0">
             {/* Annotation Editor */}
             {showEditor && selectedTable && (
               <AnnotationEditor
@@ -628,8 +632,9 @@ function SchemaAnnotation() {
               />
             )}
 
-            {/* Chat Interface */}
-            <div ref={chatSectionRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[600px]">
+            {/* Chat Interface - shown below editor on screens smaller than 2xl */}
+            <div className="2xl:hidden" ref={chatSectionRef}>
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[600px]">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center space-x-2">
                   <MessageSquare className="w-5 h-5 text-primary-500" />
@@ -746,6 +751,112 @@ function SchemaAnnotation() {
                       <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
                       <Send className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+            </div>
+          </div>
+
+          {/* Chat Interface - separate column on ultra-wide (2xl+) screens */}
+          <div className="hidden 2xl:block w-96 flex-shrink-0">
+            <div ref={chatSectionRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[calc(100vh-12rem)] sticky top-4">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center space-x-2">
+                  <MessageSquare className="w-5 h-5 text-primary-500" />
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Annotation Assistant
+                  </h2>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Chat with the AI to refine annotations
+                </p>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {chatMessages.length === 0 ? (
+                  <div className="text-center py-8">
+                    <MessageSquare className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Start a conversation to get help
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {chatMessages.map((message, index) => (
+                      <div
+                        key={index}
+                        className={`flex items-start space-x-2 ${
+                          message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
+                        }`}
+                      >
+                        {message.type !== 'user' && (
+                          <div className="flex-shrink-0">
+                            <div
+                              className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                                message.type === 'error'
+                                  ? 'bg-red-100 dark:bg-red-900'
+                                  : 'bg-gray-100 dark:bg-gray-700'
+                              }`}
+                            >
+                              {message.type === 'error' ? (
+                                <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                              ) : (
+                                <Bot className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        <div className={`flex-1 ${message.type === 'user' ? 'text-right' : ''}`}>
+                          <div
+                            className={`rounded-lg px-3 py-2 text-sm ${
+                              message.type === 'user'
+                                ? 'bg-primary-500 text-white inline-block'
+                                : message.type === 'error'
+                                ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap">{message.content}</p>
+                          </div>
+                        </div>
+                        {message.type === 'user' && (
+                          <div className="flex-shrink-0">
+                            <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+                              <User className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </>
+                )}
+              </div>
+
+              {/* Input */}
+              <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && !chatLoading && handleSendMessage()}
+                    placeholder="Ask about annotations..."
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    disabled={chatLoading || !selectedConnection}
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!chatInput.trim() || chatLoading || !selectedConnection}
+                    className="px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {chatLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
                     )}
                   </button>
                 </div>
