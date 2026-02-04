@@ -20,6 +20,7 @@ import WorkspaceDetail from './pages/WorkspaceDetail'
 import ProviderDetail from './pages/ProviderDetail'
 import Providers from './pages/Providers'
 import Connections from './pages/Connections'
+import NotFound from './pages/NotFound'
 import * as ROUTES from './constants/routes'
 
 function App() {
@@ -150,7 +151,9 @@ function App() {
 
           {/* Default Redirect */}
           <Route path="/" element={<Navigate to={ROUTES.APP} replace />} />
-          <Route path="*" element={<Navigate to={ROUTES.APP} replace />} />
+
+          {/* 404 Not Found - Catch all unmatched routes */}
+          <Route path="*" element={<NotFound />} />
           </Routes>
         </WorkspaceProvider>
       </AuthProvider>
