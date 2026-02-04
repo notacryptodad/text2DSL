@@ -145,9 +145,8 @@ function App() {
             }
           />
 
-          {/* Redirect old /admin/* routes to /app/admin/* */}
+          {/* Redirect old /admin route to /app/admin */}
           <Route path="/admin" element={<Navigate to={ROUTES.ADMIN} replace />} />
-          <Route path="/admin/*" element={<Navigate to={ROUTES.ADMIN} replace />} />
 
           {/* Default Redirect */}
           <Route path="/" element={<Navigate to={ROUTES.APP} replace />} />

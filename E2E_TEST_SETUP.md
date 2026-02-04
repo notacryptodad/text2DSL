@@ -99,7 +99,7 @@ import { testAsSuperAdmin, testAsUser } from './fixtures/auth.fixture.js';
 
 testAsSuperAdmin('admin can manage users', async ({ page }) => {
   // Page is already authenticated as super_admin
-  await page.goto('/admin/users');
+  await page.goto('/app/admin/users');
   // ... test admin functionality
 });
 
