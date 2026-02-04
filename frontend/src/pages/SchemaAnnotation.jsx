@@ -328,14 +328,14 @@ function SchemaAnnotation() {
 
       // Store the structured suggestions
       if (data.suggestions) {
-        const { table_description, columns } = data.suggestions
+        const { table_description, table_business_terms, columns } = data.suggestions
 
         // Create annotation structure from suggestions
         const suggestedAnnotation = {
           table_name: selectedTable,
           description: table_description || '',
           columns: columns || [],
-          business_terms: [],
+          business_terms: table_business_terms || [],
           relationships: []
         }
 
@@ -343,9 +343,14 @@ function SchemaAnnotation() {
 
         // Show success message with summary
         const columnCount = columns?.length || 0
-        const message = table_description
+        const termsCount = table_business_terms?.length || 0
+        let message = table_description
           ? `Auto-annotation completed!\n\nTable: ${table_description}\n\nGenerated descriptions for ${columnCount} column${columnCount !== 1 ? 's' : ''}.`
           : `Auto-annotation completed for table "${selectedTable}"!`
+        
+        if (termsCount > 0) {
+          message += `\n\nSuggested ${termsCount} business term${termsCount !== 1 ? 's' : ''}: ${table_business_terms.join(', ')}`
+        }
 
         setChatMessages([
           ...chatMessages,

@@ -48,7 +48,8 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel, foc
         annotation.columns.forEach(col => {
           colAnnotations[col.name] = {
             description: col.description || '',
-            sample_values: col.sample_values || ''
+            sample_values: col.sample_values || '',
+            business_terms: col.business_terms || []
           }
         })
       }

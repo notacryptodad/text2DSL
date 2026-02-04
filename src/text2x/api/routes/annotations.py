@@ -741,6 +741,7 @@ Return ONLY valid JSON (no markdown code blocks, no explanation text):
 
 {{
   "table_description": "Clear description of what this table represents and its purpose",
+  "table_business_terms": ["alternative", "names", "users might search for this table"],
   "represents": "business_concept",
   "primary_lookup_column": "column_name_for_entity_lookup",
   "columns": [
@@ -797,6 +798,7 @@ JSON OUTPUT:"""
                 parsed_json = json.loads(json_match.group(1))
                 if "table_description" in parsed_json or "columns" in parsed_json:
                     suggestions["table_description"] = parsed_json.get("table_description", "")
+                    suggestions["table_business_terms"] = parsed_json.get("table_business_terms", [])
                     suggestions["columns"] = parsed_json.get("columns", [])
                     # Extract query generation hints
                     suggestions["represents"] = parsed_json.get("represents")
@@ -838,6 +840,7 @@ JSON OUTPUT:"""
                         parsed_json = json.loads(json_str)
                         if "table_description" in parsed_json and "columns" in parsed_json:
                             suggestions["table_description"] = parsed_json.get("table_description", "")
+                            suggestions["table_business_terms"] = parsed_json.get("table_business_terms", [])
                             suggestions["columns"] = parsed_json.get("columns", [])
                             # Extract query generation hints
                             suggestions["represents"] = parsed_json.get("represents")
