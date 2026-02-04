@@ -18,6 +18,9 @@ function Login() {
 
   const from = location.state?.from?.pathname || ROUTES.APP
 
+  // Check if form is valid (both fields filled)
+  const isFormValid = formData.email.trim() !== '' && formData.password.trim() !== ''
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
@@ -26,6 +29,13 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // Validate before submitting
+    if (!isFormValid) {
+      setError('Please enter both email and password.')
+      return
+    }
+    
     setError('')
     setLoading(true)
 
@@ -67,10 +77,15 @@ function Login() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Error Alert */}
             {error && (
-              <div className="flex items-start space-x-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div 
+                id="login-error"
+                role="alert"
+                aria-live="assertive"
+                className="flex items-start space-x-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
+              >
                 <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
+                  <p className="text-sm font-medium text-red-800 dark:text-red-300">{error}</p>
                 </div>
               </div>
             )}
@@ -132,7 +147,7 @@ function Login() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !isFormValid}
               className="w-full flex justify-center items-center space-x-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? (
