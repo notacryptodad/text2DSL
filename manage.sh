@@ -35,19 +35,35 @@ start_test_infra() {
     check_docker "docker-compose.test.yml" "Test infrastructure"
 }
 
+run_migrations() {
+    echo "Running database migrations..."
+    cd /home/user/git/text2DSL
+    if ! uv run alembic upgrade head 2>&1; then
+        echo "Migration failed. Attempting to merge branches..."
+        uv run alembic merge heads -m "merge_branches" 2>/dev/null || true
+        uv run alembic upgrade head || {
+            echo "Failed to run migrations. Check logs/backend.log"
+            return 1
+        }
+    fi
+    echo "Migrations completed"
+}
+
 start_backend() {
     if [ -f "$BACKEND_PID_FILE" ] && kill -0 $(cat "$BACKEND_PID_FILE") 2>/dev/null; then
         echo "Backend already running (PID: $(cat $BACKEND_PID_FILE))"
         return
     fi
-    
+
     if ! command -v uv &> /dev/null; then
         echo "Error: uv not found. Install it from https://github.com/astral-sh/uv"
         return 1
     fi
-    
+
     check_docker "docker/docker-compose.yml" "Backend infrastructure" || return 1
-    
+
+    run_migrations || return 1
+
     echo "Starting backend..."
     uv run bash start_server.sh > "$BACKEND_LOG" 2>&1 &
     sleep 5
