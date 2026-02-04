@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import WorkspaceSelector from './WorkspaceSelector'
+import NavigationProgress from './NavigationProgress'
 
 function AppLayout({ children, darkMode, toggleDarkMode }) {
   const navigate = useNavigate()
@@ -69,6 +70,9 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 transition-colors duration-200">
+      {/* Navigation Progress Bar */}
+      <NavigationProgress />
+
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">

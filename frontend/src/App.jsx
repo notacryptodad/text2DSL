@@ -5,6 +5,7 @@ import { WorkspaceProvider } from './contexts/WorkspaceContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/AppLayout'
 import AdminLayout from './components/AdminLayout'
+import RouteErrorBoundary from './components/RouteErrorBoundary'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Chat from './pages/Chat'
@@ -55,17 +56,18 @@ function App() {
             element={
               <ProtectedRoute>
                 <AppLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
-                  <Routes>
-                    {/* User pages */}
-                    <Route path="/" element={<Chat />} />
-                    <Route path="/review" element={<Review />} />
-                    <Route path="/schema-annotation" element={<SchemaAnnotation />} />
-                    <Route path="/feedback-stats" element={<FeedbackStats />} />
-                    <Route path="/profile" element={<UserProfile />} />
-                    
+                  <RouteErrorBoundary>
+                    <Routes>
+                      {/* User pages */}
+                      <Route path="/" element={<Chat />} />
+                    <Route path="review" element={<Review />} />
+                    <Route path="schema-annotation" element={<SchemaAnnotation />} />
+                    <Route path="feedback-stats" element={<FeedbackStats />} />
+                    <Route path="profile" element={<UserProfile />} />
+
                     {/* Admin pages - wrapped in AdminLayout for sidebar */}
                     <Route
-                      path="/admin"
+                      path="admin"
                       element={
                         <ProtectedRoute requireAdmin={true}>
                           <AdminLayout>
@@ -75,7 +77,7 @@ function App() {
                       }
                     />
                     <Route
-                      path="/admin/workspaces"
+                      path="admin/workspaces"
                       element={
                         <ProtectedRoute requireAdmin={true}>
                           <AdminLayout>
@@ -85,7 +87,7 @@ function App() {
                       }
                     />
                     <Route
-                      path="/admin/workspaces/:workspaceId"
+                      path="admin/workspaces/:workspaceId"
                       element={
                         <ProtectedRoute requireAdmin={true}>
                           <AdminLayout>
@@ -95,7 +97,7 @@ function App() {
                       }
                     />
                     <Route
-                      path="/admin/workspaces/:workspaceId/providers/:providerId"
+                      path="admin/workspaces/:workspaceId/providers/:providerId"
                       element={
                         <ProtectedRoute requireAdmin={true}>
                           <AdminLayout>
@@ -105,7 +107,7 @@ function App() {
                       }
                     />
                     <Route
-                      path="/admin/providers"
+                      path="admin/providers"
                       element={
                         <ProtectedRoute requireAdmin={true}>
                           <AdminLayout>
@@ -115,7 +117,7 @@ function App() {
                       }
                     />
                     <Route
-                      path="/admin/connections"
+                      path="admin/connections"
                       element={
                         <ProtectedRoute requireAdmin={true}>
                           <AdminLayout>
@@ -125,7 +127,7 @@ function App() {
                       }
                     />
                     <Route
-                      path="/admin/users"
+                      path="admin/users"
                       element={
                         <ProtectedRoute requireAdmin={true}>
                           <AdminLayout>
@@ -134,7 +136,8 @@ function App() {
                         </ProtectedRoute>
                       }
                     />
-                  </Routes>
+                    </Routes>
+                  </RouteErrorBoundary>
                 </AppLayout>
               </ProtectedRoute>
             }

@@ -1,5 +1,5 @@
 import { Component } from 'react'
-import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { AlertTriangle, RefreshCw, Home, ArrowLeft } from 'lucide-react'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -22,6 +22,16 @@ class ErrorBoundary extends Component {
   handleReset = () => {
     this.setState({ hasError: false, error: null, errorInfo: null })
     window.location.reload()
+  }
+
+  handleGoHome = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null })
+    window.location.href = '/app'
+  }
+
+  handleGoBack = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null })
+    window.history.back()
   }
 
   render() {
@@ -59,13 +69,27 @@ class ErrorBoundary extends Component {
               </details>
             )}
 
-            <div className="flex justify-center space-x-4">
+            <div className="flex flex-col sm:flex-row justify-center gap-3">
+              <button
+                onClick={this.handleGoBack}
+                className="inline-flex items-center justify-center space-x-2 px-6 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                <span>Go Back</span>
+              </button>
+              <button
+                onClick={this.handleGoHome}
+                className="inline-flex items-center justify-center space-x-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
+              >
+                <Home className="w-5 h-5" />
+                <span>Go to Home</span>
+              </button>
               <button
                 onClick={this.handleReset}
-                className="inline-flex items-center space-x-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
+                className="inline-flex items-center justify-center space-x-2 px-6 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
               >
                 <RefreshCw className="w-5 h-5" />
-                <span>Reload Application</span>
+                <span>Reload</span>
               </button>
             </div>
           </div>
