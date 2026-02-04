@@ -14,6 +14,8 @@ import {
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import Breadcrumb from '../components/Breadcrumb'
+import * as ROUTES from '../constants/routes'
+import { buildRoute } from '../constants/routes'
 
 function ProviderDetail() {
   const { workspaceId, providerId } = useParams()
@@ -89,7 +91,7 @@ function ProviderDetail() {
         setProvider(data)
       } else {
         showToast('error', 'Failed to load provider')
-        navigate(`/app/admin/workspaces/${workspaceId}`)
+        navigate(buildRoute.workspaceDetail(workspaceId))
       }
     } catch (err) {
       console.error('Error fetching provider:', err)
@@ -275,11 +277,11 @@ function ProviderDetail() {
   }
 
   const breadcrumbItems = [
-    { label: 'Admin', path: '/app/admin' },
-    { label: 'Workspaces', path: '/app/admin/workspaces' },
-    { label: workspace?.name || '...', path: `/app/admin/workspaces/${workspaceId}` },
-    { label: 'Providers', path: `/app/admin/workspaces/${workspaceId}` },
-    { label: provider.name, path: `/app/admin/workspaces/${workspaceId}/providers/${providerId}` },
+    { label: 'Admin', path: ROUTES.ADMIN },
+    { label: 'Workspaces', path: ROUTES.ADMIN_WORKSPACES },
+    { label: workspace?.name || '...', path: buildRoute.workspaceDetail(workspaceId) },
+    { label: 'Providers', path: buildRoute.workspaceDetail(workspaceId) },
+    { label: provider.name, path: buildRoute.providerDetail(workspaceId, providerId) },
   ]
 
   return (

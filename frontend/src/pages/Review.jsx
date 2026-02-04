@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import Prism from 'prismjs'
 import '../styles/prism-custom.css'
+import * as ROUTES from '../constants/routes'
 import 'prismjs/components/prism-sql'
 
 const PROVIDERS = [
@@ -344,7 +345,7 @@ function Review() {
               </p>
             </div>
             <Link
-              to="/app/feedback-stats"
+              to={ROUTES.FEEDBACK_STATS}
               className="flex items-center space-x-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
             >
               <BarChart3 className="w-4 h-4" />

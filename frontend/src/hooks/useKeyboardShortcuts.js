@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as ROUTES from '../constants/routes';
 
 export const useKeyboardShortcuts = () => {
   const navigate = useNavigate();
@@ -54,19 +55,19 @@ export const useKeyboardShortcuts = () => {
         // Navigate based on second key
         switch (key) {
           case 'c':
-            navigate('/app');
+            navigate(ROUTES.APP);
             break;
           case 'r':
-            navigate('/app/review');
+            navigate(ROUTES.REVIEW);
             break;
           case 's':
-            navigate('/app/schema-annotation');
+            navigate(ROUTES.SCHEMA_ANNOTATION);
             break;
           case 'a':
-            navigate('/app/admin');
+            navigate(ROUTES.ADMIN);
             break;
           case 'w':
-            navigate('/app/admin/workspaces');
+            navigate(ROUTES.ADMIN_WORKSPACES);
             break;
           default:
             // Invalid sequence, do nothing

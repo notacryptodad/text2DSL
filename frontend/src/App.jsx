@@ -20,6 +20,7 @@ import WorkspaceDetail from './pages/WorkspaceDetail'
 import ProviderDetail from './pages/ProviderDetail'
 import Providers from './pages/Providers'
 import Connections from './pages/Connections'
+import * as ROUTES from './constants/routes'
 
 function App() {
   const [darkMode, setDarkMode] = useState(() => {
@@ -47,8 +48,8 @@ function App() {
         <WorkspaceProvider>
           <Routes>
           {/* Public Routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route path={ROUTES.LOGIN} element={<Login />} />
+          <Route path={ROUTES.REGISTER} element={<Register />} />
 
           {/* Protected Routes - All under /app/* with AppLayout header */}
           <Route
@@ -144,12 +145,12 @@ function App() {
           />
 
           {/* Redirect old /admin/* routes to /app/admin/* */}
-          <Route path="/admin" element={<Navigate to="/app/admin" replace />} />
-          <Route path="/admin/*" element={<Navigate to="/app/admin" replace />} />
+          <Route path="/admin" element={<Navigate to={ROUTES.ADMIN} replace />} />
+          <Route path="/admin/*" element={<Navigate to={ROUTES.ADMIN} replace />} />
 
           {/* Default Redirect */}
-          <Route path="/" element={<Navigate to="/app" replace />} />
-          <Route path="*" element={<Navigate to="/app" replace />} />
+          <Route path="/" element={<Navigate to={ROUTES.APP} replace />} />
+          <Route path="*" element={<Navigate to={ROUTES.APP} replace />} />
           </Routes>
         </WorkspaceProvider>
       </AuthProvider>

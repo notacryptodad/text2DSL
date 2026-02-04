@@ -114,8 +114,8 @@ function Workspaces() {
   }
 
   const breadcrumbItems = [
-    { label: 'Admin', path: '/app/admin' },
-    { label: 'Workspaces', path: '/app/admin/workspaces' },
+    { label: 'Admin', path: ROUTES.ADMIN },
+    { label: 'Workspaces', path: ROUTES.ADMIN_WORKSPACES },
   ]
 
   return (
@@ -196,7 +196,7 @@ function Workspaces() {
           {filteredWorkspaces.map((workspace) => (
             <Link
               key={workspace.id}
-              to={`/app/admin/workspaces/${workspace.id}`}
+              to={ROUTES.buildRoute.workspaceDetail(workspace.id)}
               className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-md transition-all group"
             >
               <div className="flex items-start justify-between mb-4">

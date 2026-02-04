@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import Breadcrumb from '../components/Breadcrumb'
+import * as ROUTES from '../constants/routes'
 
 function Connections() {
   const [searchParams] = useSearchParams()
@@ -269,8 +270,8 @@ function Connections() {
   }
 
   const breadcrumbItems = [
-    { label: 'Admin', path: '/app/admin' },
-    { label: 'Connections', path: '/app/admin/connections' },
+    { label: 'Admin', path: ROUTES.ADMIN },
+    { label: 'Connections', path: ROUTES.ADMIN_CONNECTIONS },
   ]
 
   return (

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import Breadcrumb from '../components/Breadcrumb'
+import * as ROUTES from '../constants/routes'
 
 function AdminUsers() {
   const { isSuperAdmin } = useAuth()
@@ -264,8 +265,8 @@ function AdminUsers() {
   }
 
   const breadcrumbItems = [
-    { label: 'Admin', path: '/app/admin' },
-    { label: 'Users', path: '/app/admin/users' },
+    { label: 'Admin', path: ROUTES.ADMIN },
+    { label: 'Users', path: ROUTES.ADMIN_USERS },
   ]
 
   return (

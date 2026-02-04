@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import { AlertTriangle, RefreshCw, Home, ArrowLeft } from 'lucide-react'
+import * as ROUTES from '../constants/routes'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -26,7 +27,7 @@ class ErrorBoundary extends Component {
 
   handleGoHome = () => {
     this.setState({ hasError: false, error: null, errorInfo: null })
-    window.location.href = '/app'
+    window.location.href = ROUTES.APP
   }
 
   handleGoBack = () => {

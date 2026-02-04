@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { FolderKanban, Users, Activity, TrendingUp, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import Breadcrumb from '../components/Breadcrumb'
+import * as ROUTES from '../constants/routes'
 
 function AdminDashboard() {
   const [stats, setStats] = useState(null)
@@ -38,14 +39,14 @@ function AdminDashboard() {
       value: stats?.total_workspaces || 0,
       icon: FolderKanban,
       color: 'bg-blue-500',
-      link: '/app/admin/workspaces',
+      link: ROUTES.ADMIN_WORKSPACES,
     },
     {
       title: 'Total Users',
       value: stats?.total_users || 0,
       icon: Users,
       color: 'bg-green-500',
-      link: '/app/admin/users',
+      link: ROUTES.ADMIN_USERS,
     },
     {
       title: 'Queries Today',
@@ -58,7 +59,7 @@ function AdminDashboard() {
       value: stats?.active_connections || 0,
       icon: TrendingUp,
       color: 'bg-orange-500',
-      link: '/app/admin/connections',
+      link: ROUTES.ADMIN_CONNECTIONS,
     },
   ]
 
@@ -67,27 +68,27 @@ function AdminDashboard() {
       title: 'Manage Workspaces',
       description: 'Create and configure workspaces',
       icon: FolderKanban,
-      link: '/app/admin/workspaces',
+      link: ROUTES.ADMIN_WORKSPACES,
       color: 'text-blue-500',
     },
     {
       title: 'Manage Users',
       description: 'Add and manage user accounts',
       icon: Users,
-      link: '/app/admin/users',
+      link: ROUTES.ADMIN_USERS,
       color: 'text-green-500',
     },
     {
       title: 'Database Providers',
       description: 'Configure database connections',
       icon: Activity,
-      link: '/app/admin/providers',
+      link: ROUTES.ADMIN_PROVIDERS,
       color: 'text-purple-500',
     },
   ]
 
   const breadcrumbItems = [
-    { label: 'Admin', path: '/app/admin' },
+    { label: 'Admin', path: ROUTES.ADMIN },
   ]
 
   return (

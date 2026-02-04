@@ -153,8 +153,8 @@ function Providers() {
   }
 
   const breadcrumbItems = [
-    { label: 'Admin', path: '/app/admin' },
-    { label: 'Providers', path: '/app/admin/providers' },
+    { label: 'Admin', path: ROUTES.ADMIN },
+    { label: 'Providers', path: ROUTES.ADMIN_PROVIDERS },
   ]
 
   return (
