@@ -13,12 +13,11 @@ import {
 } from 'lucide-react'
 import SchemaTree from '../components/SchemaTree'
 import AnnotationEditor from '../components/AnnotationEditor'
-import AdminSidebar from '../components/AdminSidebar'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 
 function SchemaAnnotation() {
   const [searchParams] = useSearchParams()
-  const { currentWorkspace, currentConnection, selectConnection } = useWorkspace()
+  const { currentWorkspace, currentConnection } = useWorkspace()
   const [workspaces, setWorkspaces] = useState([])
   const [selectedWorkspace, setSelectedWorkspace] = useState('')
   const [connections, setConnections] = useState([])
@@ -494,7 +493,6 @@ function SchemaAnnotation() {
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <AdminSidebar />
       <div className="flex-1 p-8">
         {/* Header */}
         <div className="mb-8">

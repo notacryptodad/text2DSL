@@ -14,10 +14,8 @@ import {
   AlertCircle,
   CheckCircle,
   User,
-  Lock,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import AdminSidebar from '../components/AdminSidebar'
 
 function AdminUsers() {
   const { isSuperAdmin } = useAuth()
@@ -266,7 +264,6 @@ function AdminUsers() {
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <AdminSidebar />
       <div className="flex-1 p-8">
         {/* Header */}
         <div className="mb-8">

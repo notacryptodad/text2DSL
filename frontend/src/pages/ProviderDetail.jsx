@@ -4,7 +4,6 @@ import {
   Database,
   Plus,
   Trash2,
-  Settings,
   Link as LinkIcon,
   AlertCircle,
   Check,
@@ -14,7 +13,6 @@ import {
   FileText,
 } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import AdminSidebar from '../components/AdminSidebar'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 
 function ProviderDetail() {
@@ -27,7 +25,6 @@ function ProviderDetail() {
   const [showAddConnectionModal, setShowAddConnectionModal] = useState(false)
   const [addingConnection, setAddingConnection] = useState(false)
   const [testingConnection, setTestingConnection] = useState(null)
-  const [refreshingSchema, setRefreshingSchema] = useState(null)
   const [toast, setToast] = useState(null)
   const [connectionFormData, setConnectionFormData] = useState({
     name: '',
@@ -68,7 +65,7 @@ function ProviderDetail() {
         setProvider(data)
       } else {
         showToast('error', 'Failed to load provider')
-        navigate(`/admin/workspaces/${workspaceId}`)
+        navigate(`/app/admin/workspaces/${workspaceId}`)
       }
     } catch (err) {
       console.error('Error fetching provider:', err)
@@ -166,16 +163,6 @@ function ProviderDetail() {
     }
   }
 
-  const buildConnectionString = () => {
-    const { host, port, database, username, password } = connectionFormData
-    if (provider?.type === 'postgresql') {
-      return `postgresql://${username}:${password}@${host}:${port}/${database}`
-    } else if (provider?.type === 'mysql') {
-      return `mysql://${username}:${password}@${host}:${port}/${database}`
-    }
-    return `${host}:${port}/${database}`
-  }
-
   const handleTestConnection = async (connectionId) => {
     try {
       setTestingConnection(connectionId)
@@ -203,37 +190,6 @@ function ProviderDetail() {
       showToast('error', 'Failed to test connection')
     } finally {
       setTestingConnection(null)
-    }
-  }
-
-  const handleRefreshSchema = async (connectionId) => {
-    try {
-      setRefreshingSchema(connectionId)
-      const apiUrl = ''
-      const token = localStorage.getItem('access_token')
-
-      const response = await fetch(
-        `${apiUrl}/api/v1/workspaces/${workspaceId}/providers/${providerId}/connections/${connectionId}/schema/refresh`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      )
-
-      const result = await response.json()
-      if (response.ok) {
-        const tableCount = result.tables?.length || result.table_count || 0
-        showToast('success', `Schema refreshed! Found ${tableCount} tables.`)
-      } else {
-        showToast('error', result.message || result.detail || 'Failed to refresh schema')
-      }
-    } catch (err) {
-      console.error('Error refreshing schema:', err)
-      showToast('error', 'Failed to refresh schema')
-    } finally {
-      setRefreshingSchema(null)
     }
   }
 
@@ -271,7 +227,6 @@ function ProviderDetail() {
   if (loading) {
     return (
       <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-        <AdminSidebar />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-4"></div>
@@ -285,7 +240,6 @@ function ProviderDetail() {
   if (!provider) {
     return (
       <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-        <AdminSidebar />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -298,13 +252,11 @@ function ProviderDetail() {
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <AdminSidebar />
-
       <main className="flex-1 p-8">
         {/* Header */}
         <div className="mb-8">
           <Link
-            to={`/admin/workspaces/${workspaceId}`}
+            to={`/app/admin/workspaces/${workspaceId}`}
             className="inline-flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -373,7 +325,7 @@ function ProviderDetail() {
                     </div>
                     <div className="flex items-center space-x-2">
                       <Link
-                        to={`/admin/schema-annotation?workspace=${workspaceId}&connection=${conn.id}`}
+                        to={`/app/admin/schema-annotation?workspace=${workspaceId}&connection=${conn.id}`}
                         onClick={() => selectConnection({ id: conn.id, provider_id: providerId, ...conn })}
                         className="p-2 text-green-500 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
                         title="View & annotate schema"

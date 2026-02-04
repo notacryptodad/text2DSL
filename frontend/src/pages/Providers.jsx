@@ -6,12 +6,10 @@ import {
   Network,
   X,
   ArrowRight,
-  Server,
   CheckCircle,
   XCircle,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
-import AdminSidebar from '../components/AdminSidebar'
 
 const PROVIDER_TYPES = [
   { id: 'postgresql', name: 'PostgreSQL', icon: '🐘' },
@@ -154,8 +152,6 @@ function Providers() {
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <AdminSidebar />
-
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
@@ -244,7 +240,7 @@ function Providers() {
               {filteredProviders.map((provider) => (
                 <Link
                   key={provider.id}
-                  to={`/admin/connections?provider=${provider.id}`}
+                  to={`/app/admin/connections?provider=${provider.id}`}
                   className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-md transition-all group"
                 >
                   <div className="flex items-start justify-between mb-4">
