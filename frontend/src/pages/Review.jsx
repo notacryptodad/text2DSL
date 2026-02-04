@@ -89,8 +89,13 @@ function Review() {
       }
 
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
-      const response = await fetch(`${apiUrl}/api/v1/review/queue?${params}`)
+      const response = await fetch(`${apiUrl}/api/v1/review/queue?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch review queue')
       }
@@ -111,8 +116,13 @@ function Review() {
   const fetchStats = async () => {
     try {
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
-      const response = await fetch(`${apiUrl}/api/v1/review/stats`)
+      const response = await fetch(`${apiUrl}/api/v1/review/stats`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
       if (response.ok) {
         const data = await response.json()
         setStats(data)
@@ -125,8 +135,13 @@ function Review() {
   const handleViewDetails = async (item) => {
     try {
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
-      const response = await fetch(`${apiUrl}/api/v1/review/queue/${item.id}`)
+      const response = await fetch(`${apiUrl}/api/v1/review/queue/${item.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch item details')
       }
@@ -150,6 +165,7 @@ function Review() {
       setSubmitting(true)
 
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       const payload = {
         approved: true,
@@ -163,6 +179,7 @@ function Review() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify(payload),
         }
@@ -198,6 +215,7 @@ function Review() {
       setSubmitting(true)
 
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       const payload = {
         approved: false,
@@ -210,6 +228,7 @@ function Review() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
           },
           body: JSON.stringify(payload),
         }
