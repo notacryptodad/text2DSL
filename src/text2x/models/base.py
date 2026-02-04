@@ -26,31 +26,26 @@ from sqlalchemy.orm import DeclarativeBase, declared_attr
 
 class Base(DeclarativeBase):
     """Base class for all database models."""
-    
+
     pass
 
 
 class TimestampMixin:
     """Mixin to add created_at and updated_at timestamps to models."""
-    
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime, 
-        nullable=False, 
-        default=datetime.utcnow, 
-        onupdate=datetime.utcnow
-    )
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class UUIDMixin:
     """Mixin to add UUID primary key to models."""
-    
+
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
 
 
 class DatabaseConfig:
     """Database configuration and connection management."""
-    
+
     def __init__(
         self,
         host: str = "localhost",
@@ -64,7 +59,7 @@ class DatabaseConfig:
     ):
         """
         Initialize database configuration.
-        
+
         Args:
             host: Database host
             port: Database port
@@ -83,7 +78,7 @@ class DatabaseConfig:
         self.pool_size = pool_size
         self.max_overflow = max_overflow
         self.echo = echo
-        
+
     @property
     def url(self) -> str:
         """Get the database connection URL."""
@@ -91,31 +86,51 @@ class DatabaseConfig:
             f"postgresql+asyncpg://{self.user}:{self.password}"
             f"@{self.host}:{self.port}/{self.database}"
         )
-    
+
     @classmethod
     def from_env(cls) -> "DatabaseConfig":
         """
         Create database configuration from environment variables.
-        
+
         Environment variables:
+            DATABASE_URL: Full database URL (takes precedence)
             DB_HOST: Database host (default: localhost)
             DB_PORT: Database port (default: 5432)
-            DB_NAME: Database name (default: text2x)
-            DB_USER: Database user (default: text2x)
-            DB_PASSWORD: Database password (default: text2x)
+            DB_NAME: Database name (default: text2dsl_test)
+            DB_USER: Database user (default: postgres)
+            DB_PASSWORD: Database password (default: postgres)
             DB_POOL_SIZE: Connection pool size (default: 5)
             DB_MAX_OVERFLOW: Maximum overflow connections (default: 10)
             DB_ECHO: Echo SQL statements (default: False)
-        
+
         Returns:
             DatabaseConfig instance
         """
+        # Parse DATABASE_URL if provided
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            # Parse the URL to extract components
+            # Format: postgresql+asyncpg://user:password@host:port/database
+            from urllib.parse import urlparse
+
+            parsed = urlparse(database_url)
+            return cls(
+                host=parsed.hostname or "localhost",
+                port=parsed.port or 5432,
+                database=parsed.path.lstrip("/") or "text2dsl_test",
+                user=parsed.username or "postgres",
+                password=parsed.password or "postgres",
+                pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+                max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
+                echo=os.getenv("DB_ECHO", "false").lower() == "true",
+            )
+
         return cls(
             host=os.getenv("DB_HOST", "localhost"),
             port=int(os.getenv("DB_PORT", "5432")),
-            database=os.getenv("DB_NAME", "text2x"),
-            user=os.getenv("DB_USER", "text2x"),
-            password=os.getenv("DB_PASSWORD", "text2x"),
+            database=os.getenv("DB_NAME", "text2dsl_test"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", "postgres"),
             pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
             max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
             echo=os.getenv("DB_ECHO", "false").lower() == "true",
@@ -125,15 +140,15 @@ class DatabaseConfig:
 class DatabaseSession:
     """
     Manages database engine and session creation.
-    
+
     This class provides async context managers for database sessions
     and handles connection pooling.
     """
-    
+
     def __init__(self, config: DatabaseConfig):
         """
         Initialize database session manager.
-        
+
         Args:
             config: Database configuration
         """
@@ -150,17 +165,17 @@ class DatabaseSession:
             class_=AsyncSession,
             expire_on_commit=False,
         )
-    
+
     @asynccontextmanager
     async def session(self) -> AsyncGenerator[AsyncSession, None]:
         """
         Create an async database session context manager.
-        
+
         Usage:
             async with db.session() as session:
                 result = await session.execute(query)
                 await session.commit()
-        
+
         Yields:
             AsyncSession instance
         """
@@ -173,7 +188,7 @@ class DatabaseSession:
                 raise
             finally:
                 await session.close()
-    
+
     async def close(self) -> None:
         """Close the database engine and all connections."""
         await self.engine.dispose()
@@ -186,18 +201,18 @@ _db_session: DatabaseSession | None = None
 def init_db(config: DatabaseConfig | None = None) -> DatabaseSession:
     """
     Initialize the global database session.
-    
+
     Args:
         config: Database configuration. If None, loads from environment.
-    
+
     Returns:
         DatabaseSession instance
     """
     global _db_session
-    
+
     if config is None:
         config = DatabaseConfig.from_env()
-    
+
     _db_session = DatabaseSession(config)
     return _db_session
 
@@ -205,24 +220,22 @@ def init_db(config: DatabaseConfig | None = None) -> DatabaseSession:
 def get_db() -> DatabaseSession:
     """
     Get the global database session.
-    
+
     Returns:
         DatabaseSession instance
-    
+
     Raises:
         RuntimeError: If database has not been initialized
     """
     if _db_session is None:
-        raise RuntimeError(
-            "Database not initialized. Call init_db() first."
-        )
+        raise RuntimeError("Database not initialized. Call init_db() first.")
     return _db_session
 
 
 async def close_db() -> None:
     """Close the global database session."""
     global _db_session
-    
+
     if _db_session is not None:
         await _db_session.close()
         _db_session = None

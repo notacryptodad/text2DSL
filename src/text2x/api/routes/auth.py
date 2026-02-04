@@ -1,4 +1,5 @@
 """Authentication endpoints."""
+
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -110,7 +111,7 @@ async def login(credentials: LoginRequest) -> TokenResponse:
         user_id = str(user.id)
         user_email = user.email
         # Handle role - it might be an enum or a string
-        user_role = user.role.value if hasattr(user.role, 'value') else user.role
+        user_role = user.role.value if hasattr(user.role, "value") else user.role
         user_roles = [user_role]
 
         # Generate tokens
@@ -138,12 +139,22 @@ async def login(credentials: LoginRequest) -> TokenResponse:
     except HTTPException:
         raise
     except Exception as e:
+        error_str = str(e).lower()
+        if "password authentication failed" in error_str or "connection refused" in error_str:
+            logger.error(f"Database connection error during login: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=ErrorResponse(
+                    error="service_unavailable",
+                    message="Database service is temporarily unavailable",
+                ).model_dump(),
+            )
         logger.error(f"Login error: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(
                 error="login_error",
-                message="Failed to process login",
+                message="Invalid email or password",
             ).model_dump(),
         )
 
