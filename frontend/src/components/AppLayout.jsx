@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   Moon,
@@ -14,6 +14,9 @@ import {
   Tag,
   BarChart3,
   LayoutDashboard,
+  FolderKanban,
+  Database,
+  Network,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import WorkspaceSelector from './WorkspaceSelector'
@@ -23,6 +26,8 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
   const location = useLocation()
   const { user, logout, isSuperAdmin } = useAuth()
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showAdminMenu, setShowAdminMenu] = useState(false)
+  const adminMenuRef = useRef(null)
 
   const handleLogout = () => {
     logout()
@@ -33,11 +38,34 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
     return location.pathname === path
   }
 
+  const isAdminActive = () => {
+    return location.pathname.startsWith('/app/admin')
+  }
+
+  // Close admin menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target)) {
+        setShowAdminMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   // Pages that need workspace selector (workspace-scoped operations)
   const pagesNeedingWorkspace = ['/app', '/app/schema-annotation']
   const showWorkspaceSelector = pagesNeedingWorkspace.some(
     page => location.pathname === page || location.pathname.startsWith(page + '/')
   )
+
+  const adminMenuItems = [
+    { name: 'Dashboard', path: '/app/admin', icon: LayoutDashboard },
+    { name: 'Workspaces', path: '/app/admin/workspaces', icon: FolderKanban },
+    { name: 'Providers', path: '/app/admin/providers', icon: Database },
+    { name: 'Connections', path: '/app/admin/connections', icon: Network },
+    { name: 'Users', path: '/app/admin/users', icon: Users },
+  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 transition-colors duration-200">
@@ -109,31 +137,51 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                   <BarChart3 className="w-4 h-4" />
                   <span className="font-medium">Feedback</span>
                 </Link>
+                
+                {/* Admin Dropdown Menu */}
                 {isSuperAdmin && (
-                  <>
-                    <Link
-                      to="/admin"
+                  <div className="relative" ref={adminMenuRef}>
+                    <button
+                      onClick={() => setShowAdminMenu(!showAdminMenu)}
                       className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                        location.pathname.startsWith('/admin')
+                        isAdminActive()
                           ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
                           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`}
                     >
                       <LayoutDashboard className="w-4 h-4" />
                       <span className="font-medium">Admin</span>
-                    </Link>
-                    <Link
-                      to="/app/admin/users"
-                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                        isActive('/app/admin/users')
-                          ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
-                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      <Users className="w-4 h-4" />
-                      <span className="font-medium">Users</span>
-                    </Link>
-                  </>
+                      <ChevronDown className={`w-4 h-4 transition-transform ${showAdminMenu ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Admin Dropdown */}
+                    {showAdminMenu && (
+                      <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-30">
+                        {adminMenuItems.map((item) => {
+                          const Icon = item.icon
+                          const active = item.path === '/app/admin' 
+                            ? location.pathname === '/app/admin'
+                            : location.pathname.startsWith(item.path)
+                          
+                          return (
+                            <Link
+                              key={item.path}
+                              to={item.path}
+                              onClick={() => setShowAdminMenu(false)}
+                              className={`flex items-center space-x-3 px-4 py-2 text-sm transition-colors ${
+                                active
+                                  ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400'
+                                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                              }`}
+                            >
+                              <Icon className="w-4 h-4" />
+                              <span>{item.name}</span>
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
               </nav>
             </div>

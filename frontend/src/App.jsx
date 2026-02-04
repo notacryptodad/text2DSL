@@ -4,6 +4,7 @@ import { AuthProvider } from './hooks/useAuth'
 import { WorkspaceProvider } from './contexts/WorkspaceContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/AppLayout'
+import AdminLayout from './components/AdminLayout'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Chat from './pages/Chat'
@@ -48,23 +49,88 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Protected Routes */}
+          {/* Protected Routes - All under /app/* with AppLayout header */}
           <Route
             path="/app/*"
             element={
               <ProtectedRoute>
                 <AppLayout darkMode={darkMode} toggleDarkMode={toggleDarkMode}>
                   <Routes>
+                    {/* User pages */}
                     <Route path="/" element={<Chat />} />
                     <Route path="/review" element={<Review />} />
                     <Route path="/schema-annotation" element={<SchemaAnnotation />} />
                     <Route path="/feedback-stats" element={<FeedbackStats />} />
                     <Route path="/profile" element={<UserProfile />} />
+                    
+                    {/* Admin pages - wrapped in AdminLayout for sidebar */}
+                    <Route
+                      path="/admin"
+                      element={
+                        <ProtectedRoute requireAdmin={true}>
+                          <AdminLayout>
+                            <AdminDashboard />
+                          </AdminLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/workspaces"
+                      element={
+                        <ProtectedRoute requireAdmin={true}>
+                          <AdminLayout>
+                            <Workspaces />
+                          </AdminLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/workspaces/:workspaceId"
+                      element={
+                        <ProtectedRoute requireAdmin={true}>
+                          <AdminLayout>
+                            <WorkspaceDetail />
+                          </AdminLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/workspaces/:workspaceId/providers/:providerId"
+                      element={
+                        <ProtectedRoute requireAdmin={true}>
+                          <AdminLayout>
+                            <ProviderDetail />
+                          </AdminLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/providers"
+                      element={
+                        <ProtectedRoute requireAdmin={true}>
+                          <AdminLayout>
+                            <Providers />
+                          </AdminLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/admin/connections"
+                      element={
+                        <ProtectedRoute requireAdmin={true}>
+                          <AdminLayout>
+                            <Connections />
+                          </AdminLayout>
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route
                       path="/admin/users"
                       element={
                         <ProtectedRoute requireAdmin={true}>
-                          <AdminUsers />
+                          <AdminLayout>
+                            <AdminUsers />
+                          </AdminLayout>
                         </ProtectedRoute>
                       }
                     />
@@ -74,63 +140,9 @@ function App() {
             }
           />
 
-          {/* Admin Routes - Standalone layout with AdminSidebar */}
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute requireAdmin={true}>
-                <AdminDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/workspaces"
-            element={
-              <ProtectedRoute requireAdmin={true}>
-                <Workspaces />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/workspaces/:workspaceId"
-            element={
-              <ProtectedRoute requireAdmin={true}>
-                <WorkspaceDetail />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/workspaces/:workspaceId/providers/:providerId"
-            element={
-              <ProtectedRoute requireAdmin={true}>
-                <ProviderDetail />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/providers"
-            element={
-              <ProtectedRoute requireAdmin={true}>
-                <Providers />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/connections"
-            element={
-              <ProtectedRoute requireAdmin={true}>
-                <Connections />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <ProtectedRoute requireAdmin={true}>
-                <AdminUsers />
-              </ProtectedRoute>
-            }
-          />
+          {/* Redirect old /admin/* routes to /app/admin/* */}
+          <Route path="/admin" element={<Navigate to="/app/admin" replace />} />
+          <Route path="/admin/*" element={<Navigate to="/app/admin" replace />} />
 
           {/* Default Redirect */}
           <Route path="/" element={<Navigate to="/app" replace />} />

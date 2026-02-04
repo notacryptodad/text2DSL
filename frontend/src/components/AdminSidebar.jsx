@@ -15,20 +15,20 @@ function AdminSidebar() {
   }
 
   const navItems = [
-    { name: 'Dashboard', path: '/admin', icon: LayoutDashboard },
-    { name: 'Workspaces', path: '/admin/workspaces', icon: FolderKanban },
-    { name: 'Providers', path: '/admin/providers', icon: Database },
-    { name: 'Connections', path: '/admin/connections', icon: Network },
-    { name: 'Users', path: '/admin/users', icon: Users },
+    { name: 'Dashboard', path: '/app/admin', icon: LayoutDashboard },
+    { name: 'Workspaces', path: '/app/admin/workspaces', icon: FolderKanban },
+    { name: 'Providers', path: '/app/admin/providers', icon: Database },
+    { name: 'Connections', path: '/app/admin/connections', icon: Network },
+    { name: 'Users', path: '/app/admin/users', icon: Users },
   ]
 
   const isActive = (path) => {
-    if (path === '/admin') return location.pathname === '/admin'
+    if (path === '/app/admin') return location.pathname === '/app/admin'
     return location.pathname.startsWith(path)
   }
 
   return (
-    <aside className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 h-screen flex flex-col transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'}`}>
+    <aside className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'}`}>
       <div className={`p-4 border-b border-gray-200 dark:border-gray-700 flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {!collapsed && (
           <div>
