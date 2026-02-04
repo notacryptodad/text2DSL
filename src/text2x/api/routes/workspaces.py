@@ -1396,8 +1396,8 @@ async def refresh_connection_schema(
             introspection_result = await ConnectionService.introspect_schema(connection)
 
             if introspection_result.success and introspection_result.schema:
-                # Cache the refreshed schema
-                schema_service = SchemaService(session)
+                # Cache the refreshed schema - SchemaService creates its own repositories
+                schema_service = SchemaService()
                 await schema_service.cache_schema(connection_id, introspection_result.schema)
                 
                 # Update connection with schema cache info
