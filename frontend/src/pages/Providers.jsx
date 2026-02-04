@@ -72,8 +72,13 @@ function Providers() {
   const fetchWorkspaces = async () => {
     try {
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
-      const response = await fetch(`${apiUrl}/api/v1/admin/workspaces`)
+      const response = await fetch(`${apiUrl}/api/v1/admin/workspaces`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
       if (response.ok) {
         const data = await response.json()
         setWorkspaces(data)
@@ -94,11 +99,13 @@ function Providers() {
     try {
       setSubmitting(true)
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       const response = await fetch(`${apiUrl}/api/v1/workspaces/${formData.workspace_id}/providers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: formData.name,

@@ -74,8 +74,13 @@ function Connections() {
   const fetchProviders = async () => {
     try {
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
-      const response = await fetch(`${apiUrl}/api/v1/admin/providers`)
+      const response = await fetch(`${apiUrl}/api/v1/admin/providers`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
       if (response.ok) {
         const data = await response.json()
         setProviders(data)
@@ -96,6 +101,7 @@ function Connections() {
     try {
       setSubmitting(true)
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       // Find the provider to get its workspace_id
       const provider = providers.find(p => p.id === formData.provider_id)
@@ -107,6 +113,7 @@ function Connections() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           name: formData.name,
