@@ -39,6 +39,7 @@ function SchemaAnnotation() {
   const [conversationId, setConversationId] = useState(null)
   const [autoAnnotationSuggestions, setAutoAnnotationSuggestions] = useState(null)
   const chatEndRef = useRef(null)
+  const chatSectionRef = useRef(null)
 
   useEffect(() => {
     fetchWorkspaces()
@@ -295,8 +296,13 @@ function SchemaAnnotation() {
           timestamp: new Date(),
         },
       ])
+      // Scroll to chat section to show the error
+      chatSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       return
     }
+
+    // Scroll to chat section immediately when auto-annotate is clicked
+    chatSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
     try {
       setChatLoading(true)
@@ -623,7 +629,7 @@ function SchemaAnnotation() {
             )}
 
             {/* Chat Interface */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[600px]">
+            <div ref={chatSectionRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[600px]">
               <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center space-x-2">
                   <MessageSquare className="w-5 h-5 text-primary-500" />
