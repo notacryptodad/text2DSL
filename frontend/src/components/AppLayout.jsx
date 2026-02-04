@@ -33,6 +33,12 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
     return location.pathname === path
   }
 
+  // Pages that need workspace selector (workspace-scoped operations)
+  const pagesNeedingWorkspace = ['/app', '/app/schema-annotation']
+  const showWorkspaceSelector = pagesNeedingWorkspace.some(
+    page => location.pathname === page || location.pathname.startsWith(page + '/')
+  )
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 transition-colors duration-200">
       {/* Header */}
@@ -54,8 +60,8 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
                 </div>
               </Link>
 
-              {/* Workspace Selector */}
-              {user && <WorkspaceSelector />}
+              {/* Workspace Selector - only on pages that need it */}
+              {user && showWorkspaceSelector && <WorkspaceSelector />}
 
               {/* Navigation Tabs */}
               <nav className="hidden md:flex items-center space-x-1 border-l border-gray-200 dark:border-gray-700 pl-6">
