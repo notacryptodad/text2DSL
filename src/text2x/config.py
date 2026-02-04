@@ -1,4 +1,5 @@
 """Configuration management for Text2DSL system."""
+
 import os
 from functools import lru_cache
 from typing import Optional
@@ -27,15 +28,13 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", validation_alias="API_HOST")
     api_port: int = Field(default=8000, validation_alias="API_PORT")
     api_prefix: str = Field(default="/api/v1", validation_alias="API_PREFIX")
-    
+
     # CORS
     cors_origins: list[str] = Field(
         default=["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"],
         validation_alias="CORS_ORIGINS",
     )
-    cors_allow_credentials: bool = Field(
-        default=True, validation_alias="CORS_ALLOW_CREDENTIALS"
-    )
+    cors_allow_credentials: bool = Field(default=True, validation_alias="CORS_ALLOW_CREDENTIALS")
     cors_allow_methods: list[str] = Field(default=["*"], validation_alias="CORS_ALLOW_METHODS")
     cors_allow_headers: list[str] = Field(default=["*"], validation_alias="CORS_ALLOW_HEADERS")
 
@@ -111,12 +110,10 @@ class Settings(BaseSettings):
     # Bedrock Embedding Configuration
     bedrock_region: str = Field(default="us-east-1", validation_alias="BEDROCK_REGION")
     bedrock_embedding_model: str = Field(
-        default="amazon.titan-embed-text-v2:0",
-        validation_alias="BEDROCK_EMBEDDING_MODEL"
+        default="amazon.titan-embed-text-v2:0", validation_alias="BEDROCK_EMBEDDING_MODEL"
     )
     bedrock_embedding_batch_size: int = Field(
-        default=25,
-        validation_alias="BEDROCK_EMBEDDING_BATCH_SIZE"
+        default=25, validation_alias="BEDROCK_EMBEDDING_BATCH_SIZE"
     )
 
     # Agent Configuration
@@ -125,16 +122,12 @@ class Settings(BaseSettings):
     rag_top_k: int = Field(default=5, validation_alias="RAG_TOP_K")
 
     # Query Processing
-    query_timeout: int = Field(default=300, validation_alias="QUERY_TIMEOUT")  # seconds
-    enable_execution: bool = Field(
-        default=False, validation_alias="ENABLE_EXECUTION"
-    )  # Execute queries
+    query_timeout: int = Field(default=300, validation_alias="QUERY_TIMEOUT")
+    enable_execution: bool = Field(default=False, validation_alias="ENABLE_EXECUTION")
 
     # Logging
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
-    log_format: str = Field(
-        default="json", validation_alias="LOG_FORMAT"
-    )  # json or text
+    log_format: str = Field(default="json", validation_alias="LOG_FORMAT")  # json or text
 
     # Observability - Metrics
     enable_metrics: bool = Field(default=True, validation_alias="ENABLE_METRICS")
@@ -156,18 +149,15 @@ class Settings(BaseSettings):
     )
 
     # Authentication
-    enable_auth: bool = Field(default=False, validation_alias="ENABLE_AUTH")
+    enable_auth: bool = Field(default=True, validation_alias="ENABLE_AUTH")
     jwt_secret_key: str = Field(
-        default="your-secret-key-change-this-in-production",
-        validation_alias="JWT_SECRET_KEY"
+        default="your-secret-key-change-this-in-production", validation_alias="JWT_SECRET_KEY"
     )
     jwt_algorithm: str = Field(default="HS256", validation_alias="JWT_ALGORITHM")
     jwt_expire_minutes: int = Field(default=30, validation_alias="JWT_EXPIRE_MINUTES")
     jwt_refresh_expire_days: int = Field(default=7, validation_alias="JWT_REFRESH_EXPIRE_DAYS")
     api_key_header: str = Field(default="X-API-Key", validation_alias="API_KEY_HEADER")
-    allow_self_registration: bool = Field(
-        default=False, validation_alias="ALLOW_SELF_REGISTRATION"
-    )
+    allow_self_registration: bool = Field(default=False, validation_alias="ALLOW_SELF_REGISTRATION")
 
     # AgentCore Configuration
     agentcore_mode: str = Field(
