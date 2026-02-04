@@ -68,7 +68,7 @@ class UserFeedback(Base, UUIDMixin, TimestampMixin):
 
     # Rating (thumbs up/down)
     rating = Column(
-        Enum(FeedbackRating),
+        Enum(FeedbackRating, native_enum=False),
         nullable=False,
         index=True,
     )
