@@ -28,6 +28,10 @@ class WebSocketQueryRequest(BaseModel):
         max_length=100,
         description="ID of the database provider/connection (default: demo mode)",
     )
+    workspace_id: Optional[str] = Field(
+        default=None,
+        description="Workspace ID for the query",
+    )
     query: str = Field(
         ...,
         min_length=1,
@@ -124,26 +128,28 @@ async def handle_websocket_query(
 
         # Get or create QueryAgent instance
         from text2x.agentcore.agents.query import QueryAgent
-        from text2x.repositories.provider import ProviderRepository
-        from text2x.providers.factory import get_provider_instance
+        from text2x.providers.factory import get_provider_by_connection_id
 
         agent_name = f"query_{request.provider_id}"
 
         # Check if agent already exists
         if agent_name not in runtime.agents:
-            # Get provider
-            provider_repo = ProviderRepository()
-            provider_uuid = UUID(request.provider_id)
-            provider = await provider_repo.get_by_id(provider_uuid)
+            # Get provider instance from connection ID
+            connection_uuid = UUID(request.provider_id)
+            workspace_uuid = UUID(request.workspace_id) if request.workspace_id else None
+            
+            if not workspace_uuid:
+                raise ValueError("workspace_id is required")
+            
+            query_provider = await get_provider_by_connection_id(connection_uuid, workspace_uuid)
 
-            if not provider:
-                raise ValueError(f"Provider {request.provider_id} not found")
+            if not query_provider:
+                raise ValueError(f"Connection {request.provider_id} not found")
 
             # Create agent instance
             agent = QueryAgent(runtime, agent_name)
 
             # Set provider on agent
-            query_provider = await get_provider_instance(provider)
             agent.set_provider(query_provider)
 
             # Register agent with runtime
@@ -164,14 +170,22 @@ async def handle_websocket_query(
             trace_level=trace_level,
         )
 
-        # Get schema context
-        provider_repo = ProviderRepository()
-        provider = await provider_repo.get_by_id(UUID(request.provider_id))
+        # Get schema context from the agent's provider
         schema_context = {}
 
-        if provider:
-            try:
-                schema = await provider.get_schema()
+        try:
+            # Get provider from connection (reuse if already created above)
+            if agent_name in runtime.agents:
+                query_provider = runtime.agents[agent_name].provider
+            else:
+                workspace_uuid = UUID(request.workspace_id) if request.workspace_id else None
+                if workspace_uuid:
+                    query_provider = await get_provider_by_connection_id(UUID(request.provider_id), workspace_uuid)
+                else:
+                    query_provider = None
+            
+            if query_provider:
+                schema = await query_provider.get_schema()
                 if schema:
                     schema_context["tables"] = [
                         {
@@ -183,8 +197,8 @@ async def handle_websocket_query(
                         }
                         for table in schema.tables
                     ]
-            except Exception as e:
-                logger.warning(f"Failed to get schema: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to get schema: {e}")
 
         # Process query through QueryAgent
         agent_result = await agent.process({

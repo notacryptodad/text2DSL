@@ -235,6 +235,7 @@ function Chat() {
     try {
       await sendQuery({
         provider_id: selectedProvider.id,
+        workspace_id: currentWorkspace?.id,
         query,
         conversation_id: conversationId,
         options: {
