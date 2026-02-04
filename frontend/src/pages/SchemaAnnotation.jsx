@@ -10,6 +10,7 @@ import {
   User,
   Bot,
   RefreshCw,
+  Table,
 } from 'lucide-react'
 import SchemaTree from '../components/SchemaTree'
 import AnnotationEditor from '../components/AnnotationEditor'
@@ -615,8 +616,8 @@ function SchemaAnnotation() {
 
           {/* Middle section: Editor (+ Chat on non-ultra-wide) */}
           <div className="flex-1 min-w-0 space-y-6 2xl:space-y-0">
-            {/* Annotation Editor */}
-            {showEditor && selectedTable && (
+            {/* Annotation Editor or Placeholder */}
+            {showEditor && selectedTable ? (
               <AnnotationEditor
                 tableName={selectedTable}
                 schema={schema}
@@ -630,6 +631,31 @@ function SchemaAnnotation() {
                 }}
                 focusColumn={focusColumn}
               />
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-12">
+                <div className="text-center max-w-md mx-auto">
+                  <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Table className="w-8 h-8 text-primary-500" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+                    Select a Table to Annotate
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    Choose a table from the schema tree on the left to start adding annotations. 
+                    Annotations help improve query generation accuracy by providing context about your data.
+                  </p>
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 text-left">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      💡 Quick tips:
+                    </p>
+                    <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                      <li>• Click on a table name to open the annotation editor</li>
+                      <li>• Use <strong>Auto-Annotate</strong> to generate AI suggestions</li>
+                      <li>• Add business terms and descriptions for better results</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Chat Interface - shown below editor on screens smaller than 2xl */}
