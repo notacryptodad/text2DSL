@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import Breadcrumb from '../components/Breadcrumb'
+import PageHeader from '../components/PageHeader'
 import * as ROUTES from '../constants/routes'
 import { buildRoute } from '../constants/routes'
 
@@ -287,25 +287,14 @@ function ProviderDetail() {
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <main className="flex-1 p-8">
-        {/* Breadcrumb */}
-        <Breadcrumb items={breadcrumbItems} />
-
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center space-x-4">
-            <div className="bg-primary-100 dark:bg-primary-900/30 p-3 rounded-lg">
-              <Database className="w-8 h-8 text-primary-600 dark:text-primary-400" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                {provider.name}
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                {provider.type} • {provider.description || 'No description'}
-              </p>
-            </div>
-          </div>
-        </div>
+        <PageHeader
+          breadcrumbItems={breadcrumbItems}
+          title={provider.name}
+          description={`${provider.type} • ${provider.description || 'No description'}`}
+          icon={<Database className="w-8 h-8 text-primary-600 dark:text-primary-400" />}
+          showBackButton={true}
+          backTo={buildRoute.workspaceDetail(workspaceId)}
+        />
 
         {/* Connections Section */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">

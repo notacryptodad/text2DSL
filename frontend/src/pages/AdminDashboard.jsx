@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { FolderKanban, Users, Activity, TrendingUp, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import Breadcrumb from '../components/Breadcrumb'
+import PageHeader from '../components/PageHeader'
 import * as ROUTES from '../constants/routes'
 
 function AdminDashboard() {
@@ -93,18 +93,11 @@ function AdminDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Breadcrumb */}
-      <Breadcrumb items={breadcrumbItems} />
-
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Admin Dashboard
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Overview of your Text2DSL system
-        </p>
-      </div>
+      <PageHeader
+        breadcrumbItems={breadcrumbItems}
+        title="Admin Dashboard"
+        description="Overview of your Text2DSL system"
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

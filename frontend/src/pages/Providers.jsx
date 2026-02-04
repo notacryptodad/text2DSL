@@ -10,7 +10,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
-import Breadcrumb from '../components/Breadcrumb'
+import PageHeader from '../components/PageHeader'
 import * as ROUTES from '../constants/routes'
 
 const PROVIDER_TYPES = [
@@ -161,27 +161,20 @@ function Providers() {
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Breadcrumb */}
-          <Breadcrumb items={breadcrumbItems} />
-
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                Database Providers
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                Manage database provider configurations
-              </p>
-            </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center space-x-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Create Provider</span>
-            </button>
-          </div>
+          <PageHeader
+            breadcrumbItems={breadcrumbItems}
+            title="Database Providers"
+            description="Manage database provider configurations"
+            actions={
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
+              >
+                <Plus className="w-5 h-5" />
+                <span>Create Provider</span>
+              </button>
+            }
+          />
 
           {/* Filters */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">

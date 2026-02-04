@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { FolderKanban, Plus, Search, Users, Database, X, Calendar } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import Breadcrumb from '../components/Breadcrumb'
+import PageHeader from '../components/PageHeader'
 import { useAuth } from '../hooks/useAuth'
 import * as ROUTES from '../constants/routes'
 
@@ -120,27 +120,20 @@ function Workspaces() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Breadcrumb */}
-      <Breadcrumb items={breadcrumbItems} />
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Workspaces
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Manage your Text2DSL workspaces
-          </p>
-        </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Create Workspace</span>
-        </button>
-      </div>
+      <PageHeader
+        breadcrumbItems={breadcrumbItems}
+        title="Workspaces"
+        description="Manage your Text2DSL workspaces"
+        actions={
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Create Workspace</span>
+          </button>
+        }
+      />
 
       {/* Search Bar */}
       <div className="mb-6">

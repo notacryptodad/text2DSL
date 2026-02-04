@@ -14,7 +14,7 @@ import {
   Check,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import Breadcrumb from '../components/Breadcrumb'
+import PageHeader from '../components/PageHeader'
 import * as ROUTES from '../constants/routes'
 
 function WorkspaceDetail() {
@@ -296,13 +296,13 @@ function WorkspaceDetail() {
           <div className="text-center">
             <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
             <p className="text-gray-600 dark:text-gray-400">Workspace not found</p>
-            <Link
-              to={ROUTES.ADMIN_WORKSPACES}
+            <button
+              onClick={() => window.location.href = ROUTES.ADMIN_WORKSPACES}
               className="mt-4 inline-flex items-center text-primary-600 dark:text-primary-400 hover:underline"
             >
               <ArrowLeft className="w-4 h-4 mr-1" />
               Back to Workspaces
-            </Link>
+            </button>
           </div>
         </main>
       </div>
@@ -319,18 +319,13 @@ function WorkspaceDetail() {
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Breadcrumb */}
-          <Breadcrumb items={breadcrumbItems} />
-
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              {workspace.name}
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Manage workspace settings and members
-            </p>
-          </div>
+          <PageHeader
+            breadcrumbItems={breadcrumbItems}
+            title={workspace.name}
+            description="Manage workspace settings and members"
+            showBackButton={true}
+            backTo={ROUTES.ADMIN_WORKSPACES}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Settings */}

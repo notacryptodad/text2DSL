@@ -16,7 +16,7 @@ import {
   User,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import Breadcrumb from '../components/Breadcrumb'
+import PageHeader from '../components/PageHeader'
 import * as ROUTES from '../constants/routes'
 
 function AdminUsers() {
@@ -272,23 +272,24 @@ function AdminUsers() {
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="flex-1 p-8">
-        {/* Breadcrumb */}
-        <Breadcrumb items={breadcrumbItems} />
+        <PageHeader
+          breadcrumbItems={breadcrumbItems}
+          title="User Management"
+          description="Manage user accounts, roles, and permissions"
+          actions={
+            <button
+              onClick={handleCreateUser}
+              className="flex items-center space-x-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
+            >
+              <UserPlus className="w-5 h-5" />
+              <span>Create User</span>
+            </button>
+          }
+        />
 
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            User Management
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Manage user accounts, roles, and permissions
-          </p>
-        </div>
-
-        {/* Actions Bar */}
+        {/* Search Bar */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6">
           <div className="flex items-center justify-between">
-            {/* Search */}
             <div className="flex-1 max-w-md">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -303,15 +304,6 @@ function AdminUsers() {
                 />
               </div>
             </div>
-
-            {/* Create User Button */}
-            <button
-              onClick={handleCreateUser}
-              className="flex items-center space-x-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors ml-4"
-            >
-              <UserPlus className="w-5 h-5" />
-              <span>Create User</span>
-            </button>
           </div>
         </div>
 
