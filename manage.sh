@@ -66,15 +66,40 @@ start_backend() {
 
     echo "Starting backend..."
     uv run bash start_server.sh > "$BACKEND_LOG" 2>&1 &
-    sleep 5
-    # Get the actual uvicorn process PID
-    BACKEND_PID=$(ps aux | grep "[u]vicorn text2x.api.app:app" | awk '{print $2}' | head -1)
+    
+    # Wait for uvicorn process to start
+    echo "Waiting for uvicorn process..."
+    for i in {1..10}; do
+        BACKEND_PID=$(ps aux | grep "[u]vicorn.*text2x.api.app" | awk '{print $2}' | head -1)
+        if [ -n "$BACKEND_PID" ]; then
+            break
+        fi
+        sleep 1
+    done
+    
     if [ -z "$BACKEND_PID" ]; then
         echo "Failed to start backend. Check logs/backend.log"
+        tail -20 "$BACKEND_LOG"
         return 1
     fi
     echo $BACKEND_PID > "$BACKEND_PID_FILE"
-    echo "Backend started (PID: $BACKEND_PID)"
+    
+    # Wait for backend to be healthy
+    echo "Waiting for backend to be ready..."
+    for i in {1..30}; do
+        if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+            echo "✅ Backend started successfully (PID: $BACKEND_PID)"
+            return 0
+        fi
+        sleep 1
+    done
+    
+    # If we get here, backend didn't become healthy
+    echo "❌ Backend failed to start properly. Check logs/backend.log"
+    tail -20 "$BACKEND_LOG"
+    kill $BACKEND_PID 2>/dev/null
+    rm "$BACKEND_PID_FILE"
+    return 1
 }
 
 start_frontend() {
@@ -152,6 +177,32 @@ stop_frontend() {
     fi
 }
 
+force_stop_backend() {
+    echo "Force stopping backend on port 8000..."
+    PID=$(lsof -ti:8000 2>/dev/null)
+    if [ -n "$PID" ]; then
+        echo "Killing process(es): $PID"
+        kill -9 $PID 2>/dev/null
+        [ -f "$BACKEND_PID_FILE" ] && rm "$BACKEND_PID_FILE"
+        echo "Backend force stopped"
+    else
+        echo "No process found on port 8000"
+    fi
+}
+
+force_stop_frontend() {
+    echo "Force stopping frontend on port 5173..."
+    PID=$(lsof -ti:5173 2>/dev/null)
+    if [ -n "$PID" ]; then
+        echo "Killing process(es): $PID"
+        kill -9 $PID 2>/dev/null
+        [ -f "$FRONTEND_PID_FILE" ] && rm "$FRONTEND_PID_FILE"
+        echo "Frontend force stopped"
+    else
+        echo "No process found on port 5173"
+    fi
+}
+
 status() {
     echo "=== Server Status ==="
     if [ -f "$BACKEND_PID_FILE" ] && kill -0 $(cat "$BACKEND_PID_FILE") 2>/dev/null; then
@@ -204,6 +255,16 @@ case $1 in
                 ;;
         esac
         ;;
+    force-stop)
+        case $2 in
+            backend) force_stop_backend ;;
+            frontend) force_stop_frontend ;;
+            *)
+                force_stop_backend
+                force_stop_frontend
+                ;;
+        esac
+        ;;
     restart)
         case $2 in
             backend)
@@ -232,11 +293,12 @@ case $1 in
         logs $2
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status|logs} [backend|frontend|infra|test-infra]"
+        echo "Usage: $0 {start|stop|force-stop|restart|status|logs} [backend|frontend|infra|test-infra]"
         echo ""
         echo "Commands:"
         echo "  start [backend|frontend|infra|test-infra] - Start servers/infrastructure"
-        echo "  stop [backend|frontend]                    - Stop servers"
+        echo "  stop [backend|frontend]                    - Stop servers gracefully"
+        echo "  force-stop [backend|frontend]              - Force kill by port (8000/5173)"
         echo "  restart [backend|frontend]                 - Restart servers"
         echo "  status                                     - Show server status"
         echo "  logs [backend|frontend]                    - Tail server logs"

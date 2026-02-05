@@ -113,16 +113,22 @@ class LiteLLMAdapter:
         # Import here to avoid circular imports
         from text2x.llm.litellm_client import LiteLLMClient, DEFAULT_MODEL, DEFAULT_REGION
         
-        # Use Bedrock model if no model specified or if it looks like an OpenAI model
+        # Determine model format based on provider
         model = config.model
-        if not model or model.startswith("gpt-") or model.startswith("text-"):
+        if not model:
             model = DEFAULT_MODEL
-        elif not model.startswith("bedrock/"):
-            model = f"bedrock/{model}"
+        elif not model.startswith(("bedrock/", "nvidia_nim/", "openai/", "anthropic/")):
+            # Auto-prefix with bedrock if no provider prefix
+            if model.startswith("gpt-") or model.startswith("text-"):
+                model = DEFAULT_MODEL
+            else:
+                model = f"bedrock/{model}"
         
         self.litellm_client = LiteLLMClient(
             model=model,
             region=DEFAULT_REGION,
+            api_base=config.api_base,
+            api_key=config.api_key,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
         )

@@ -1,5 +1,5 @@
-"""Query agent for natural language to SQL conversion."""
-from text2x.agentcore.agents.query.agent import QueryAgent
-from text2x.agentcore.agents.query.strands_agent import QueryAgent as StrandsQueryAgent
+"""Query agent - Strands SDK implementation."""
 
-__all__ = ["QueryAgent", "StrandsQueryAgent"]
+from text2x.agentcore.agents.query.strands_agent import QueryAgent
+
+__all__ = ["QueryAgent"]

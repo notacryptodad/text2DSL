@@ -51,6 +51,7 @@ function Connections() {
     try {
       setLoading(true)
       const apiUrl = ''
+      const token = localStorage.getItem('access_token')
 
       const params = new URLSearchParams()
       if (selectedProvider) {
@@ -58,7 +59,12 @@ function Connections() {
       }
 
       const response = await fetch(
-        `${apiUrl}/api/v1/admin/connections${params.toString() ? '?' + params : ''}`
+        `${apiUrl}/api/v1/admin/connections${params.toString() ? '?' + params.toString() : ''}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
       )
       if (response.ok) {
         const data = await response.json()

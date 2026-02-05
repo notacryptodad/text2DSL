@@ -188,32 +188,22 @@ class TestQueryAgentStrands:
 class TestStrandsRuntimeCreation:
     """Tests for Strands runtime creation."""
     
-    def test_create_runtime_with_strands_flag(self):
-        """Test creating runtime with use_strands=True."""
-        from text2x.agentcore.strands_runtime import AgentCore
+    def test_create_runtime(self):
+        """Test creating runtime."""
+        from text2x.agentcore.runtime import AgentCore
         
-        runtime = AgentCore(use_strands=True)
+        runtime = AgentCore()
         
-        assert runtime.use_strands is True
-        assert runtime.is_started is False
-    
-    def test_create_runtime_with_legacy_flag(self):
-        """Test creating runtime with use_strands=False."""
-        from text2x.agentcore.strands_runtime import AgentCore
-        
-        runtime = AgentCore(use_strands=False)
-        
-        assert runtime.use_strands is False
-        assert runtime.is_started is False
+        assert runtime.is_started() is False
     
     def test_create_agentcore_factory(self):
         """Test create_agentcore factory function."""
-        from text2x.agentcore.strands_runtime import create_agentcore
+        from text2x.agentcore.runtime import create_agentcore
         
-        runtime = create_agentcore(use_strands=True)
+        runtime = create_agentcore()
         
         assert runtime is not None
-        assert runtime.use_strands is True
+        assert runtime.is_started() is False
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 """Admin endpoints for super admin operations."""
+
 import logging
 from datetime import datetime
 from typing import Optional
@@ -8,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from text2x.api.auth import get_current_active_user, require_role
+from text2x.api.auth import get_current_active_user, require_role, require_any_role
 from text2x.api.state import app_state
 from text2x.api.models import ErrorResponse
 from text2x.api.auth import User, get_current_active_user, require_role
@@ -51,9 +52,7 @@ class WorkspaceCreateAdmin(BaseModel):
     settings: Optional[dict] = Field(
         default_factory=dict, description="Workspace-specific settings"
     )
-    owner_user_id: str = Field(
-        ..., description="User ID of the workspace owner"
-    )
+    owner_user_id: str = Field(..., description="User ID of the workspace owner")
 
 
 class WorkspaceListResponse(BaseModel):
@@ -75,9 +74,7 @@ class InviteAdminRequest(BaseModel):
     """Request model for inviting a workspace admin."""
 
     user_id: str = Field(..., description="User ID to invite")
-    role: AdminRole = Field(
-        default=AdminRole.ADMIN, description="Role to assign (admin or member)"
-    )
+    role: AdminRole = Field(default=AdminRole.ADMIN, description="Role to assign (admin or member)")
     invited_by: str = Field(..., description="User ID of the inviter")
 
 
@@ -149,20 +146,14 @@ async def get_admin_stats() -> AdminStatsResponse:
 
         async with await get_session() as session:
             # Count workspaces
-            workspace_count = await session.scalar(
-                select(func.count()).select_from(Workspace)
-            )
+            workspace_count = await session.scalar(select(func.count()).select_from(Workspace))
 
             # Count users
-            user_count = await session.scalar(
-                select(func.count()).select_from(UserModel)
-            )
+            user_count = await session.scalar(select(func.count()).select_from(UserModel))
 
             # Count active connections
             active_connections = await session.scalar(
-                select(func.count()).select_from(Connection).where(
-                    Connection.status == "connected"
-                )
+                select(func.count()).select_from(Connection).where(Connection.status == "connected")
             )
 
             # Count queries today (placeholder - would need query log table)
@@ -182,7 +173,7 @@ async def get_admin_stats() -> AdminStatsResponse:
             detail=ErrorResponse(
                 error="internal_error",
                 message="Failed to retrieve admin statistics",
-            ).model_dump(mode='json'),
+            ).model_dump(mode="json"),
         )
 
 
@@ -224,7 +215,7 @@ async def create_workspace(workspace: WorkspaceCreateAdmin) -> WorkspaceListResp
                     detail=ErrorResponse(
                         error="validation_error",
                         message=f"Workspace with slug '{workspace.slug}' already exists",
-                    ).model_dump(mode='json'),
+                    ).model_dump(mode="json"),
                 )
 
             # Create workspace
@@ -419,9 +410,7 @@ async def get_workspace(workspace_id: UUID) -> WorkspaceListResponse:
     summary="Invite workspace admin",
     dependencies=[Depends(require_role("super_admin"))],
 )
-async def invite_admin(
-    workspace_id: UUID, invite: InviteAdminRequest
-) -> AdminResponse:
+async def invite_admin(workspace_id: UUID, invite: InviteAdminRequest) -> AdminResponse:
     """
     Invite a user to be an admin or member of a workspace.
 
@@ -453,7 +442,7 @@ async def invite_admin(
                     detail=ErrorResponse(
                         error="not_found",
                         message=f"Workspace {workspace_id} not found",
-                    ).model_dump(mode='json'),
+                    ).model_dump(mode="json"),
                 )
 
             # Check if user already has this specific role
@@ -524,9 +513,7 @@ async def invite_admin(
     summary="Directly assign workspace admin (super admin only)",
     dependencies=[Depends(require_role("super_admin"))],
 )
-async def assign_admin(
-    workspace_id: UUID, assign: AssignAdminRequest
-) -> AdminResponse:
+async def assign_admin(workspace_id: UUID, assign: AssignAdminRequest) -> AdminResponse:
     """
     Directly assign a user as workspace admin without invitation.
 
@@ -560,7 +547,7 @@ async def assign_admin(
                     detail=ErrorResponse(
                         error="not_found",
                         message=f"Workspace {workspace_id} not found",
-                    ).model_dump(mode='json'),
+                    ).model_dump(mode="json"),
                 )
 
             # Check if user already has this specific role
@@ -745,7 +732,7 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
                     detail=ErrorResponse(
                         error="not_found",
                         message=f"Workspace {workspace_id} not found",
-                    ).model_dump(mode='json'),
+                    ).model_dump(mode="json"),
                 )
 
             # Get all admin roles for the user
@@ -773,7 +760,7 @@ async def remove_admin(workspace_id: UUID, user_id: str) -> None:
                         detail=ErrorResponse(
                             error="validation_error",
                             message="Cannot remove the last owner from a workspace",
-                        ).model_dump(mode='json'),
+                        ).model_dump(mode="json"),
                     )
 
             # Delete all admin roles for the user
@@ -839,7 +826,7 @@ async def list_workspace_admins(workspace_id: UUID) -> list[AdminResponse]:
                     detail=ErrorResponse(
                         error="not_found",
                         message=f"Workspace {workspace_id} not found",
-                    ).model_dump(mode='json'),
+                    ).model_dump(mode="json"),
                 )
 
             # Get all admins for the workspace
@@ -964,14 +951,12 @@ async def list_workspace_invitations(workspace_id: UUID) -> list[AdminResponse]:
                     detail=ErrorResponse(
                         error="not_found",
                         message=f"Workspace {workspace_id} not found",
-                    ).model_dump(mode='json'),
+                    ).model_dump(mode="json"),
                 )
 
             # Get pending invitations for the workspace
             admin_repo = WorkspaceAdminRepository(session)
-            invitations = await admin_repo.list_by_workspace(
-                workspace_id, pending_only=True
-            )
+            invitations = await admin_repo.list_by_workspace(workspace_id, pending_only=True)
 
             return [
                 AdminResponse(
@@ -999,4 +984,90 @@ async def list_workspace_invitations(workspace_id: UUID) -> list[AdminResponse]:
                 error="fetch_error",
                 message="Failed to fetch workspace invitations",
             ).model_dump(),
+        )
+
+
+# ============================================================================
+# Provider and Connection Admin Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/providers",
+    summary="List all providers across all workspaces",
+)
+async def list_all_providers(
+    current_user: User = Depends(require_any_role(["super_admin", "admin", "expert"])),
+) -> list[dict]:
+    """List all providers across all workspaces (admin only)."""
+    try:
+        from sqlalchemy import select
+        from text2x.models.workspace import Provider
+
+        async with await get_session() as session:
+            stmt = select(Provider).order_by(Provider.created_at.desc())
+            result = await session.execute(stmt)
+            providers = result.scalars().all()
+
+            return [
+                {
+                    "id": str(provider.id),
+                    "workspace_id": str(provider.workspace_id),
+                    "name": provider.name,
+                    "provider_type": provider.type.value,
+                    "description": provider.description,
+                    "created_at": provider.created_at.isoformat(),
+                    "updated_at": provider.updated_at.isoformat(),
+                }
+                for provider in providers
+            ]
+
+    except Exception as e:
+        logger.error(f"Error listing providers: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "fetch_error", "message": "Failed to list providers"},
+        )
+
+
+@router.get(
+    "/connections",
+    summary="List all connections across all providers",
+)
+async def list_all_connections(
+    current_user: User = Depends(require_any_role(["super_admin", "admin", "expert"])),
+) -> list[dict]:
+    """List all connections across all providers (admin only)."""
+    try:
+        from sqlalchemy import select
+        from text2x.models.workspace import Connection
+
+        async with await get_session() as session:
+            stmt = select(Connection).order_by(Connection.created_at.desc())
+            result = await session.execute(stmt)
+            connections = result.scalars().all()
+
+            return [
+                {
+                    "id": str(connection.id),
+                    "provider_id": str(connection.provider_id),
+                    "name": connection.name,
+                    "host": connection.host,
+                    "port": connection.port,
+                    "database": connection.database,
+                    "status": connection.status.value,
+                    "last_schema_refresh": connection.schema_last_refreshed.isoformat()
+                    if connection.schema_last_refreshed
+                    else None,
+                    "created_at": connection.created_at.isoformat(),
+                    "updated_at": connection.updated_at.isoformat(),
+                }
+                for connection in connections
+            ]
+
+    except Exception as e:
+        logger.error(f"Error listing connections: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "fetch_error", "message": "Failed to list connections"},
         )

@@ -1,7 +1,8 @@
-"""Auto-annotation agent for AgentCore."""
-from text2x.agentcore.agents.auto_annotation.agent import AutoAnnotationAgent
+"""Auto-annotation agent - Strands SDK implementation."""
+
 from text2x.agentcore.agents.auto_annotation.strands_agent import (
-    AutoAnnotationAgent as StrandsAutoAnnotationAgent,
+    AutoAnnotationAgent,
+    AnnotationToolContext,
 )
 
-__all__ = ["AutoAnnotationAgent", "StrandsAutoAnnotationAgent"]
+__all__ = ["AutoAnnotationAgent", "AnnotationToolContext"]

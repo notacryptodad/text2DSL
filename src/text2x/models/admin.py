@@ -30,7 +30,6 @@ class AdminRole(str, Enum):
 
     OWNER = "owner"    # Full control, can manage admins
     ADMIN = "admin"    # Can manage workspace settings and connections
-    EXPERT = "expert"  # Workspace expert: review queries, mark good/bad, correct SQL
     MEMBER = "member"  # Read access to workspace
 
 

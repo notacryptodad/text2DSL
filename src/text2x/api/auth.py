@@ -413,7 +413,9 @@ def require_role(required_role: str):
     """
 
     async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if required_role not in current_user.roles:
+        # Check both role (string) and roles (list) for compatibility
+        user_role = current_user.role
+        if user_role != required_role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"User does not have required role: {required_role}",
@@ -423,14 +425,38 @@ def require_role(required_role: str):
     return role_checker
 
 
+def require_any_role(allowed_roles: list[str]):
+    """
+    Create a dependency that requires ANY of the specified roles.
+
+    Args:
+        allowed_roles: List of roles, user must have at least one
+
+    Returns:
+        Dependency function that checks for any of the roles
+    """
+
+    async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
+        user_role = current_user.role
+        if user_role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"User does not have any of the required roles: {allowed_roles}",
+            )
+        return current_user
+
+    return role_checker
+
+
 def require_expert():
     """
-    Create a dependency that requires expert role (system or workspace level).
+    Create a dependency that requires expert role (system-level only).
     
     Allows:
     - System-wide SUPER_ADMIN
     - System-wide EXPERT
-    - Workspace EXPERT (checked per-request based on workspace_id)
+    
+    Note: Workspace-level expert role has been removed.
     
     Returns:
         Dependency function that checks for expert permissions
@@ -438,15 +464,13 @@ def require_expert():
 
     async def expert_checker(current_user: User = Depends(get_current_active_user)) -> User:
         # System-wide experts can review anything
-        if "super_admin" in current_user.roles or "expert" in current_user.roles:
+        user_role = current_user.role
+        if user_role in ["super_admin", "expert"]:
             return current_user
         
-        # For workspace-level experts, we need workspace_id in the request
-        # This basic check allows any authenticated user through,
-        # and workspace-level checks happen in the endpoint itself
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Expert role required to access review features",
+            detail="System expert role required to access review features",
         )
 
     return expert_checker
@@ -458,29 +482,18 @@ async def check_workspace_expert(
     session: "AsyncSession",
 ) -> bool:
     """
-    Check if user has expert permissions for a specific workspace.
+    Check if user has expert permissions (system-level only).
+    
+    Note: Workspace-level expert role has been removed.
     
     Args:
         user: Current user
-        workspace_id: Workspace to check
-        session: Database session
+        workspace_id: Workspace to check (unused, kept for compatibility)
+        session: Database session (unused, kept for compatibility)
         
     Returns:
-        True if user is system expert or workspace expert
+        True if user is system expert
     """
-    # System-wide experts
-    if "super_admin" in user.roles or "expert" in user.roles:
-        return True
-    
-    # Check workspace-level expert role
-    from text2x.models.admin import WorkspaceAdmin, AdminRole
-    from sqlalchemy import select
-    
-    result = await session.execute(
-        select(WorkspaceAdmin).where(
-            WorkspaceAdmin.workspace_id == workspace_id,
-            WorkspaceAdmin.user_id == user.user_id,
-            WorkspaceAdmin.role == AdminRole.EXPERT,
-        )
-    )
-    return result.scalar_one_or_none() is not None
+    # Only system-wide experts now
+    user_role = user.role
+    return user_role in ["super_admin", "expert"]

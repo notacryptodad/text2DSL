@@ -25,6 +25,7 @@ def _ensure_aws_credentials() -> None:
 
     LiteLLM doesn't automatically pick up instance role credentials,
     so we fetch them via boto3 and set environment variables.
+    Only called for Bedrock models.
     """
     # Skip if credentials already set (e.g., by explicit env vars)
     if os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"):
@@ -43,30 +44,43 @@ def _ensure_aws_credentials() -> None:
 
 
 class LiteLLMClient:
-    """LiteLLM client wrapper for AWS Bedrock."""
+    """LiteLLM client wrapper supporting multiple providers."""
 
     def __init__(
         self,
         model: str = DEFAULT_MODEL,
         region: str = DEFAULT_REGION,
+        api_base: str | None = None,
+        api_key: str | None = None,
         **kwargs: Any,
     ):
         """Initialize the LiteLLM client.
 
         Args:
-            model: The Bedrock model identifier (default: Claude Opus 4.5)
+            model: The model identifier (e.g., bedrock/..., nvidia_nim/...)
             region: AWS region for Bedrock (default: us-east-1)
+            api_base: API base URL for non-Bedrock providers
+            api_key: API key for non-Bedrock providers
             **kwargs: Additional default parameters for completions
         """
         self.model = model
         self.region = region
+        self.api_base = api_base
+        self.api_key = api_key
         self.default_kwargs = kwargs
+        self.is_bedrock = model.startswith("bedrock/")
 
-        # Ensure AWS region is set
-        os.environ.setdefault("AWS_REGION", region)
+        # Set API credentials in environment for LiteLLM
+        # LiteLLM uses NVIDIA_NIM_API_KEY for nvidia_nim models
+        if api_key and "nvidia" in model.lower():
+            os.environ["NVIDIA_NIM_API_KEY"] = api_key
+        elif api_key:
+            os.environ["OPENAI_API_KEY"] = api_key  # Fallback for other providers
 
-        # Ensure credentials are available for LiteLLM
-        _ensure_aws_credentials()
+        # Only setup AWS credentials for Bedrock models
+        if self.is_bedrock:
+            os.environ.setdefault("AWS_REGION", region)
+            _ensure_aws_credentials()
 
     def complete(
         self,
@@ -82,10 +96,18 @@ class LiteLLMClient:
         Returns:
             LiteLLM completion response
         """
-        # Refresh credentials before each call (handles token expiration)
-        _ensure_aws_credentials()
+        # Refresh credentials for Bedrock models
+        if self.is_bedrock:
+            _ensure_aws_credentials()
 
         merged_kwargs = {**self.default_kwargs, **kwargs}
+        
+        # Pass API credentials directly for non-Bedrock providers
+        if self.api_key:
+            merged_kwargs["api_key"] = self.api_key
+        if self.api_base:
+            merged_kwargs["api_base"] = self.api_base
+            
         return completion(
             model=self.model,
             messages=messages,
@@ -106,10 +128,18 @@ class LiteLLMClient:
         Returns:
             LiteLLM completion response
         """
-        # Refresh credentials before each call (handles token expiration)
-        _ensure_aws_credentials()
+        # Refresh credentials for Bedrock models
+        if self.is_bedrock:
+            _ensure_aws_credentials()
 
         merged_kwargs = {**self.default_kwargs, **kwargs}
+        
+        # Pass API credentials directly for non-Bedrock providers
+        if self.api_key:
+            merged_kwargs["api_key"] = self.api_key
+        if self.api_base:
+            merged_kwargs["api_base"] = self.api_base
+            
         return await acompletion(
             model=self.model,
             messages=messages,
@@ -127,13 +157,17 @@ _client: LiteLLMClient | None = None
 def get_client(
     model: str = DEFAULT_MODEL,
     region: str = DEFAULT_REGION,
+    api_base: str | None = None,
+    api_key: str | None = None,
     **kwargs: Any,
 ) -> LiteLLMClient:
     """Get or create a singleton LiteLLM client.
 
     Args:
-        model: The Bedrock model identifier
+        model: The model identifier
         region: AWS region for Bedrock
+        api_base: API base URL for non-Bedrock providers
+        api_key: API key for non-Bedrock providers
         **kwargs: Additional default parameters
 
     Returns:
@@ -141,5 +175,7 @@ def get_client(
     """
     global _client
     if _client is None:
-        _client = LiteLLMClient(model=model, region=region, **kwargs)
+        _client = LiteLLMClient(
+            model=model, region=region, api_base=api_base, api_key=api_key, **kwargs
+        )
     return _client

@@ -14,6 +14,8 @@ class AgentCoreConfig:
         max_tokens: Maximum tokens for LLM response
         timeout: Request timeout in seconds
         use_litellm: Whether to use LiteLLM (default: True)
+        api_base: API base URL for non-Bedrock providers
+        api_key: API key for non-Bedrock providers
     """
 
     model: str = "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -22,6 +24,8 @@ class AgentCoreConfig:
     max_tokens: int = 4096
     timeout: float = 120.0
     use_litellm: bool = True
+    api_base: Optional[str] = None
+    api_key: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "AgentCoreConfig":
@@ -29,10 +33,12 @@ class AgentCoreConfig:
         import os
 
         return cls(
-            model=os.getenv("AGENTCORE_MODEL", cls.model),
+            model=os.getenv("AGENTCORE_MODEL", os.getenv("LLM_MODEL", cls.model)),
             region=os.getenv("AWS_REGION", cls.region),
             temperature=float(os.getenv("AGENTCORE_TEMPERATURE", str(cls.temperature))),
             max_tokens=int(os.getenv("AGENTCORE_MAX_TOKENS", str(cls.max_tokens))),
             timeout=float(os.getenv("AGENTCORE_TIMEOUT", str(cls.timeout))),
             use_litellm=os.getenv("AGENTCORE_USE_LITELLM", "true").lower() == "true",
+            api_base=os.getenv("LLM_API_BASE"),
+            api_key=os.getenv("LLM_API_KEY"),
         )

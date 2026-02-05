@@ -1,21 +1,22 @@
-"""AgentCore runtime - manages agent lifecycle and LLM client."""
+"""AgentCore runtime - manages agent lifecycle with Strands SDK.
+
+Uses Strands SDK for all agent implementations.
+"""
 import logging
 from typing import Dict, Any, Optional
 
 from text2x.agentcore.config import AgentCoreConfig
-from text2x.agentcore.llm.client import LLMClient
-from text2x.agentcore.registry import get_registry
-from text2x.agentcore.agents.base import AgentCoreBaseAgent
+from text2x.agentcore.llm.strands_provider import create_litellm_model
 
 logger = logging.getLogger(__name__)
 
 
 class AgentCore:
-    """AgentCore runtime for managing agents and LLM client.
+    """AgentCore runtime for managing Strands SDK agents.
 
     Responsibilities:
-    - Initialize and manage LLM client
-    - Load agents from registry
+    - Initialize and manage Strands model provider
+    - Load Strands agents
     - Provide lifecycle management (start/stop)
     - Serve as dependency injection container for agents
     """
@@ -27,8 +28,8 @@ class AgentCore:
             config: AgentCore configuration (defaults to from_env)
         """
         self.config = config or AgentCoreConfig.from_env()
-        self.llm_client: Optional[LLMClient] = None
-        self.agents: Dict[str, AgentCoreBaseAgent] = {}
+        self.strands_model = None
+        self.agents: Dict[str, Any] = {}
         self._started = False
 
         logger.info("AgentCore runtime initialized")
@@ -36,8 +37,8 @@ class AgentCore:
     async def start(self) -> None:
         """Start the runtime.
 
-        - Initializes LLM client
-        - Loads registered agents
+        - Initializes Strands model provider
+        - Loads Strands agents
         """
         if self._started:
             logger.warning("AgentCore already started")
@@ -45,77 +46,69 @@ class AgentCore:
 
         logger.info("Starting AgentCore runtime...")
 
-        # Initialize LLM client
-        self.llm_client = LLMClient(self.config)
-        logger.info("LLM client initialized")
+        # Initialize Strands model provider
+        self.strands_model = create_litellm_model(self.config)
+        logger.info("Strands LiteLLM model provider initialized")
 
-        # Load agents from registry
-        registry = get_registry()
-        agent_names = registry.list()
-
-        for agent_name in agent_names:
-            try:
-                agent_class = registry.get(agent_name)
-                agent_instance = agent_class(runtime=self, name=agent_name)
-                self.agents[agent_name] = agent_instance
-                logger.info(f"Loaded agent: {agent_name}")
-            except Exception as e:
-                logger.error(f"Failed to load agent '{agent_name}': {e}", exc_info=True)
+        # Load Strands agents
+        self._load_strands_agents()
 
         self._started = True
         logger.info(f"AgentCore runtime started with {len(self.agents)} agents")
 
-    async def stop(self) -> None:
-        """Stop the runtime.
+    def _load_strands_agents(self) -> None:
+        """Load Strands SDK agents."""
+        from text2x.agentcore.agents.auto_annotation.strands_agent import AutoAnnotationAgent
+        from text2x.agentcore.agents.annotation_assistant.strands_agent import AnnotationAssistantAgent
+        from text2x.agentcore.agents.query.strands_agent import QueryAgent
 
-        - Cleans up agents
-        - Closes LLM client resources
-        """
-        if not self._started:
-            logger.warning("AgentCore not started")
-            return
+        # Create Strands agents (they only need model, not config)
+        self.agents["auto_annotation"] = AutoAnnotationAgent(
+            model=self.strands_model,
+        )
+        self.agents["annotation_assistant"] = AnnotationAssistantAgent(
+            model=self.strands_model,
+        )
+        self.agents["query"] = QueryAgent(
+            model=self.strands_model,
+        )
 
-        logger.info("Stopping AgentCore runtime...")
+        logger.info(f"Loaded {len(self.agents)} Strands agents")
 
-        # Clear agents
-        self.agents.clear()
-
-        # No explicit cleanup needed for LiteLLM client
-        self.llm_client = None
-
-        self._started = False
-        logger.info("AgentCore runtime stopped")
-
-    def get_agent(self, name: str) -> AgentCoreBaseAgent:
+    def get_agent(self, name: str) -> Optional[Any]:
         """Get an agent by name.
 
         Args:
             name: Agent name
 
         Returns:
-            Agent instance
-
-        Raises:
-            RuntimeError: If runtime not started
-            KeyError: If agent not found
+            Agent instance or None if not found
         """
-        if not self._started:
-            raise RuntimeError("AgentCore runtime not started")
-
-        if name not in self.agents:
-            raise KeyError(f"Agent '{name}' not found. Available: {list(self.agents.keys())}")
-
-        return self.agents[name]
+        return self.agents.get(name)
 
     def list_agents(self) -> list[str]:
-        """List all loaded agent names.
+        """List all registered agent names.
 
         Returns:
             List of agent names
         """
         return list(self.agents.keys())
 
-    @property
+    async def stop(self) -> None:
+        """Stop the runtime and cleanup resources."""
+        if not self._started:
+            logger.warning("AgentCore not started")
+            return
+
+        logger.info("Stopping AgentCore runtime...")
+
+        # Cleanup agents
+        self.agents.clear()
+        self.strands_model = None
+
+        self._started = False
+        logger.info("AgentCore runtime stopped")
+
     def is_started(self) -> bool:
         """Check if runtime is started.
 
@@ -123,3 +116,15 @@ class AgentCore:
             True if started, False otherwise
         """
         return self._started
+
+
+def create_agentcore(config: Optional[AgentCoreConfig] = None) -> AgentCore:
+    """Create an AgentCore runtime instance.
+
+    Args:
+        config: Optional configuration override
+
+    Returns:
+        AgentCore runtime instance
+    """
+    return AgentCore(config=config)
