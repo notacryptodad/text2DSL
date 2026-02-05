@@ -56,7 +56,7 @@ MONGODB_PROVIDER = {
 MONGODB_CONNECTION = {
     "name": "Test Database",
     "host": "localhost",
-    "port": 27017,
+    "port": 27018,
     "database": "text2x_test",
 }
 
