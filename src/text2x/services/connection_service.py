@@ -1,4 +1,5 @@
 """Connection service for testing and introspecting database connections."""
+
 import asyncio
 import logging
 import time
@@ -63,9 +64,7 @@ class ConnectionService:
                 ProviderType.MYSQL,
                 ProviderType.REDSHIFT,
             ]:
-                result = await ConnectionService._test_sql_connection(
-                    connection, provider_type
-                )
+                result = await ConnectionService._test_sql_connection(connection, provider_type)
             elif provider_type == ProviderType.MONGODB:
                 result = await ConnectionService._test_nosql_connection(connection)
             elif provider_type == ProviderType.SPLUNK:
@@ -82,9 +81,7 @@ class ConnectionService:
                 ProviderType.OPENSEARCH,
                 ProviderType.ELASTICSEARCH,
             ]:
-                result = await ConnectionService._test_search_connection(
-                    connection, provider_type
-                )
+                result = await ConnectionService._test_search_connection(connection, provider_type)
             else:
                 return ConnectionTestResult(
                     success=False,
@@ -97,9 +94,7 @@ class ConnectionService:
             latency_ms = (time.time() - start_time) * 1000
             result.latency_ms = latency_ms
 
-            logger.info(
-                f"Connection test completed: {result.success} ({latency_ms:.2f}ms)"
-            )
+            logger.info(f"Connection test completed: {result.success} ({latency_ms:.2f}ms)")
 
             return result
 
@@ -228,22 +223,16 @@ class ConnectionService:
                     error_details="pymongo library not available",
                 )
 
-            # Build connection string
-            if not connection.credentials:
-                return ConnectionTestResult(
-                    success=False,
-                    message="No credentials provided",
-                    status=ConnectionStatus.ERROR,
-                    error_details="Missing credentials",
-                )
-
-            username = connection.credentials.get("username")
-            password = connection.credentials.get("password")
+            # Build connection string - MongoDB allows connections without credentials
+            username = connection.credentials.get("username") if connection.credentials else None
+            password = connection.credentials.get("password") if connection.credentials else None
 
             if username and password:
                 conn_str = f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/{connection.database}"
             else:
-                conn_str = f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
+                conn_str = (
+                    f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
+                )
 
             # Test connection
             client = MongoClient(conn_str, serverSelectionTimeoutMS=5000)
@@ -427,9 +416,7 @@ class ConnectionService:
                 ProviderType.MYSQL,
                 ProviderType.REDSHIFT,
             ]:
-                result = await ConnectionService._introspect_sql_schema(
-                    connection, provider_type
-                )
+                result = await ConnectionService._introspect_sql_schema(connection, provider_type)
             elif provider_type == ProviderType.MONGODB:
                 result = await ConnectionService._introspect_nosql_schema(connection)
             elif provider_type == ProviderType.SPLUNK:
@@ -467,17 +454,13 @@ class ConnectionService:
         """Introspect SQL database schema."""
         try:
             if not connection.credentials:
-                return SchemaIntrospectionResult(
-                    success=False, error="No credentials provided"
-                )
+                return SchemaIntrospectionResult(success=False, error="No credentials provided")
 
             username = connection.credentials.get("username")
             password = connection.credentials.get("password")
 
             if not username or not password:
-                return SchemaIntrospectionResult(
-                    success=False, error="Invalid credentials"
-                )
+                return SchemaIntrospectionResult(success=False, error="Invalid credentials")
 
             # Determine dialect and driver
             dialect_map = {
@@ -548,9 +531,7 @@ class ConnectionService:
 
             # Build connection string
             if not connection.credentials:
-                return SchemaIntrospectionResult(
-                    success=False, error="No credentials provided"
-                )
+                return SchemaIntrospectionResult(success=False, error="No credentials provided")
 
             username = connection.credentials.get("username")
             password = connection.credentials.get("password")
@@ -558,7 +539,9 @@ class ConnectionService:
             if username and password:
                 conn_str = f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/{connection.database}"
             else:
-                conn_str = f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
+                conn_str = (
+                    f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
+                )
 
             # Connect and get collections
             client = MongoClient(conn_str, serverSelectionTimeoutMS=5000)
@@ -591,22 +574,16 @@ class ConnectionService:
             try:
                 import splunklib.client as splunk_client
             except ImportError:
-                return SchemaIntrospectionResult(
-                    success=False, error="Splunk SDK not installed"
-                )
+                return SchemaIntrospectionResult(success=False, error="Splunk SDK not installed")
 
             if not connection.credentials:
-                return SchemaIntrospectionResult(
-                    success=False, error="No credentials provided"
-                )
+                return SchemaIntrospectionResult(success=False, error="No credentials provided")
 
             username = connection.credentials.get("username")
             password = connection.credentials.get("password")
 
             if not username or not password:
-                return SchemaIntrospectionResult(
-                    success=False, error="Invalid credentials"
-                )
+                return SchemaIntrospectionResult(success=False, error="Invalid credentials")
 
             # Create Splunk service
             service = splunk_client.Service(

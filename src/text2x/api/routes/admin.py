@@ -1036,6 +1036,7 @@ async def list_all_providers(
 )
 async def list_all_connections(
     current_user: User = Depends(require_any_role(["super_admin", "admin", "expert"])),
+    provider_id: Optional[str] = None,
 ) -> list[dict]:
     """List all connections across all providers (admin only)."""
     try:
@@ -1044,11 +1045,12 @@ async def list_all_connections(
         from text2x.models.workspace import Connection, Provider
 
         async with await get_session() as session:
-            stmt = (
-                select(Connection)
-                .options(selectinload(Connection.provider))
-                .order_by(Connection.created_at.desc())
-            )
+            stmt = select(Connection).options(selectinload(Connection.provider))
+
+            if provider_id:
+                stmt = stmt.where(Connection.provider_id == provider_id)
+
+            stmt = stmt.order_by(Connection.created_at.desc())
             result = await session.execute(stmt)
             connections = result.scalars().all()
 

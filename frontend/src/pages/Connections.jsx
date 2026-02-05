@@ -12,6 +12,7 @@ import {
   XCircle,
   AlertCircle,
   Zap,
+  Check,
 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
@@ -41,6 +42,12 @@ function Connections() {
   const [submitting, setSubmitting] = useState(false)
   const [testing, setTesting] = useState({})
   const [refreshing, setRefreshing] = useState({})
+  const [toast, setToast] = useState(null)
+
+  const showToast = (type, message) => {
+    setToast({ type, message })
+    setTimeout(() => setToast(null), 4000)
+  }
 
   useEffect(() => {
     fetchConnections()
@@ -53,13 +60,8 @@ function Connections() {
       const apiUrl = ''
       const token = localStorage.getItem('access_token')
 
-      const params = new URLSearchParams()
-      if (selectedProvider) {
-        params.append('provider_id', selectedProvider)
-      }
-
       const response = await fetch(
-        `${apiUrl}/api/v1/admin/connections${params.toString() ? '?' + params.toString() : ''}`,
+        `${apiUrl}/api/v1/admin/connections`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -192,14 +194,14 @@ function Connections() {
       const result = await response.json()
 
       if (response.ok && result.success) {
-        alert(`Connection test successful! ${result.message || ''}`)
+        showToast('success', `Connection test successful! ${result.message || ''}`)
         await fetchConnections()
       } else {
-        alert(`Connection test failed: ${result.message || 'Unknown error'}`)
+        showToast('error', `Connection test failed: ${result.message || 'Unknown error'}`)
       }
     } catch (err) {
       console.error('Error testing connection:', err)
-      alert(`Failed to test connection: ${err.message}`)
+      showToast('error', `Failed to test connection: ${err.message}`)
     } finally {
       setTesting({ ...testing, [connectionId]: false })
     }
@@ -235,14 +237,14 @@ function Connections() {
       const result = await response.json()
 
       if (response.ok && result.status === 'success') {
-        alert(`Schema refreshed successfully! ${result.message || ''}`)
+        showToast('success', `Schema refreshed successfully! ${result.message || ''}`)
         await fetchConnections()
       } else {
-        alert(`Schema refresh failed: ${result.message || 'Unknown error'}`)
+        showToast('error', `Schema refresh failed: ${result.message || 'Unknown error'}`)
       }
     } catch (err) {
       console.error('Error refreshing schema:', err)
-      alert(`Failed to refresh schema: ${err.message}`)
+      showToast('error', `Failed to refresh schema: ${err.message}`)
     } finally {
       setRefreshing({ ...refreshing, [connectionId]: false })
     }
@@ -697,6 +699,28 @@ function Connections() {
               </form>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-4 right-4 z-50 flex items-center space-x-3 px-4 py-3 rounded-lg shadow-lg transition-all ${
+          toast.type === 'success' 
+            ? 'bg-green-500 text-white' 
+            : 'bg-red-500 text-white'
+        }`}>
+          {toast.type === 'success' ? (
+            <Check className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+          <span>{toast.message}</span>
+          <button 
+            onClick={() => setToast(null)}
+            className="ml-2 hover:opacity-80"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>
