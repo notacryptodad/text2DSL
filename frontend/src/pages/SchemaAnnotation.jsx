@@ -153,7 +153,7 @@ function SchemaAnnotation() {
           const conns = await connRes.json()
           console.log('Connections for provider', provider.id, ':', conns.length)
           conns.forEach(c => {
-            allConnections.push({ ...c, provider_id: provider.id, provider_name: provider.name })
+            allConnections.push({ ...c, provider_id: provider.id, provider_name: provider.name, workspace_id: workspaceId })
           })
         }
       }
@@ -182,6 +182,10 @@ function SchemaAnnotation() {
     const conn = connections.find(c => c.id === connId)
     if (conn) {
       setSelectedProviderId(conn.provider_id)
+      // Also update workspace to match the connection's workspace
+      if (conn.workspace_id && conn.workspace_id !== selectedWorkspace) {
+        setSelectedWorkspace(conn.workspace_id)
+      }
     }
   }
 
