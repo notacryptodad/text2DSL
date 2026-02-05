@@ -35,6 +35,7 @@ function FeedbackButton({ conversationId, turnId, onFeedbackSubmit }) {
   const submitFeedback = async (feedbackData) => {
     // Use empty string to leverage Vite proxy - avoids CORS issues
     const apiUrl = ''
+    const token = localStorage.getItem('access_token')
 
     const response = await fetch(
       `${apiUrl}/api/v1/query/conversations/${conversationId}/feedback`,
@@ -42,8 +43,8 @@ function FeedbackButton({ conversationId, turnId, onFeedbackSubmit }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
-        credentials: 'include',
         body: JSON.stringify(feedbackData),
       }
     )

@@ -1040,10 +1040,15 @@ async def list_all_connections(
     """List all connections across all providers (admin only)."""
     try:
         from sqlalchemy import select
-        from text2x.models.workspace import Connection
+        from sqlalchemy.orm import selectinload
+        from text2x.models.workspace import Connection, Provider
 
         async with await get_session() as session:
-            stmt = select(Connection).order_by(Connection.created_at.desc())
+            stmt = (
+                select(Connection)
+                .options(selectinload(Connection.provider))
+                .order_by(Connection.created_at.desc())
+            )
             result = await session.execute(stmt)
             connections = result.scalars().all()
 
@@ -1051,6 +1056,7 @@ async def list_all_connections(
                 {
                     "id": str(connection.id),
                     "provider_id": str(connection.provider_id),
+                    "provider_name": connection.provider.name if connection.provider else "",
                     "name": connection.name,
                     "host": connection.host,
                     "port": connection.port,

@@ -183,6 +183,9 @@ function Connections() {
         `${apiUrl}/api/v1/workspaces/${provider.workspace_id}/providers/${connection.provider_id}/connections/${connectionId}/test`,
         {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          },
         }
       )
 
@@ -223,6 +226,9 @@ function Connections() {
         `${apiUrl}/api/v1/workspaces/${provider.workspace_id}/providers/${connection.provider_id}/connections/${connectionId}/schema/refresh`,
         {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          },
         }
       )
 
