@@ -24,8 +24,6 @@ function SchemaAnnotation() {
   const [selectedConnection, setSelectedConnection] = useState('')
   const [selectedProviderId, setSelectedProviderId] = useState('')
   const [schema, setSchema] = useState([])
-  const [collections, setCollections] = useState([])
-  const [collectionCount, setCollectionCount] = useState(0)
   const [annotations, setAnnotations] = useState({})
   const [selectedTable, setSelectedTable] = useState(null)
   const [showEditor, setShowEditor] = useState(false)
@@ -132,9 +130,10 @@ function SchemaAnnotation() {
         throw new Error(errData.detail || 'Failed to fetch schema')
       }
       const data = await response.json()
-      setSchema(data.tables || [])
-      setCollections(data.collections || [])
-      setCollectionCount(data.collection_count || 0)
+      const mongoCollections = (data.collections || []).map(c =>
+        typeof c === 'string' ? { name: c, columns: [], document_count: 0 } : c
+      )
+      setSchema([...(data.tables || []), ...mongoCollections])
     } catch (err) {
       console.error('Error fetching schema:', err)
       setError('Failed to load schema: ' + err.message)
@@ -234,17 +233,83 @@ function SchemaAnnotation() {
       setChatLoading(true)
       const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/connections/${selectedConnection}/schema/auto-annotate`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ table_name: selectedTable }) }
+        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/connections/${selectedConnection}/schema/auto-annotate/stream`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ table_name: selectedTable }),
+        }
       )
+
       if (!response.ok) throw new Error('Failed to auto-annotate')
-      const data = await response.json()
-      if (data.suggestions) {
-        const { table_description, table_business_terms, columns } = data.suggestions
-        setAutoAnnotationSuggestions({ table_name: selectedTable, description: table_description || '', columns: columns || [], business_terms: table_business_terms || [], relationships: [] })
-        setChatMessages([...chatMessages, { type: 'assistant', content: `Auto-annotation completed!\n\nTable: ${table_description || selectedTable}\n\nGenerated descriptions for ${columns?.length || 0} columns.`, timestamp: new Date() }])
+
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6))
+              
+              if (event.event === 'started') {
+                setChatMessages([...chatMessages, { 
+                  type: 'assistant', 
+                  content: event.message, 
+                  timestamp: new Date() 
+                }])
+              }
+              
+              if (event.event === 'progress') {
+                // Update last message or add new one
+                setChatMessages(prev => {
+                  const updated = [...prev]
+                  const last = updated[updated.length - 1]
+                  if (last?.type === 'assistant') {
+                    updated[updated.length - 1] = { ...last, content: event.message }
+                  }
+                  return updated
+                })
+              }
+              
+              if (event.event === 'completed' || event.event === 'done') {
+                if (event.suggestions) {
+                  const { table_description, table_business_terms, columns } = event.suggestions
+                  setAutoAnnotationSuggestions({ 
+                    table_name: selectedTable, 
+                    description: table_description || '', 
+                    columns: columns || [], 
+                    business_terms: table_business_terms || [], 
+                    relationships: [] 
+                  })
+                  setChatMessages(prev => [...prev, { 
+                    type: 'assistant', 
+                    content: `Auto-annotation completed!\n\nTable: ${table_description || selectedTable}\n\nGenerated descriptions for ${columns?.length || 0} columns.`, 
+                    timestamp: new Date() 
+                  }])
+                }
+                await fetchAnnotations()
+              }
+              
+              if (event.event === 'error') {
+                throw new Error(event.error)
+              }
+            } catch (e) {
+              console.error('Error parsing SSE event:', e)
+            }
+          }
+        }
       }
-      await fetchAnnotations()
     } catch (err) {
       console.error('Error auto-annotating:', err)
       setChatMessages([...chatMessages, { type: 'error', content: `Failed to auto-annotate: ${err.message}`, timestamp: new Date() }])
@@ -263,7 +328,12 @@ function SchemaAnnotation() {
       const token = localStorage.getItem('access_token')
       const response = await fetch(
         `${apiUrl}/api/v1/agentcore/annotation_assistant/chat`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ message: userMessage.content, conversation_id: conversationId, context: { selected_table: selectedTable, provider_id: selectedProviderId, user_id: 'current_user' } }) }
+        { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, 
+          body: JSON.stringify({ message: userMessage.content, conversation_id: conversationId, context: { selected_table: selectedTable, provider_id: selectedProviderId, user_id: 'current_user' } }),
+          signal: AbortSignal.timeout(600000)
+        }
       )
       if (!response.ok) throw new Error('Failed to send message')
       const data = await response.json()
@@ -376,8 +446,6 @@ function SchemaAnnotation() {
                 <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
                   <SchemaTree
                     schema={schema}
-                    collections={collections}
-                    collectionCount={collectionCount}
                     onTableSelect={(tableName) => { setSelectedTable(tableName); setShowEditor(true); setAutoAnnotationSuggestions(null); setFocusColumn(null) }}
                     onColumnSelect={(tableName, columnName) => { setSelectedTable(tableName); setShowEditor(true); setAutoAnnotationSuggestions(null); setFocusColumn(columnName) }}
                     selectedTable={selectedTable}

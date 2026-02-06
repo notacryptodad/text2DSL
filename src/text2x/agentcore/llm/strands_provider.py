@@ -2,6 +2,7 @@
 
 Uses Strands SDK's built-in LiteLLMModel for Bedrock integration.
 """
+
 import logging
 from typing import Optional
 
@@ -19,19 +20,23 @@ def create_litellm_model(config: Optional[AgentCoreConfig] = None) -> LiteLLMMod
         config: AgentCore configuration (defaults to from_env)
 
     Returns:
-        LiteLLMModel configured for Bedrock via LiteLLM
+        LiteLLMModel configured for LLM provider
     """
     if config is None:
         config = AgentCoreConfig.from_env()
 
-    # Create LiteLLM model with Bedrock configuration
-    # Temperature and max_tokens are passed via client_args for LiteLLM
+    client_args = {
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
+        "api_key": config.api_key,
+    }
+
+    if config.api_base:
+        client_args["base_url"] = config.api_base
+
     model = LiteLLMModel(
         model_id=config.model,
-        client_args={
-            "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
-        },
+        client_args=client_args,
     )
 
     logger.info(f"Created Strands LiteLLM model provider: {config.model}")

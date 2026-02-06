@@ -4,10 +4,11 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Generator, List, Optional, Union, AsyncGenerator
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -24,6 +25,217 @@ from text2x.utils.observability import async_log_context
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/annotations", tags=["annotations"])
+
+
+async def auto_annotate_stream(
+    workspace_id: UUID,
+    connection_id: UUID,
+    table_name: str,
+) -> AsyncGenerator[str, None]:
+    """Generate SSE events for auto-annotation process."""
+    import time
+
+    conversation_id = uuid4()
+
+    try:
+        # Send start event
+        yield json.dumps(
+            {
+                "event": "started",
+                "conversation_id": str(conversation_id),
+                "table_name": table_name,
+                "message": f"Starting auto-annotation for table '{table_name}'...",
+            }
+        )
+
+        # Get AgentCore
+        agentcore = app_state.agentcore
+        if not agentcore or not agentcore.is_started:
+            yield json.dumps({"event": "error", "error": "AgentCore not initialized"})
+            return
+
+        # Get provider
+        from text2x.providers.factory import get_provider_by_connection_id
+
+        provider = await get_provider_by_connection_id(connection_id, workspace_id)
+
+        # Get or create agent
+        from text2x.agentcore.agents.annotation_assistant import AnnotationAssistantAgent
+
+        agent_name = f"annotation_assistant_{connection_id}"
+
+        if agent_name not in agentcore.agents:
+            agent = AnnotationAssistantAgent(
+                model=agentcore.strands_model, provider=provider, name=agent_name
+            )
+            agentcore.agents[agent_name] = agent
+        else:
+            agent = agentcore.agents[agent_name]
+            agent.set_provider(provider)
+
+        # Build context
+        from text2x.api.routes.annotation_context import (
+            build_annotation_context,
+            format_context_as_prompt,
+        )
+
+        yield json.dumps({"event": "progress", "message": "Building schema context..."})
+
+        context = await build_annotation_context(
+            provider=provider,
+            table_name=table_name,
+            connection_id=str(connection_id),
+            annotation_repo=agent.annotation_repo,
+        )
+        context_prompt = format_context_as_prompt(context)
+
+        # Build prompt
+        prompt = f"""You are an expert database annotator. Analyze this table and generate annotations.
+
+{context_prompt}
+
+## Your Task
+Generate annotations for ALL columns in this table based on the information above.
+
+## Response Format
+Return ONLY valid JSON (no markdown code blocks, no explanation text):
+
+{{
+  "table_description": "Clear description of what this table represents and its purpose",
+  "table_business_terms": ["alternative", "names", "users might search for this table"],
+  "represents": "business_concept",
+  "primary_lookup_column": "column_name_for_entity_lookup",
+  "columns": [
+    {{
+      "name": "column_name",
+      "description": "Clear description of what this column stores",
+      "sensitive": false,
+      "business_terms": ["alternative", "names", "users might search"],
+      "is_searchable": true,
+      "search_type": "exact|like|range",
+      "aggregation": "SUM|COUNT|AVG|null"
+    }}
+  ]
+}}
+
+## Guidelines
+1. Include ALL columns from the schema above
+2. Mark sensitive=true for: passwords, emails, PII, tokens, secrets
+3. Add business_terms for columns with common alternative names
+4. For FK columns, mention the relationship (e.g., "References users table")
+5. Be specific - use the sample data to understand actual content
+
+## Query Generation Hints
+- **represents**: What business concept does this table represent? (e.g., "sales_event", "customer", "product")
+- **primary_lookup_column**: Which column is used to look up entities by name? (e.g., "name" for products)
+- **is_searchable**: Is this column likely used in WHERE clauses?
+- **search_type**: "exact" for IDs/codes, "like" for names/text, "range" for dates/numbers
+- **aggregation**: Default aggregation for numeric columns (e.g., "SUM" for amounts, "COUNT" for IDs)
+
+JSON OUTPUT:"""
+
+        yield json.dumps({"event": "progress", "message": "Generating annotations with AI..."})
+
+        # Process request
+        result = await agent.process(
+            {
+                "message": prompt,
+                "provider_id": str(connection_id),
+                "user_id": "system",
+                "conversation_history": [],
+            }
+        )
+
+        llm_response = result["response"]
+
+        # Parse suggestions
+        suggestions = {
+            "table_name": table_name,
+            "table_description": "",
+            "columns": [],
+        }
+
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", llm_response, re.DOTALL)
+        if json_match:
+            try:
+                parsed_json = json.loads(json_match.group(1))
+                if "table_description" in parsed_json or "columns" in parsed_json:
+                    suggestions["table_description"] = parsed_json.get("table_description", "")
+                    suggestions["table_business_terms"] = parsed_json.get(
+                        "table_business_terms", []
+                    )
+                    suggestions["columns"] = parsed_json.get("columns", [])
+                    suggestions["represents"] = parsed_json.get("represents")
+                    suggestions["primary_lookup_column"] = parsed_json.get("primary_lookup_column")
+            except json.JSONDecodeError:
+                pass
+
+        if not suggestions["table_description"] and not suggestions["columns"]:
+
+            def find_json_objects(text):
+                objects = []
+                i = 0
+                while i < len(text):
+                    if text[i] == "{":
+                        depth = 1
+                        start = i
+                        i += 1
+                        while i < len(text) and depth > 0:
+                            if text[i] == "{":
+                                depth += 1
+                            elif text[i] == "}":
+                                depth -= 1
+                            i += 1
+                        if depth == 0:
+                            objects.append(text[start:i])
+                    else:
+                        i += 1
+                return objects
+
+            json_objects = find_json_objects(llm_response)
+            for json_str in json_objects:
+                try:
+                    parsed_json = json.loads(json_str)
+                    if "table_description" in parsed_json and "columns" in parsed_json:
+                        suggestions["table_description"] = parsed_json.get("table_description", "")
+                        suggestions["table_business_terms"] = parsed_json.get(
+                            "table_business_terms", []
+                        )
+                        suggestions["columns"] = parsed_json.get("columns", [])
+                        suggestions["represents"] = parsed_json.get("represents")
+                        suggestions["primary_lookup_column"] = parsed_json.get(
+                            "primary_lookup_column"
+                        )
+                        break
+                except json.JSONDecodeError:
+                    continue
+
+        # Store conversation context
+        _conversation_context[conversation_id] = {
+            "conversation_history": [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": llm_response},
+            ],
+            "provider_id": str(connection_id),
+            "workspace_id": str(workspace_id),
+            "table_name": table_name,
+            "suggestions": suggestions,
+        }
+
+        # Send completion event with suggestions
+        yield json.dumps(
+            {
+                "event": "completed",
+                "conversation_id": str(conversation_id),
+                "table_name": table_name,
+                "suggestions": suggestions,
+                "message": f"Auto-annotation completed for table '{table_name}'",
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in auto-annotate stream: {e}", exc_info=True)
+        yield json.dumps({"event": "error", "error": str(e)})
 
 
 async def get_session() -> AsyncSession:
@@ -152,8 +364,8 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
 
             # Check if agent already exists
             if agent_name not in agentcore.agents:
-                # Create agent instance
-                agent = AnnotationAssistantAgent(agentcore, agent_name)
+                # Create agent instance with model from runtime
+                agent = AnnotationAssistantAgent(model=agentcore.strands_model, name=agent_name)
 
                 # Register agent with runtime
                 agentcore.agents[agent_name] = agent
@@ -700,8 +912,10 @@ async def auto_annotate_table(
 
         # Check if agent already exists
         if agent_name not in agentcore.agents:
-            # Create agent instance with provider
-            agent = AnnotationAssistantAgent(agentcore, agent_name, provider=provider)
+            # Create agent instance with model from runtime
+            agent = AnnotationAssistantAgent(
+                model=agentcore.strands_model, provider=provider, name=agent_name
+            )
 
             # Register agent with runtime
             agentcore.agents[agent_name] = agent
@@ -1151,6 +1365,55 @@ JSON OUTPUT:"""
                 details={"error": str(e)} if settings.debug else None,
             ).model_dump(),
         )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/connections/{connection_id}/schema/auto-annotate/stream",
+    summary="Auto-annotate table schema (streaming)",
+    description="Use LLM to automatically generate schema annotations with SSE streaming",
+)
+async def auto_annotate_table_stream(
+    workspace_id: UUID,
+    connection_id: UUID,
+    request: AutoAnnotateRequest,
+):
+    """
+    Automatically generate schema annotations for a table using LLM with SSE streaming.
+
+    This endpoint streams progress updates and the final suggestions as they become available.
+
+    Args:
+        workspace_id: UUID of the workspace
+        connection_id: UUID of the connection
+        request: Auto-annotation request with table name
+
+    Returns:
+        SSE stream of events: started, progress, completed, error
+    """
+    import asyncio
+
+    async def generate_sse():
+        """Generate SSE events from async generator."""
+        try:
+            async for event in auto_annotate_stream(
+                workspace_id=workspace_id,
+                connection_id=connection_id,
+                table_name=request.table_name,
+            ):
+                yield f"data: {event}\n\n"
+        except Exception as e:
+            logger.error(f"SSE generation error: {e}")
+            yield f"data: {json.dumps({{'event': 'error', 'error': str(e)}})}\n\n"
+
+    return StreamingResponse(
+        generate_sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get(

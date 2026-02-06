@@ -64,3 +64,6 @@ logs/
 .DS_Store
 Thumbs.db
 .hypothesis/
+
+# PID files
+*.pid

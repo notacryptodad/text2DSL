@@ -61,7 +61,7 @@ export function WorkspaceProvider({ children }) {
         return
       }
 
-      const response = await fetch(`${apiUrl}/api/v1/admin/workspaces`, {
+      const response = await fetch(`${apiUrl}/api/v1/workspaces`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

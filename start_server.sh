@@ -1,6 +1,11 @@
 #!/bin/bash
 # Start the Text2DSL API server
 
+# Load environment variables
+set -a
+source .env
+set +a
+
 # Run migrations
 echo "Running database migrations..."
 alembic upgrade head
