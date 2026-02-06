@@ -519,44 +519,71 @@ class ConnectionService:
     async def _introspect_nosql_schema(
         connection: Connection,
     ) -> SchemaIntrospectionResult:
-        """Introspect NoSQL (MongoDB) schema."""
+        """Introspect NoSQL (MongoDB) schema with sampled document fields."""
         try:
-            # Import MongoDB client if available
-            try:
-                from pymongo import MongoClient
-            except ImportError:
-                return SchemaIntrospectionResult(
-                    success=False, error="MongoDB client not installed"
-                )
+            from pymongo import MongoClient
+        except ImportError:
+            return SchemaIntrospectionResult(success=False, error="MongoDB client not installed")
 
-            # Build connection string
-            if not connection.credentials:
-                return SchemaIntrospectionResult(success=False, error="No credentials provided")
-
+        username = None
+        password = None
+        if connection.credentials:
             username = connection.credentials.get("username")
             password = connection.credentials.get("password")
 
-            if username and password:
-                conn_str = f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/{connection.database}"
-            else:
-                conn_str = (
-                    f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
-                )
+        if username and password:
+            conn_str = f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/{connection.database}"
+        else:
+            conn_str = (
+                f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
+            )
 
-            # Connect and get collections
+        try:
             client = MongoClient(conn_str, serverSelectionTimeoutMS=5000)
             db = client[connection.database]
+            collection_names = db.list_collection_names()
 
-            # Get collection names
-            collections = await asyncio.to_thread(db.list_collection_names)
+            collections_with_schema = []
+            for coll_name in collection_names:
+                collection = db[coll_name]
+                sample_docs = list(collection.find().limit(10))
+
+                fields = []
+                seen_fields = set()
+                for doc in sample_docs:
+                    for key in doc.keys():
+                        if key not in seen_fields:
+                            seen_fields.add(key)
+                            val = doc[key]
+                            field_type = type(val).__name__
+                            if field_type == "ObjectId":
+                                field_type = "objectid"
+                            elif field_type == "datetime":
+                                field_type = "datetime"
+                            elif field_type == "list":
+                                field_type = "array"
+                            elif field_type == "dict":
+                                field_type = "object"
+                            fields.append({"name": key, "type": field_type})
+
+                collections_with_schema.append(
+                    {
+                        "name": coll_name,
+                        "columns": fields,
+                        "document_count": collection.count_documents({}),
+                    }
+                )
 
             client.close()
 
-            # Build schema definition
-            schema = SchemaDefinition(collections=collections, tables=[])
+            schema = SchemaDefinition(
+                tables=[],
+                collections=collections_with_schema,
+                metadata={"database": connection.database},
+            )
 
             return SchemaIntrospectionResult(
-                success=True, schema=schema, table_count=len(collections)
+                success=True, schema=schema, table_count=len(collection_names)
             )
 
         except Exception as e:

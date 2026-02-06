@@ -6,6 +6,7 @@ It supports:
 - Caching schemas in Redis with TTL
 - Converting between database models and provider abstractions
 """
+
 import json
 import logging
 from typing import Optional
@@ -59,9 +60,7 @@ class SchemaService:
         """Get or create Redis client."""
         if self._redis_client is None:
             self._redis_client = await redis.from_url(
-                settings.redis_url,
-                encoding="utf-8",
-                decode_responses=True
+                settings.redis_url, encoding="utf-8", decode_responses=True
             )
         return self._redis_client
 
@@ -114,11 +113,7 @@ class SchemaService:
 
         return schema
 
-    async def cache_schema(
-        self,
-        connection_id: UUID,
-        schema: SchemaDefinition
-    ) -> str:
+    async def cache_schema(self, connection_id: UUID, schema: SchemaDefinition) -> str:
         """
         Cache schema in Redis.
 
@@ -141,22 +136,14 @@ class SchemaService:
 
             # Store in Redis with TTL
             redis_client = await self._get_redis_client()
-            await redis_client.setex(
-                cache_key,
-                self.cache_ttl,
-                schema_json
-            )
+            await redis_client.setex(cache_key, self.cache_ttl, schema_json)
 
             # Update connection's schema_cache_key and refresh time
             await self.connection_repo.update_schema_refresh_time(
-                connection_id=connection_id,
-                schema_cache_key=cache_key
+                connection_id=connection_id, schema_cache_key=cache_key
             )
 
-            logger.info(
-                f"Cached schema for connection {connection_id} "
-                f"with TTL {self.cache_ttl}s"
-            )
+            logger.info(f"Cached schema for connection {connection_id} with TTL {self.cache_ttl}s")
 
             return cache_key
 
@@ -235,32 +222,29 @@ class SchemaService:
                 ProviderType.REDSHIFT,
             ]:
                 query_provider = await self._create_sql_provider(connection, provider.type)
+                schema = await query_provider.get_schema()
+            elif provider.type == ProviderType.MONGODB:
+                schema = await self._introspect_mongodb(connection)
             else:
                 raise NotImplementedError(
                     f"Schema introspection not implemented for {provider.type}"
                 )
 
-            # Get schema from provider
-            schema = await query_provider.get_schema()
-
             logger.info(
                 f"Introspected schema for connection {connection.id}: "
-                f"{len(schema.tables)} tables"
+                f"{len(schema.tables) if schema.tables else len(schema.collections or [])} tables/collections"
             )
 
             return schema
 
         except Exception as e:
             logger.error(
-                f"Failed to introspect schema for connection {connection.id}: {e}",
-                exc_info=True
+                f"Failed to introspect schema for connection {connection.id}: {e}", exc_info=True
             )
             raise
 
     async def _create_sql_provider(
-        self,
-        connection: Connection,
-        provider_type: ProviderType
+        self, connection: Connection, provider_type: ProviderType
     ) -> SQLProvider:
         """
         Create SQL provider from connection.
@@ -294,10 +278,98 @@ class SchemaService:
             username=username,
             password=password,
             dialect=dialect,
-            extra_params=connection.connection_options or {}
+            extra_params=connection.connection_options or {},
         )
 
         return SQLProvider(sql_config)
+
+    async def _introspect_mongodb(self, connection: Connection) -> SchemaDefinition:
+        """
+        Introspect MongoDB database schema by listing collections and sampling documents.
+
+        Args:
+            connection: Connection object with database credentials
+
+        Returns:
+            SchemaDefinition with collections and sampled field info
+        """
+        try:
+            from pymongo import MongoClient
+            from pymongo.errors import ConnectionFailure
+        except ImportError:
+            raise NotImplementedError("MongoDB client (pymongo) not installed")
+
+        credentials = connection.credentials or {}
+        username = credentials.get("username")
+        password = credentials.get("password")
+
+        if username and password:
+            conn_str = (
+                f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/"
+            )
+        else:
+            conn_str = f"mongodb://{connection.host}:{connection.port or 27017}/"
+
+        try:
+            client = MongoClient(conn_str, serverSelectionTimeoutMS=5000)
+            client.admin.command("ping")
+        except ConnectionFailure as e:
+            raise Exception(f"Failed to connect to MongoDB: {e}")
+
+        try:
+            db = client[connection.database]
+            collection_names = db.list_collection_names()
+
+            logger.info(
+                f"Found {len(collection_names)} collections in MongoDB database '{connection.database}'"
+            )
+
+            collections_with_schema = []
+            for coll_name in collection_names:
+                collection = db[coll_name]
+                sample_docs = list(collection.find().limit(10))
+
+                fields = []
+                seen_fields = set()
+                for doc in sample_docs:
+                    for key in doc.keys():
+                        if key not in seen_fields:
+                            seen_fields.add(key)
+                            val = doc[key]
+                            field_type = type(val).__name__
+                            if field_type == "ObjectId":
+                                field_type = "objectid"
+                            elif field_type == "datetime":
+                                field_type = "datetime"
+                            elif field_type == "list":
+                                field_type = "array"
+                            elif field_type == "dict":
+                                field_type = "object"
+                            fields.append({"name": key, "type": field_type})
+
+                collections_with_schema.append(
+                    {
+                        "name": coll_name,
+                        "columns": fields,
+                        "document_count": collection.count_documents({}),
+                    }
+                )
+
+            schema = SchemaDefinition(
+                tables=[],
+                collections=collections_with_schema,
+                metadata={
+                    "database": connection.database,
+                    "collection_count": len(collection_names),
+                },
+            )
+
+            client.close()
+            return schema
+
+        except Exception as e:
+            client.close()
+            raise
 
     def _serialize_schema(self, schema: SchemaDefinition) -> dict:
         """
@@ -364,6 +436,7 @@ class SchemaService:
                 }
                 for rel in schema.relationships
             ],
+            "collections": schema.collections,
             "metadata": schema.metadata,
         }
 
@@ -383,18 +456,18 @@ class SchemaService:
             TableInfo(
                 name=table_dict["name"],
                 schema=table_dict.get("schema"),
-                columns=[
-                    ColumnInfo(**col_dict)
-                    for col_dict in table_dict.get("columns", [])
-                ],
+                columns=[ColumnInfo(**col_dict) for col_dict in table_dict.get("columns", [])],
                 indexes=[
-                    {"name": idx["name"], "columns": idx["columns"],
-                     "unique": idx.get("unique", False), "type": idx.get("type")}
+                    {
+                        "name": idx["name"],
+                        "columns": idx["columns"],
+                        "unique": idx.get("unique", False),
+                        "type": idx.get("type"),
+                    }
                     for idx in table_dict.get("indexes", [])
                 ],
                 foreign_keys=[
-                    ForeignKeyInfo(**fk_dict)
-                    for fk_dict in table_dict.get("foreign_keys", [])
+                    ForeignKeyInfo(**fk_dict) for fk_dict in table_dict.get("foreign_keys", [])
                 ],
                 primary_key=table_dict.get("primary_key"),
                 comment=table_dict.get("comment"),
@@ -404,13 +477,21 @@ class SchemaService:
         ]
 
         relationships = [
-            Relationship(**rel_dict)
-            for rel_dict in schema_dict.get("relationships", [])
+            Relationship(**rel_dict) for rel_dict in schema_dict.get("relationships", [])
         ]
+
+        collections_raw = schema_dict.get("collections", [])
+        collections = []
+        for coll in collections_raw:
+            if isinstance(coll, dict):
+                collections.append(coll)
+            else:
+                collections.append({"name": coll, "columns": [], "document_count": 0})
 
         return SchemaDefinition(
             tables=tables,
             relationships=relationships,
+            collections=collections,
             metadata=schema_dict.get("metadata", {}),
         )
 

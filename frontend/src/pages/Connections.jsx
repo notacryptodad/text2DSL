@@ -13,8 +13,9 @@ import {
   AlertCircle,
   Zap,
   Check,
+  FileText,
 } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import * as ROUTES from '../constants/routes'
 
@@ -60,17 +61,35 @@ function Connections() {
       const apiUrl = ''
       const token = localStorage.getItem('access_token')
 
-      const response = await fetch(
-        `${apiUrl}/api/v1/admin/connections`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      )
-      if (response.ok) {
-        const data = await response.json()
-        setConnections(data)
+      const [connectionsRes, providersRes] = await Promise.all([
+        fetch(`${apiUrl}/api/v1/admin/connections`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+        fetch(`${apiUrl}/api/v1/admin/providers`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+      ])
+
+      if (connectionsRes.ok && providersRes.ok) {
+        const connectionsData = await connectionsRes.json()
+        const providersData = await providersRes.json()
+
+        const providerMap = {}
+        providersData.forEach(p => {
+          providerMap[p.id] = p
+        })
+
+        const connectionsWithWorkspace = connectionsData.map(conn => {
+          const provider = providerMap[conn.provider_id]
+          return {
+            ...conn,
+            workspace_id: provider?.workspace_id || null,
+            workspace_name: provider?.workspace_name || null,
+            provider_name: provider?.name || conn.provider_name,
+            provider_type: provider?.provider_type || null,
+          }
+        })
+        setConnections(connectionsWithWorkspace)
       }
     } catch (err) {
       console.error('Error fetching connections:', err)
@@ -449,10 +468,18 @@ function Connections() {
                       </div>
 
                       <div className="flex flex-col space-y-2 ml-4">
+                        <Link
+                          to={`/app/admin/schema-annotation?workspace=${connection.workspace_id}&connection=${connection.id}`}
+                          className="flex items-center space-x-2 px-3 py-1.5 text-sm bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors"
+                          title="View Schema Annotation"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>Schema</span>
+                        </Link>
                         <button
                           onClick={() => handleTestConnection(connection.id)}
                           disabled={testing[connection.id]}
-                          className="flex items-center space-x-2 px-3 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="flex items-center space-x-2 px-3 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity50 disabled:cursor-not-allowed"
                           title="Test connection"
                         >
                           <Zap className="w-4 h-4" />

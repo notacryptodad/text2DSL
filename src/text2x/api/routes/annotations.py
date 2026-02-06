@@ -1,9 +1,10 @@
 """Annotation chat endpoints for schema annotation assistance."""
+
 import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
@@ -42,28 +43,18 @@ class AnnotationChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     provider_id: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="ID of the database provider/connection"
+        ..., min_length=1, max_length=100, description="ID of the database provider/connection"
     )
     user_message: str = Field(
-        ...,
-        min_length=1,
-        max_length=5000,
-        description="User's message or question"
+        ..., min_length=1, max_length=5000, description="User's message or question"
     )
     conversation_id: Optional[UUID] = Field(
         default=None,
-        description="Conversation ID for multi-turn chat (optional, will be created if not provided)"
+        description="Conversation ID for multi-turn chat (optional, will be created if not provided)",
     )
-    user_id: Optional[str] = Field(
-        default="system",
-        description="User ID for saving annotations"
-    )
+    user_id: Optional[str] = Field(default="system", description="User ID for saving annotations")
     reset_conversation: bool = Field(
-        default=False,
-        description="Reset conversation history and start fresh"
+        default=False, description="Reset conversation history and start fresh"
     )
 
 
@@ -94,12 +85,10 @@ class AnnotationChatResponse(BaseModel):
     conversation_id: UUID = Field(..., description="Conversation ID for multi-turn chat")
     response: str = Field(..., description="Agent's response message")
     tool_calls: List[ToolCall] = Field(
-        default_factory=list,
-        description="Tools called during this turn"
+        default_factory=list, description="Tools called during this turn"
     )
     conversation_history: List[ConversationMessage] = Field(
-        default_factory=list,
-        description="Full conversation history"
+        default_factory=list, description="Full conversation history"
     )
 
 
@@ -176,12 +165,11 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
             # Try to get workspace_id from existing conversation context
             context = _conversation_context.get(conversation_id, {})
             workspace_id = context.get("workspace_id")
-            
+
             if workspace_id:
                 try:
                     provider = await get_provider_by_connection_id(
-                        UUID(request.provider_id), 
-                        UUID(workspace_id)
+                        UUID(request.provider_id), UUID(workspace_id)
                     )
                     agent.set_provider(provider)
                 except Exception as e:
@@ -191,7 +179,7 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
             if conversation_id not in _conversation_context:
                 _conversation_context[conversation_id] = {
                     "conversation_history": [],
-                    "provider_id": request.provider_id
+                    "provider_id": request.provider_id,
                 }
 
             context = _conversation_context[conversation_id]
@@ -202,25 +190,25 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
                 logger.info(f"Reset conversation {conversation_id}")
 
             # Add user message to history
-            context["conversation_history"].append({
-                "role": "user",
-                "content": request.user_message
-            })
+            context["conversation_history"].append(
+                {"role": "user", "content": request.user_message}
+            )
 
             # Process user message through AgentCore agent
-            agent_result = await agent.process({
-                "message": request.user_message,
-                "provider_id": request.provider_id,
-                "user_id": request.user_id,
-                "conversation_history": context["conversation_history"],
-            })
+            agent_result = await agent.process(
+                {
+                    "message": request.user_message,
+                    "provider_id": request.provider_id,
+                    "user_id": request.user_id,
+                    "conversation_history": context["conversation_history"],
+                }
+            )
 
             # Extract response and add to history
             assistant_response = agent_result.get("response", "")
-            context["conversation_history"].append({
-                "role": "assistant",
-                "content": assistant_response
-            })
+            context["conversation_history"].append(
+                {"role": "assistant", "content": assistant_response}
+            )
 
             # Build response
             response = AnnotationChatResponse(
@@ -228,9 +216,8 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
                 response=assistant_response,
                 tool_calls=[ToolCall(**tc) for tc in agent_result.get("tool_calls", [])],
                 conversation_history=[
-                    ConversationMessage(**msg)
-                    for msg in context["conversation_history"]
-                ]
+                    ConversationMessage(**msg) for msg in context["conversation_history"]
+                ],
             )
 
             logger.info(
@@ -354,15 +341,31 @@ async def get_conversation_history(conversation_id: UUID) -> List[ConversationMe
 
 
 # Schema endpoints for Scenario 2
+class CollectionInfo(BaseModel):
+    """MongoDB collection info with sampled fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., description="Collection name")
+    columns: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Sampled field names and types"
+    )
+    document_count: int = Field(0, ge=0, description="Number of documents in collection")
+
+
 class SchemaResponse(BaseModel):
     """Response model for schema endpoint."""
 
     model_config = ConfigDict(extra="forbid")
 
     connection_id: UUID = Field(..., description="Connection ID")
-    provider_type: str = Field(..., description="Provider type (e.g., postgresql)")
+    provider_type: str = Field(..., description="Provider type (e.g., postgresql, mongodb)")
     tables: List[TableInfo] = Field(default_factory=list, description="List of tables")
     table_count: int = Field(..., ge=0, description="Number of tables")
+    collections: Union[List[str], List[CollectionInfo]] = Field(
+        default_factory=list, description="List of MongoDB collections"
+    )
+    collection_count: int = Field(0, ge=0, description="Number of MongoDB collections")
     last_refreshed: Optional[str] = Field(None, description="Last refresh timestamp")
 
 
@@ -372,14 +375,10 @@ class AutoAnnotateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     table_name: str = Field(
-        ...,
-        min_length=1,
-        max_length=255,
-        description="Name of the table to auto-annotate"
+        ..., min_length=1, max_length=255, description="Name of the table to auto-annotate"
     )
     include_columns: bool = Field(
-        default=True,
-        description="Whether to generate annotations for columns"
+        default=True, description="Whether to generate annotations for columns"
     )
 
 
@@ -390,10 +389,7 @@ class AutoAnnotateResponse(BaseModel):
 
     conversation_id: UUID = Field(..., description="Conversation ID for follow-up")
     table_name: str = Field(..., description="Table that was annotated")
-    suggestions: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Suggested annotations"
-    )
+    suggestions: Dict[str, Any] = Field(default_factory=dict, description="Suggested annotations")
     message: str = Field(..., description="Status message")
 
 
@@ -441,6 +437,7 @@ class AnnotationRequest(BaseModel):
     relationships: Optional[List[Any]] = Field(None, description="Relationships")
     columns: Optional[List[Dict[str, Any]]] = Field(None, description="Column annotations")
 
+
 @router.get(
     "/workspaces/{workspace_id}/connections/{connection_id}/schema",
     response_model=SchemaResponse,
@@ -448,10 +445,7 @@ class AnnotationRequest(BaseModel):
     summary="Get connection schema",
     description="Retrieve the full database schema for a connection",
 )
-async def get_connection_schema(
-    workspace_id: UUID,
-    connection_id: UUID
-) -> SchemaResponse:
+async def get_connection_schema(workspace_id: UUID, connection_id: UUID) -> SchemaResponse:
     """
     Get the complete database schema for a connection.
 
@@ -469,10 +463,7 @@ async def get_connection_schema(
         HTTPException: If connection not found or schema retrieval fails
     """
     try:
-        logger.info(
-            f"Fetching schema for connection {connection_id} "
-            f"in workspace {workspace_id}"
-        )
+        logger.info(f"Fetching schema for connection {connection_id} in workspace {workspace_id}")
 
         # Create schema service
         schema_service = SchemaService()
@@ -524,12 +515,13 @@ async def get_connection_schema(
             provider_type=schema.metadata.get("provider_type", "unknown"),
             tables=tables,
             table_count=len(tables),
+            collections=schema.collections or [],
+            collection_count=len(schema.collections or []),
             last_refreshed=schema.metadata.get("last_refreshed"),
         )
 
         logger.info(
-            f"Retrieved schema for connection {connection_id}: "
-            f"{response.table_count} tables"
+            f"Retrieved schema for connection {connection_id}: {response.table_count} tables"
         )
 
         return response
@@ -560,27 +552,29 @@ async def get_annotations(
     """Get all saved annotations for a connection."""
     repo = SchemaAnnotationRepository()
     annotations = await repo.list_by_provider(str(connection_id))
-    
+
     # Group by table, nest column annotations
     result = {}
     for ann in annotations:
         if ann.table_name and not ann.column_name:
             # Table-level annotation
             result[ann.table_name] = ann.to_dict()
-            result[ann.table_name]['columns'] = []
-    
+            result[ann.table_name]["columns"] = []
+
     # Add column annotations to their tables
     for ann in annotations:
-        if ann.column_name and '.' in ann.column_name:
-            table_name = ann.column_name.split('.')[0]
-            col_name = ann.column_name.split('.')[1]
+        if ann.column_name and "." in ann.column_name:
+            table_name = ann.column_name.split(".")[0]
+            col_name = ann.column_name.split(".")[1]
             if table_name in result:
-                result[table_name]['columns'].append({
-                    'name': col_name,
-                    'description': ann.description,
-                    'sample_values': ann.examples[0] if ann.examples else ''
-                })
-    
+                result[table_name]["columns"].append(
+                    {
+                        "name": col_name,
+                        "description": ann.description,
+                        "sample_values": ann.examples[0] if ann.examples else "",
+                    }
+                )
+
     return result
 
 
@@ -596,18 +590,22 @@ async def save_annotation(
 ):
     """Save or update annotation for a table."""
     repo = SchemaAnnotationRepository()
-    
+
     # Check if table annotation exists
     existing = await repo.list_by_provider(str(connection_id))
-    existing_ann = next((a for a in existing if a.table_name == request.table_name and not a.column_name), None)
-    
+    existing_ann = next(
+        (a for a in existing if a.table_name == request.table_name and not a.column_name), None
+    )
+
     if existing_ann:
         # Update existing table annotation
         updated = await repo.update(
             annotation_id=existing_ann.id,
             description=request.description,
             business_terms=request.business_terms,
-            relationships=[str(r) for r in request.relationships] if request.relationships else None,
+            relationships=[str(r) for r in request.relationships]
+            if request.relationships
+            else None,
         )
         result = updated.to_dict()
     else:
@@ -618,32 +616,34 @@ async def save_annotation(
             description=request.description or "",
             created_by="system",
             business_terms=request.business_terms,
-            relationships=[str(r) for r in request.relationships] if request.relationships else None,
+            relationships=[str(r) for r in request.relationships]
+            if request.relationships
+            else None,
         )
         result = annotation.to_dict()
-    
+
     # Save column annotations
     if request.columns:
         for col in request.columns:
             col_name = f"{request.table_name}.{col.get('name')}"
             existing_col = next((a for a in existing if a.column_name == col_name), None)
-            
+
             if existing_col:
                 await repo.update(
                     annotation_id=existing_col.id,
-                    description=col.get('description', ''),
-                    examples=[col.get('sample_values')] if col.get('sample_values') else None,
+                    description=col.get("description", ""),
+                    examples=[col.get("sample_values")] if col.get("sample_values") else None,
                 )
-            elif col.get('description'):
+            elif col.get("description"):
                 await repo.create(
                     provider_id=str(connection_id),
                     column_name=col_name,
-                    description=col.get('description', ''),
+                    description=col.get("description", ""),
                     created_by="system",
-                    examples=[col.get('sample_values')] if col.get('sample_values') else None,
+                    examples=[col.get("sample_values")] if col.get("sample_values") else None,
                 )
-    
-    result['columns'] = request.columns or []
+
+    result["columns"] = request.columns or []
     return result
 
 
@@ -655,9 +655,7 @@ async def save_annotation(
     description="Use LLM to automatically generate schema annotations for a table",
 )
 async def auto_annotate_table(
-    workspace_id: UUID,
-    connection_id: UUID,
-    request: AutoAnnotateRequest
+    workspace_id: UUID, connection_id: UUID, request: AutoAnnotateRequest
 ) -> AutoAnnotateResponse:
     """
     Automatically generate schema annotations for a table using LLM.
@@ -680,9 +678,7 @@ async def auto_annotate_table(
         HTTPException: If table not found or annotation fails
     """
     try:
-        logger.info(
-            f"Auto-annotating table {request.table_name} for connection {connection_id}"
-        )
+        logger.info(f"Auto-annotating table {request.table_name} for connection {connection_id}")
 
         # Create conversation ID for this annotation session
         conversation_id = uuid4()
@@ -694,6 +690,7 @@ async def auto_annotate_table(
 
         # Get the connection and create a provider for database access
         from text2x.providers.factory import get_provider_by_connection_id
+
         provider = await get_provider_by_connection_id(connection_id, workspace_id)
 
         # Get or create annotation_assistant agent
@@ -716,15 +713,15 @@ async def auto_annotate_table(
 
         # Build rich context for the LLM
         from text2x.api.routes.annotation_context import (
-            build_annotation_context, 
-            format_context_as_prompt
+            build_annotation_context,
+            format_context_as_prompt,
         )
-        
+
         context = await build_annotation_context(
             provider=provider,
             table_name=request.table_name,
             connection_id=str(connection_id),
-            annotation_repo=agent.annotation_repo
+            annotation_repo=agent.annotation_repo,
         )
         context_prompt = format_context_as_prompt(context)
 
@@ -774,12 +771,14 @@ Return ONLY valid JSON (no markdown code blocks, no explanation text):
 JSON OUTPUT:"""
 
         # Process the request
-        result = await agent.process({
-            "message": prompt,
-            "provider_id": str(connection_id),
-            "user_id": "system",
-            "conversation_history": [],
-        })
+        result = await agent.process(
+            {
+                "message": prompt,
+                "provider_id": str(connection_id),
+                "user_id": "system",
+                "conversation_history": [],
+            }
+        )
 
         # Extract suggestions from response
         # Parse JSON from the LLM response
@@ -792,20 +791,22 @@ JSON OUTPUT:"""
         }
 
         # Try to extract JSON from code blocks first
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', llm_response, re.DOTALL)
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", llm_response, re.DOTALL)
         if json_match:
             try:
                 parsed_json = json.loads(json_match.group(1))
                 if "table_description" in parsed_json or "columns" in parsed_json:
                     suggestions["table_description"] = parsed_json.get("table_description", "")
-                    suggestions["table_business_terms"] = parsed_json.get("table_business_terms", [])
+                    suggestions["table_business_terms"] = parsed_json.get(
+                        "table_business_terms", []
+                    )
                     suggestions["columns"] = parsed_json.get("columns", [])
                     # Extract query generation hints
                     suggestions["represents"] = parsed_json.get("represents")
                     suggestions["primary_lookup_column"] = parsed_json.get("primary_lookup_column")
             except json.JSONDecodeError:
                 logger.warning("Failed to parse JSON from code block")
-        
+
         # If no table_description found, try to find JSON without code blocks
         if not suggestions["table_description"] and not suggestions["columns"]:
             try:
@@ -816,14 +817,14 @@ JSON OUTPUT:"""
                     objects = []
                     i = 0
                     while i < len(text):
-                        if text[i] == '{':
+                        if text[i] == "{":
                             depth = 1
                             start = i
                             i += 1
                             while i < len(text) and depth > 0:
-                                if text[i] == '{':
+                                if text[i] == "{":
                                     depth += 1
-                                elif text[i] == '}':
+                                elif text[i] == "}":
                                     depth -= 1
                                 i += 1
                             if depth == 0:
@@ -831,21 +832,29 @@ JSON OUTPUT:"""
                         else:
                             i += 1
                     return objects
-                
+
                 json_objects = find_json_objects(llm_response)
-                
+
                 # Find the JSON with table_description (not tool calls)
                 for json_str in json_objects:
                     try:
                         parsed_json = json.loads(json_str)
                         if "table_description" in parsed_json and "columns" in parsed_json:
-                            suggestions["table_description"] = parsed_json.get("table_description", "")
-                            suggestions["table_business_terms"] = parsed_json.get("table_business_terms", [])
+                            suggestions["table_description"] = parsed_json.get(
+                                "table_description", ""
+                            )
+                            suggestions["table_business_terms"] = parsed_json.get(
+                                "table_business_terms", []
+                            )
                             suggestions["columns"] = parsed_json.get("columns", [])
                             # Extract query generation hints
                             suggestions["represents"] = parsed_json.get("represents")
-                            suggestions["primary_lookup_column"] = parsed_json.get("primary_lookup_column")
-                            logger.info(f"Extracted annotations: {len(suggestions['columns'])} columns")
+                            suggestions["primary_lookup_column"] = parsed_json.get(
+                                "primary_lookup_column"
+                            )
+                            logger.info(
+                                f"Extracted annotations: {len(suggestions['columns'])} columns"
+                            )
                             break
                     except json.JSONDecodeError:
                         continue
@@ -854,11 +863,13 @@ JSON OUTPUT:"""
 
         # Populate sample_values from context data
         sample_data = context.get("sample_data", {})
-        logger.info(f"Sample data for {request.table_name}: columns={sample_data.get('columns')}, rows_count={len(sample_data.get('rows', []))}")
+        logger.info(
+            f"Sample data for {request.table_name}: columns={sample_data.get('columns')}, rows_count={len(sample_data.get('rows', []))}"
+        )
         if sample_data.get("columns") and sample_data.get("rows"):
             col_names = sample_data["columns"]
             rows = sample_data["rows"]
-            
+
             # Helper to detect patterns
             def detect_pattern(values):
                 """Detect common patterns in values."""
@@ -868,77 +879,127 @@ JSON OUTPUT:"""
                 str_values = [str(v) for v in values if v is not None]
                 if not str_values:
                     return []
-                
+
                 # Email pattern
-                email_count = sum(1 for v in str_values if re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', v))
+                email_count = sum(1 for v in str_values if re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", v))
                 if email_count >= len(str_values) * 0.8:
                     patterns.append("email format")
-                
+
                 # UUID pattern
-                uuid_count = sum(1 for v in str_values if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', v.lower()))
+                uuid_count = sum(
+                    1
+                    for v in str_values
+                    if re.match(
+                        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", v.lower()
+                    )
+                )
                 if uuid_count >= len(str_values) * 0.8:
                     patterns.append("UUID format")
-                
+
                 # URL pattern
-                url_count = sum(1 for v in str_values if re.match(r'^https?://', v))
+                url_count = sum(1 for v in str_values if re.match(r"^https?://", v))
                 if url_count >= len(str_values) * 0.8:
                     patterns.append("URL format")
-                
+
                 # ISO date/timestamp pattern
-                ts_count = sum(1 for v in str_values if re.match(r'^\d{4}-\d{2}-\d{2}', v))
+                ts_count = sum(1 for v in str_values if re.match(r"^\d{4}-\d{2}-\d{2}", v))
                 if ts_count >= len(str_values) * 0.8:
                     patterns.append("timestamp")
-                
+
                 return patterns
-            
+
             def is_likely_enum(col_name, values, patterns, row_estimate, table_name):
                 """Check if column is likely a categorical enum."""
                 # Skip if pattern indicates non-enum
-                if any(p in ["UUID format", "email format", "URL format", "timestamp"] for p in patterns):
+                if any(
+                    p in ["UUID format", "email format", "URL format", "timestamp"]
+                    for p in patterns
+                ):
                     return False
-                
+
                 # Combine table + column context
                 full_context = f"{table_name}.{col_name}".lower()
-                
+
                 # Table-specific patterns that are likely enums
                 enum_table_column_patterns = [
                     # User/account related
-                    ('user', 'role'), ('user', 'status'), ('user', 'type'),
-                    ('account', 'status'), ('account', 'type'),
-                    # Order/transaction related  
-                    ('order', 'status'), ('order', 'state'), ('order', 'type'),
-                    ('transaction', 'status'), ('transaction', 'type'),
-                    ('payment', 'status'), ('payment', 'method'),
+                    ("user", "role"),
+                    ("user", "status"),
+                    ("user", "type"),
+                    ("account", "status"),
+                    ("account", "type"),
+                    # Order/transaction related
+                    ("order", "status"),
+                    ("order", "state"),
+                    ("order", "type"),
+                    ("transaction", "status"),
+                    ("transaction", "type"),
+                    ("payment", "status"),
+                    ("payment", "method"),
                     # Content related
-                    ('post', 'status'), ('article', 'status'),
-                    ('comment', 'status'), ('review', 'status'),
+                    ("post", "status"),
+                    ("article", "status"),
+                    ("comment", "status"),
+                    ("review", "status"),
                     # Task/workflow related
-                    ('task', 'status'), ('task', 'priority'),
-                    ('ticket', 'status'), ('ticket', 'priority'),
-                    ('job', 'status'), ('job', 'state'),
+                    ("task", "status"),
+                    ("task", "priority"),
+                    ("ticket", "status"),
+                    ("ticket", "priority"),
+                    ("job", "status"),
+                    ("job", "state"),
                     # General patterns
-                    ('log', 'level'), ('log', 'action'), ('log', 'type'),
-                    ('event', 'type'), ('event', 'status'),
-                    ('notification', 'type'), ('notification', 'status'),
+                    ("log", "level"),
+                    ("log", "action"),
+                    ("log", "type"),
+                    ("event", "type"),
+                    ("event", "status"),
+                    ("notification", "type"),
+                    ("notification", "status"),
                 ]
-                
+
                 for tbl_pattern, col_pattern in enum_table_column_patterns:
                     if tbl_pattern in table_name.lower() and col_pattern in col_name.lower():
                         return True
-                
+
                 # Skip common non-enum column names
-                non_enum_names = ['id', 'name', 'email', 'password', 'hash', 'token', 'created', 'updated', 
-                                  'timestamp', 'date', 'time', 'description', 'comment', 'note', 'title', 
-                                  'content', 'body', 'message', 'text', 'url', 'path', 'key', 'value',
-                                  'address', 'phone', 'code', 'number']
+                non_enum_names = [
+                    "id",
+                    "name",
+                    "email",
+                    "password",
+                    "hash",
+                    "token",
+                    "created",
+                    "updated",
+                    "timestamp",
+                    "date",
+                    "time",
+                    "description",
+                    "comment",
+                    "note",
+                    "title",
+                    "content",
+                    "body",
+                    "message",
+                    "text",
+                    "url",
+                    "path",
+                    "key",
+                    "value",
+                    "address",
+                    "phone",
+                    "code",
+                    "number",
+                ]
                 if any(n in col_name.lower() for n in non_enum_names):
                     return False
-                
+
                 # Check distinct count vs total - enums have low cardinality
                 unique_count = len(set(str(v) for v in values))
                 if unique_count > 10:
                     return False
-                
+
                 # Row count awareness: if table has many rows but we only see few unique values, likely enum
                 sample_size = len(values)
                 if row_estimate and row_estimate > 0:
@@ -952,28 +1013,43 @@ JSON OUTPUT:"""
                     # (e.g., 5 unique values in 5-row table)
                     if row_estimate <= 20 and unique_count >= row_estimate * 0.5:
                         return False
-                
+
                 # For small tables without estimate, be conservative
                 if unique_count >= sample_size * 0.8 and sample_size > 3:
                     return False  # Too unique relative to sample, probably not an enum
-                
+
                 # Common enum patterns: status, type, role, state, category, level, priority
-                enum_like_names = ['status', 'type', 'role', 'state', 'category', 'level', 'priority', 
-                                   'kind', 'mode', 'active', 'enabled', 'flag', 'tier', 'grade', 'rank']
+                enum_like_names = [
+                    "status",
+                    "type",
+                    "role",
+                    "state",
+                    "category",
+                    "level",
+                    "priority",
+                    "kind",
+                    "mode",
+                    "active",
+                    "enabled",
+                    "flag",
+                    "tier",
+                    "grade",
+                    "rank",
+                ]
                 if any(n in col_name.lower() for n in enum_like_names):
                     return True
-                
+
                 return False
-            
+
             # Get row estimate and table name for smarter enum detection
             row_estimate = context.get("row_estimate")
             table_name = request.table_name
-            
+
             # Build column -> sample values and patterns mapping
             col_samples = {}
             col_patterns = {}
             col_enum_values = {}
-            
+
             for col_name in col_names:
                 values = []
                 for row in rows:
@@ -982,41 +1058,41 @@ JSON OUTPUT:"""
                     else:
                         col_idx = col_names.index(col_name)
                         val = row[col_idx] if col_idx < len(row) else None
-                    
+
                     if val is not None:
                         values.append(val)
-                
+
                 if values:
                     # Get unique values (skip long ones)
                     unique_values = list(set(str(v)[:30] for v in values if len(str(v)) <= 50))
-                    
+
                     # Detect patterns
                     patterns = detect_pattern(values)
                     if patterns:
                         col_patterns[col_name] = patterns
-                    
+
                     # Check if enum
                     if is_likely_enum(col_name, values, patterns, row_estimate, table_name):
                         col_enum_values[col_name] = sorted(unique_values)
                         col_samples[col_name] = ", ".join(sorted(unique_values))
                     else:
                         col_samples[col_name] = ", ".join(unique_values[:3])
-            
+
             logger.info(f"Sample values: {col_samples}")
             logger.info(f"Detected patterns: {col_patterns}")
             logger.info(f"Enum columns: {list(col_enum_values.keys())}")
-            
+
             # Add sample_values and pattern info to each column annotation
             for col in suggestions.get("columns", []):
                 col_name = col.get("name", "")
                 if col_name in col_samples:
                     col["sample_values"] = col_samples[col_name]
-                
+
                 # Mark if enum
                 if col_name in col_enum_values:
                     col["is_enum"] = True
                     col["enum_values"] = col_enum_values[col_name]
-                
+
                 # Add pattern to description if detected
                 if col_name in col_patterns:
                     pattern_str = ", ".join(col_patterns[col_name])
@@ -1034,7 +1110,7 @@ JSON OUTPUT:"""
         _conversation_context[conversation_id] = {
             "conversation_history": [
                 {"role": "user", "content": prompt},
-                {"role": "assistant", "content": llm_response}
+                {"role": "assistant", "content": llm_response},
             ],
             "provider_id": str(connection_id),
             "workspace_id": str(workspace_id),  # Needed for chat to get provider
@@ -1061,12 +1137,12 @@ JSON OUTPUT:"""
 
     except Exception as e:
         logger.error(f"Error in auto-annotation: {e}", exc_info=True)
-        
+
         # Provide more helpful error message
         error_msg = str(e)
         if "missing an 'http://' or 'https://' protocol" in error_msg:
             error_msg = "LLM not configured. Please set LLM_API_BASE environment variable or configure Bedrock."
-        
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
@@ -1150,10 +1226,7 @@ async def get_annotation(annotation_id: UUID) -> AnnotationResponse:
     summary="Update annotation",
     description="Update an existing annotation",
 )
-async def update_annotation(
-    annotation_id: UUID,
-    update: AnnotationUpdate
-) -> AnnotationResponse:
+async def update_annotation(annotation_id: UUID, update: AnnotationUpdate) -> AnnotationResponse:
     """
     Update an existing annotation.
 

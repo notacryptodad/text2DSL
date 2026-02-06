@@ -1,4 +1,5 @@
 """Workspace management endpoints."""
+
 import logging
 from datetime import datetime
 from typing import Any, Optional
@@ -34,18 +35,27 @@ async def get_session() -> AsyncSession:
 # Pydantic Models for API
 # ============================================================================
 
+
 class WorkspaceCreate(BaseModel):
     """Request model for creating a workspace."""
-    
+
     name: str = Field(..., min_length=1, max_length=255, description="Workspace name")
-    slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$", description="URL-friendly identifier")
+    slug: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-z0-9-]+$",
+        description="URL-friendly identifier",
+    )
     description: Optional[str] = Field(None, description="Workspace description")
-    settings: Optional[dict] = Field(default_factory=dict, description="Workspace-specific settings")
+    settings: Optional[dict] = Field(
+        default_factory=dict, description="Workspace-specific settings"
+    )
 
 
 class WorkspaceUpdate(BaseModel):
     """Request model for updating a workspace."""
-    
+
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     settings: Optional[dict] = None
@@ -54,7 +64,7 @@ class WorkspaceUpdate(BaseModel):
 
 class WorkspaceResponse(BaseModel):
     """Response model for workspace."""
-    
+
     id: UUID
     name: str
     slug: str
@@ -64,14 +74,14 @@ class WorkspaceResponse(BaseModel):
     provider_count: int = 0
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
 class ProviderCreate(BaseModel):
     """Request model for creating a provider."""
-    
+
     name: str = Field(..., min_length=1, max_length=255, description="Provider name")
     type: str = Field(..., description="Provider type (postgresql, mysql, athena, etc.)")
     description: Optional[str] = None
@@ -80,7 +90,7 @@ class ProviderCreate(BaseModel):
 
 class ProviderUpdate(BaseModel):
     """Request model for updating a provider."""
-    
+
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     settings: Optional[dict] = None
@@ -88,7 +98,7 @@ class ProviderUpdate(BaseModel):
 
 class ProviderResponse(BaseModel):
     """Response model for provider."""
-    
+
     id: UUID
     workspace_id: UUID
     name: str
@@ -98,26 +108,34 @@ class ProviderResponse(BaseModel):
     connection_count: int = 0
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
 class ConnectionCreate(BaseModel):
     """Request model for creating a connection."""
-    
-    name: str = Field(..., min_length=1, max_length=255, description="Connection name (e.g., Production, Staging)")
+
+    name: str = Field(
+        ..., min_length=1, max_length=255, description="Connection name (e.g., Production, Staging)"
+    )
     host: str = Field(..., min_length=1, max_length=512, description="Database host/endpoint")
     port: Optional[int] = Field(None, ge=1, le=65535, description="Database port")
     database: str = Field(..., min_length=1, max_length=255, description="Database/catalog name")
-    schema_name: Optional[str] = Field(None, max_length=255, description="Schema/namespace within database")
-    credentials: Optional[dict] = Field(None, description="Connection credentials (username, password, etc.)")
-    connection_options: Optional[dict] = Field(default_factory=dict, description="Additional connection parameters")
+    schema_name: Optional[str] = Field(
+        None, max_length=255, description="Schema/namespace within database"
+    )
+    credentials: Optional[dict] = Field(
+        None, description="Connection credentials (username, password, etc.)"
+    )
+    connection_options: Optional[dict] = Field(
+        default_factory=dict, description="Additional connection parameters"
+    )
 
 
 class ConnectionUpdate(BaseModel):
     """Request model for updating a connection."""
-    
+
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     host: Optional[str] = Field(None, min_length=1, max_length=512)
     port: Optional[int] = Field(None, ge=1, le=65535)
@@ -129,7 +147,7 @@ class ConnectionUpdate(BaseModel):
 
 class ConnectionResponse(BaseModel):
     """Response model for connection."""
-    
+
     id: UUID
     provider_id: UUID
     name: str
@@ -143,14 +161,14 @@ class ConnectionResponse(BaseModel):
     schema_last_refreshed: Optional[datetime]
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
 class ConnectionTestResult(BaseModel):
     """Response model for connection test."""
-    
+
     success: bool
     message: str
     latency_ms: Optional[float] = None
@@ -160,13 +178,14 @@ class ConnectionTestResult(BaseModel):
 # Workspace Endpoints
 # ============================================================================
 
+
 @router.get(
     "",
     response_model=list[WorkspaceResponse],
     summary="List all workspaces",
 )
 async def list_workspaces(
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> list[WorkspaceResponse]:
     """
     List all workspaces.
@@ -179,10 +198,11 @@ async def list_workspaces(
 
         async with await get_session() as session:
             # Query workspaces with provider count
-            stmt = select(
-                Workspace,
-                func.count(Provider.id).label("provider_count")
-            ).outerjoin(Provider).group_by(Workspace.id)
+            stmt = (
+                select(Workspace, func.count(Provider.id).label("provider_count"))
+                .outerjoin(Provider)
+                .group_by(Workspace.id)
+            )
 
             result = await session.execute(stmt)
             rows = result.all()
@@ -222,8 +242,7 @@ async def list_workspaces(
     summary="Create a workspace",
 )
 async def create_workspace(
-    workspace: WorkspaceCreate,
-    current_user: User = Depends(get_current_active_user)
+    workspace: WorkspaceCreate, current_user: User = Depends(get_current_active_user)
 ) -> WorkspaceResponse:
     """
     Create a new workspace.
@@ -293,8 +312,7 @@ async def create_workspace(
     summary="Get workspace details",
 )
 async def get_workspace(
-    workspace_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    workspace_id: UUID, current_user: User = Depends(get_current_active_user)
 ) -> WorkspaceResponse:
     """
     Get workspace details by ID.
@@ -310,10 +328,12 @@ async def get_workspace(
 
         async with await get_session() as session:
             # Query workspace with provider count
-            stmt = select(
-                Workspace,
-                func.count(Provider.id).label("provider_count")
-            ).outerjoin(Provider).where(Workspace.id == workspace_id).group_by(Workspace.id)
+            stmt = (
+                select(Workspace, func.count(Provider.id).label("provider_count"))
+                .outerjoin(Provider)
+                .where(Workspace.id == workspace_id)
+                .group_by(Workspace.id)
+            )
 
             result = await session.execute(stmt)
             row = result.one_or_none()
@@ -361,7 +381,7 @@ async def get_workspace(
 async def update_workspace(
     workspace_id: UUID,
     update: WorkspaceUpdate,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> WorkspaceResponse:
     """
     Update workspace details.
@@ -403,7 +423,9 @@ async def update_workspace(
             await session.refresh(workspace)
 
             # Get provider count
-            count_stmt = select(func.count(Provider.id)).where(Provider.workspace_id == workspace_id)
+            count_stmt = select(func.count(Provider.id)).where(
+                Provider.workspace_id == workspace_id
+            )
             count_result = await session.execute(count_stmt)
             provider_count = count_result.scalar() or 0
 
@@ -437,8 +459,7 @@ async def update_workspace(
     summary="Delete workspace",
 )
 async def delete_workspace(
-    workspace_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    workspace_id: UUID, current_user: User = Depends(get_current_active_user)
 ) -> None:
     """
     Delete a workspace and all its providers/connections.
@@ -485,14 +506,14 @@ async def delete_workspace(
 # Provider Endpoints (nested under workspace)
 # ============================================================================
 
+
 @router.get(
     "/{workspace_id}/providers",
     response_model=list[ProviderResponse],
     summary="List providers in workspace",
 )
 async def list_workspace_providers(
-    workspace_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    workspace_id: UUID, current_user: User = Depends(get_current_active_user)
 ) -> list[ProviderResponse]:
     """
     List all providers in a workspace.
@@ -520,10 +541,12 @@ async def list_workspace_providers(
                 )
 
             # Query providers with connection count
-            stmt = select(
-                Provider,
-                func.count(Connection.id).label("connection_count")
-            ).outerjoin(Connection).where(Provider.workspace_id == workspace_id).group_by(Provider.id)
+            stmt = (
+                select(Provider, func.count(Connection.id).label("connection_count"))
+                .outerjoin(Connection)
+                .where(Provider.workspace_id == workspace_id)
+                .group_by(Provider.id)
+            )
 
             result = await session.execute(stmt)
             rows = result.all()
@@ -568,7 +591,7 @@ async def list_workspace_providers(
 async def create_provider(
     workspace_id: UUID,
     provider: ProviderCreate,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> ProviderResponse:
     """
     Create a new provider in a workspace.
@@ -598,8 +621,7 @@ async def create_provider(
 
             # Check if provider name already exists in workspace
             check_stmt = select(Provider).where(
-                Provider.workspace_id == workspace_id,
-                Provider.name == provider.name
+                Provider.workspace_id == workspace_id, Provider.name == provider.name
             )
             check_result = await session.execute(check_stmt)
             if check_result.scalar_one_or_none():
@@ -657,9 +679,7 @@ async def create_provider(
     summary="Get provider details",
 )
 async def get_provider(
-    workspace_id: UUID,
-    provider_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    workspace_id: UUID, provider_id: UUID, current_user: User = Depends(get_current_active_user)
 ) -> ProviderResponse:
     """
     Get provider details.
@@ -674,13 +694,12 @@ async def get_provider(
     try:
         async with await get_session() as session:
             # Query provider with connection count
-            stmt = select(
-                Provider,
-                func.count(Connection.id).label("connection_count")
-            ).outerjoin(Connection).where(
-                Provider.id == provider_id,
-                Provider.workspace_id == workspace_id
-            ).group_by(Provider.id)
+            stmt = (
+                select(Provider, func.count(Connection.id).label("connection_count"))
+                .outerjoin(Connection)
+                .where(Provider.id == provider_id, Provider.workspace_id == workspace_id)
+                .group_by(Provider.id)
+            )
 
             result = await session.execute(stmt)
             row = result.one_or_none()
@@ -730,7 +749,7 @@ async def update_provider(
     workspace_id: UUID,
     provider_id: UUID,
     update: ProviderUpdate,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> ProviderResponse:
     """
     Update provider details.
@@ -739,8 +758,7 @@ async def update_provider(
         async with await get_session() as session:
             # Fetch provider
             stmt = select(Provider).where(
-                Provider.id == provider_id,
-                Provider.workspace_id == workspace_id
+                Provider.id == provider_id, Provider.workspace_id == workspace_id
             )
             result = await session.execute(stmt)
             provider = result.scalar_one_or_none()
@@ -766,7 +784,9 @@ async def update_provider(
             await session.refresh(provider)
 
             # Get connection count
-            count_stmt = select(func.count(Connection.id)).where(Connection.provider_id == provider_id)
+            count_stmt = select(func.count(Connection.id)).where(
+                Connection.provider_id == provider_id
+            )
             count_result = await session.execute(count_stmt)
             connection_count = count_result.scalar() or 0
 
@@ -801,9 +821,7 @@ async def update_provider(
     summary="Delete provider",
 )
 async def delete_provider(
-    workspace_id: UUID,
-    provider_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    workspace_id: UUID, provider_id: UUID, current_user: User = Depends(get_current_active_user)
 ) -> None:
     """
     Delete a provider and all its connections.
@@ -814,8 +832,7 @@ async def delete_provider(
         async with await get_session() as session:
             # Check if provider exists
             stmt = select(Provider).where(
-                Provider.id == provider_id,
-                Provider.workspace_id == workspace_id
+                Provider.id == provider_id, Provider.workspace_id == workspace_id
             )
             result = await session.execute(stmt)
             provider = result.scalar_one_or_none()
@@ -850,15 +867,14 @@ async def delete_provider(
 # Connection Endpoints (nested under provider)
 # ============================================================================
 
+
 @router.get(
     "/{workspace_id}/providers/{provider_id}/connections",
     response_model=list[ConnectionResponse],
     summary="List connections for provider",
 )
 async def list_connections(
-    workspace_id: UUID,
-    provider_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    workspace_id: UUID, provider_id: UUID, current_user: User = Depends(get_current_active_user)
 ) -> list[ConnectionResponse]:
     """
     List all connections for a provider.
@@ -876,8 +892,7 @@ async def list_connections(
         async with await get_session() as session:
             # Verify provider exists and belongs to workspace
             provider_stmt = select(Provider).where(
-                Provider.id == provider_id,
-                Provider.workspace_id == workspace_id
+                Provider.id == provider_id, Provider.workspace_id == workspace_id
             )
             provider_result = await session.execute(provider_stmt)
             if not provider_result.scalar_one_or_none():
@@ -936,7 +951,7 @@ async def create_connection(
     workspace_id: UUID,
     provider_id: UUID,
     connection: ConnectionCreate,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> ConnectionResponse:
     """
     Create a new connection for a provider.
@@ -955,8 +970,7 @@ async def create_connection(
         async with await get_session() as session:
             # Verify provider exists and belongs to workspace
             provider_stmt = select(Provider).where(
-                Provider.id == provider_id,
-                Provider.workspace_id == workspace_id
+                Provider.id == provider_id, Provider.workspace_id == workspace_id
             )
             provider_result = await session.execute(provider_stmt)
             if not provider_result.scalar_one_or_none():
@@ -970,8 +984,7 @@ async def create_connection(
 
             # Check if connection name already exists for this provider
             check_stmt = select(Connection).where(
-                Connection.provider_id == provider_id,
-                Connection.name == connection.name
+                Connection.provider_id == provider_id, Connection.name == connection.name
             )
             check_result = await session.execute(check_stmt)
             if check_result.scalar_one_or_none():
@@ -1036,7 +1049,7 @@ async def get_connection(
     workspace_id: UUID,
     provider_id: UUID,
     connection_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> ConnectionResponse:
     """
     Get connection details.
@@ -1047,8 +1060,7 @@ async def get_connection(
         async with await get_session() as session:
             # Query connection from database
             connection_stmt = select(Connection).where(
-                Connection.id == connection_id,
-                Connection.provider_id == provider_id
+                Connection.id == connection_id, Connection.provider_id == provider_id
             )
             connection_result = await session.execute(connection_stmt)
             db_connection = connection_result.scalar_one_or_none()
@@ -1064,8 +1076,7 @@ async def get_connection(
 
             # Verify provider belongs to workspace
             provider_stmt = select(Provider).where(
-                Provider.id == provider_id,
-                Provider.workspace_id == workspace_id
+                Provider.id == provider_id, Provider.workspace_id == workspace_id
             )
             provider_result = await session.execute(provider_stmt)
             if not provider_result.scalar_one_or_none():
@@ -1116,7 +1127,7 @@ async def update_connection(
     provider_id: UUID,
     connection_id: UUID,
     update: ConnectionUpdate,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> ConnectionResponse:
     """
     Update connection details.
@@ -1127,8 +1138,7 @@ async def update_connection(
         async with await get_session() as session:
             # Query connection from database
             connection_stmt = select(Connection).where(
-                Connection.id == connection_id,
-                Connection.provider_id == provider_id
+                Connection.id == connection_id, Connection.provider_id == provider_id
             )
             connection_result = await session.execute(connection_stmt)
             db_connection = connection_result.scalar_one_or_none()
@@ -1144,8 +1154,7 @@ async def update_connection(
 
             # Verify provider belongs to workspace
             provider_stmt = select(Provider).where(
-                Provider.id == provider_id,
-                Provider.workspace_id == workspace_id
+                Provider.id == provider_id, Provider.workspace_id == workspace_id
             )
             provider_result = await session.execute(provider_stmt)
             if not provider_result.scalar_one_or_none():
@@ -1214,7 +1223,7 @@ async def delete_connection(
     workspace_id: UUID,
     provider_id: UUID,
     connection_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> None:
     """
     Delete a connection.
@@ -1225,8 +1234,7 @@ async def delete_connection(
         async with await get_session() as session:
             # Check if connection exists and belongs to this provider
             stmt = select(Connection).where(
-                Connection.id == connection_id,
-                Connection.provider_id == provider_id
+                Connection.id == connection_id, Connection.provider_id == provider_id
             )
             result = await session.execute(stmt)
             connection = result.scalar_one_or_none()
@@ -1266,7 +1274,7 @@ async def test_connection(
     workspace_id: UUID,
     provider_id: UUID,
     connection_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> ConnectionTestResult:
     """
     Test a connection to verify connectivity.
@@ -1347,7 +1355,7 @@ async def refresh_connection_schema(
     workspace_id: UUID,
     provider_id: UUID,
     connection_id: UUID,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> dict[str, Any]:
     """
     Trigger schema refresh for a connection.
@@ -1399,16 +1407,22 @@ async def refresh_connection_schema(
                 # Cache the refreshed schema - SchemaService creates its own repositories
                 schema_service = SchemaService()
                 await schema_service.cache_schema(connection_id, introspection_result.schema)
-                
+
                 # Update connection with schema cache info
                 connection.schema_cache_key = f"schema:{connection_id}"
                 connection.schema_last_refreshed = datetime.utcnow()
 
                 await session.commit()
 
+                # Determine message based on provider type
+                if connection.provider.type.value == "mongodb":
+                    msg = f"Schema refreshed successfully: {introspection_result.table_count} collections found"
+                else:
+                    msg = f"Schema refreshed successfully: {introspection_result.table_count} tables found"
+
                 return {
                     "status": "success",
-                    "message": f"Schema refreshed successfully: {introspection_result.table_count} tables found",
+                    "message": msg,
                     "connection_id": str(connection_id),
                     "table_count": introspection_result.table_count,
                     "introspection_time_ms": introspection_result.introspection_time_ms,

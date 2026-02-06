@@ -138,6 +138,16 @@ function App() {
                         </ProtectedRoute>
                       }
                     />
+                    <Route
+                      path="admin/schema-annotation"
+                      element={
+                        <ProtectedRoute requireAdmin={true}>
+                          <AdminLayout>
+                            <SchemaAnnotation />
+                          </AdminLayout>
+                        </ProtectedRoute>
+                      }
+                    />
                     </Routes>
                   </RouteErrorBoundary>
                 </AppLayout>

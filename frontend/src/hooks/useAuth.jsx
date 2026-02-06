@@ -33,7 +33,6 @@ export function AuthProvider({ children }) {
         setUser(userData)
         setIsAuthenticated(true)
       } else {
-        // Token is invalid, clear it
         localStorage.removeItem('access_token')
         setUser(null)
         setIsAuthenticated(false)
@@ -62,8 +61,19 @@ export function AuthProvider({ children }) {
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || error.detail || 'Login failed')
+        let errorMessage = 'Login failed'
+        const contentType = response.headers.get('content-type')
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const error = await response.json()
+            errorMessage = error.message || error.detail || errorMessage
+          } catch {
+            errorMessage = 'Backend server error - please try again later'
+          }
+        } else if (response.status >= 500) {
+          errorMessage = 'Backend server is not ready - please try again later'
+        }
+        return { success: false, error: errorMessage }
       }
 
       const data = await response.json()
@@ -72,7 +82,7 @@ export function AuthProvider({ children }) {
       return { success: true }
     } catch (error) {
       console.error('Login error:', error)
-      return { success: false, error: error.message }
+      return { success: false, error: 'Backend server is not ready - please try again later' }
     }
   }
 
