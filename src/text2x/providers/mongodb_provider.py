@@ -107,16 +107,33 @@ class MongoDBProvider(QueryProvider):
             columns = []
             row_count = collection.count_documents({})
 
-            sample_doc = collection.find_one({}, {"_id": 1})
-            if sample_doc:
-                for key, value in sample_doc.items():
-                    col_type = self._infer_type(value)
-                    col_info = ColumnInfo(
-                        name=key,
-                        type=col_type,
-                        nullable=True,
-                    )
-                    columns.append(col_info)
+            # Sample multiple documents to build complete schema
+            sample_docs = collection.find({}).limit(100).to_list(length=100)
+
+            # Collect all unique fields from all sampled documents
+            all_fields = set()
+            field_types = {}
+
+            for doc in sample_docs:
+                for key, value in doc.items():
+                    if key not in all_fields:
+                        all_fields.add(key)
+                        field_types[key] = self._infer_type(value)
+                    else:
+                        # If field exists with different type, mark as mixed
+                        current_type = field_types.get(key)
+                        new_type = self._infer_type(value)
+                        if current_type != new_type:
+                            field_types[key] = "mixed"
+
+            # Create column info for each field
+            for field_name in sorted(all_fields):
+                col_info = ColumnInfo(
+                    name=field_name,
+                    type=field_types.get(field_name, "unknown"),
+                    nullable=True,
+                )
+                columns.append(col_info)
 
             table_info = TableInfo(
                 name=collection_name,
