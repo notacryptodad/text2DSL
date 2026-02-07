@@ -344,7 +344,7 @@ function SchemaAnnotation() {
                     type: 'assistant', 
                     content: `Auto-annotation completed!\n\nTable: ${table_description || selectedTable}\n\nGenerated descriptions for ${columns?.length || 0} columns.`, 
                     timestamp: new Date() 
-                  }])
+                   }])
                 }
                 await fetchAnnotations()
               }
