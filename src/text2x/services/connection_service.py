@@ -519,71 +519,37 @@ class ConnectionService:
     async def _introspect_nosql_schema(
         connection: Connection,
     ) -> SchemaIntrospectionResult:
-        """Introspect NoSQL (MongoDB) schema with sampled document fields."""
+        """Introspect NoSQL (MongoDB) schema with sampled document fields.
+
+        Uses NoSQLProvider with proper nested document flattening.
+        """
         try:
-            from pymongo import MongoClient
+            from text2x.providers.nosql_provider import NoSQLProvider, MongoDBConnectionConfig
         except ImportError:
-            return SchemaIntrospectionResult(success=False, error="MongoDB client not installed")
+            return SchemaIntrospectionResult(success=False, error="NoSQLProvider not installed")
 
-        username = None
-        password = None
-        if connection.credentials:
-            username = connection.credentials.get("username")
-            password = connection.credentials.get("password")
+        username = connection.credentials.get("username") if connection.credentials else ""
+        password = connection.credentials.get("password") if connection.credentials else ""
 
-        if username and password:
-            conn_str = f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/{connection.database}"
-        else:
-            conn_str = (
-                f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
-            )
+        connection_string = (
+            f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/{connection.database}"
+            if username
+            else f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
+        )
 
         try:
-            client = MongoClient(conn_str, serverSelectionTimeoutMS=5000)
-            db = client[connection.database]
-            collection_names = db.list_collection_names()
-
-            collections_with_schema = []
-            for coll_name in collection_names:
-                collection = db[coll_name]
-                sample_docs = list(collection.find().limit(10))
-
-                fields = []
-                seen_fields = set()
-                for doc in sample_docs:
-                    for key in doc.keys():
-                        if key not in seen_fields:
-                            seen_fields.add(key)
-                            val = doc[key]
-                            field_type = type(val).__name__
-                            if field_type == "ObjectId":
-                                field_type = "objectid"
-                            elif field_type == "datetime":
-                                field_type = "datetime"
-                            elif field_type == "list":
-                                field_type = "array"
-                            elif field_type == "dict":
-                                field_type = "object"
-                            fields.append({"name": key, "type": field_type})
-
-                collections_with_schema.append(
-                    {
-                        "name": coll_name,
-                        "columns": fields,
-                        "document_count": collection.count_documents({}),
-                    }
-                )
-
-            client.close()
-
-            schema = SchemaDefinition(
-                tables=[],
-                collections=collections_with_schema,
-                metadata={"database": connection.database},
+            config = MongoDBConnectionConfig(
+                connection_string=connection_string,
+                database=connection.database,
+                username=username,
+                password=password,
             )
+            provider = NoSQLProvider(config)
+            schema = await provider.get_schema()
+            await provider.close()
 
             return SchemaIntrospectionResult(
-                success=True, schema=schema, table_count=len(collection_names)
+                success=True, schema=schema, table_count=len(schema.tables)
             )
 
         except Exception as e:

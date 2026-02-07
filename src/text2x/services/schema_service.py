@@ -287,88 +287,40 @@ class SchemaService:
         """
         Introspect MongoDB database schema by listing collections and sampling documents.
 
+        Uses NoSQLProvider with proper nested document flattening.
+
         Args:
             connection: Connection object with database credentials
 
         Returns:
             SchemaDefinition with collections and sampled field info
         """
-        try:
-            from pymongo import MongoClient
-            from pymongo.errors import ConnectionFailure
-        except ImportError:
-            raise NotImplementedError("MongoDB client (pymongo) not installed")
+        from text2x.providers.nosql_provider import NoSQLProvider, MongoDBConnectionConfig
 
         credentials = connection.credentials or {}
-        username = credentials.get("username")
-        password = credentials.get("password")
+        username = credentials.get("username", "")
+        password = credentials.get("password", "")
 
-        if username and password:
-            conn_str = (
-                f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/"
-            )
-        else:
-            conn_str = f"mongodb://{connection.host}:{connection.port or 27017}/"
-
-        try:
-            client = MongoClient(conn_str, serverSelectionTimeoutMS=5000)
-            client.admin.command("ping")
-        except ConnectionFailure as e:
-            raise Exception(f"Failed to connect to MongoDB: {e}")
+        connection_string = (
+            f"mongodb://{username}:{password}@{connection.host}:{connection.port or 27017}/{connection.database}"
+            if username
+            else f"mongodb://{connection.host}:{connection.port or 27017}/{connection.database}"
+        )
 
         try:
-            db = client[connection.database]
-            collection_names = db.list_collection_names()
-
-            logger.info(
-                f"Found {len(collection_names)} collections in MongoDB database '{connection.database}'"
+            config = MongoDBConnectionConfig(
+                connection_string=connection_string,
+                database=connection.database,
+                username=username,
+                password=password,
             )
-
-            collections_with_schema = []
-            for coll_name in collection_names:
-                collection = db[coll_name]
-                sample_docs = list(collection.find().limit(10))
-
-                fields = []
-                seen_fields = set()
-                for doc in sample_docs:
-                    for key in doc.keys():
-                        if key not in seen_fields:
-                            seen_fields.add(key)
-                            val = doc[key]
-                            field_type = type(val).__name__
-                            if field_type == "ObjectId":
-                                field_type = "objectid"
-                            elif field_type == "datetime":
-                                field_type = "datetime"
-                            elif field_type == "list":
-                                field_type = "array"
-                            elif field_type == "dict":
-                                field_type = "object"
-                            fields.append({"name": key, "type": field_type})
-
-                collections_with_schema.append(
-                    {
-                        "name": coll_name,
-                        "columns": fields,
-                        "document_count": collection.count_documents({}),
-                    }
-                )
-
-            schema = SchemaDefinition(
-                tables=[],
-                collections=collections_with_schema,
-                metadata={
-                    "database": connection.database,
-                    "collection_count": len(collection_names),
-                },
-            )
-
-            client.close()
+            provider = NoSQLProvider(config)
+            schema = await provider.get_schema()
+            await provider.close()
             return schema
 
         except Exception as e:
-            client.close()
+            logger.error(f"Failed to introspect MongoDB schema: {e}", exc_info=True)
             raise
 
     def _serialize_schema(self, schema: SchemaDefinition) -> dict:
