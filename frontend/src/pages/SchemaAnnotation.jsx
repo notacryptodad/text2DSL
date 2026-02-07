@@ -122,7 +122,7 @@ function SchemaAnnotation() {
       setError(null)
       const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/connections/${selectedConnection}/schema`,
+        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/providers/${selectedProviderId}/connections/${selectedConnection}/schema`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
       if (!response.ok) {
@@ -147,7 +147,7 @@ function SchemaAnnotation() {
     try {
       const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/connections/${selectedConnection}/schema/annotations`,
+        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/providers/${selectedProviderId}/connections/${selectedConnection}/schema/annotations`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
       if (response.status === 404) {
@@ -233,7 +233,7 @@ function SchemaAnnotation() {
       setChatLoading(true)
       const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/connections/${selectedConnection}/schema/auto-annotate/stream`,
+        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/providers/${selectedProviderId}/connections/${selectedConnection}/schema/auto-annotate/stream`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -355,7 +355,7 @@ function SchemaAnnotation() {
     try {
       const token = localStorage.getItem('access_token')
       const response = await fetch(
-        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/connections/${selectedConnection}/schema/annotations`,
+        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/providers/${selectedProviderId}/connections/${selectedConnection}/schema/annotations`,
         { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(annotationData) }
       )
       if (!response.ok) throw new Error('Failed to save annotation')
