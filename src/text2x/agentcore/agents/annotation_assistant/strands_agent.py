@@ -249,47 +249,26 @@ def assistant_save_annotation(
 
     try:
         import asyncio
+        import nest_asyncio
 
-        def save_annotation_sync():
-            return asyncio.run(
-                ctx.annotation_repo.create(
-                    provider_id=ctx.provider_id,
-                    description=description,
-                    created_by=ctx.user_id,
-                    table_name=table_name,
-                    column_name=column_name,
-                    business_terms=business_terms,
-                    examples=examples,
-                    relationships=relationships,
-                    date_format=date_format,
-                    enum_values=enum_values,
-                    sensitive=sensitive,
-                )
+        nest_asyncio.apply()
+
+        loop = asyncio.get_event_loop()
+        annotation = loop.run_until_complete(
+            ctx.annotation_repo.create(
+                provider_id=ctx.provider_id,
+                description=description,
+                created_by=ctx.user_id,
+                table_name=table_name,
+                column_name=column_name,
+                business_terms=business_terms,
+                examples=examples,
+                relationships=relationships,
+                date_format=date_format,
+                enum_values=enum_values,
+                sensitive=sensitive,
             )
-
-        try:
-            annotation = save_annotation_sync()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                annotation = loop.run_until_complete(
-                    ctx.annotation_repo.create(
-                        provider_id=ctx.provider_id,
-                        description=description,
-                        created_by=ctx.user_id,
-                        table_name=table_name,
-                        column_name=column_name,
-                        business_terms=business_terms,
-                        examples=examples,
-                        relationships=relationships,
-                        date_format=date_format,
-                        enum_values=enum_values,
-                        sensitive=sensitive,
-                    )
-                )
-            finally:
-                loop.close()
+        )
 
         return {
             "success": True,
@@ -385,6 +364,48 @@ def list_annotations(
         }
 
 
+@tool
+def clear_conversation() -> dict:
+    """Clear the conversation history and start fresh.
+
+    Use this tool when the user wants to start a new conversation
+    or when the conversation has become too long and confusing.
+
+    Args:
+        None - this tool doesn't require any arguments
+
+    Returns:
+        Dictionary with success status and message
+    """
+    try:
+        from text2x.api.routes.annotations import _conversation_context
+        from uuid import UUID
+
+        ctx = get_assistant_context()
+
+        # Get conversation_id from context
+        conversation_id = ctx.conversation_id if ctx else None
+
+        if conversation_id and conversation_id in _conversation_context:
+            del _conversation_context[conversation_id]
+            logger.info(f"Cleared conversation history for {conversation_id}")
+            return {
+                "success": True,
+                "message": "Conversation history cleared. How can I help you start fresh?",
+            }
+        else:
+            return {
+                "success": True,
+                "message": "No conversation history to clear. How can I help you?",
+            }
+    except Exception as e:
+        logger.error(f"Failed to clear conversation: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Failed to clear conversation: {str(e)}",
+        }
+
+
 # System prompt for the annotation assistant
 ANNOTATION_ASSISTANT_SYSTEM_PROMPT = """You are a helpful database schema annotation assistant. Your role is to help users understand their database schemas and create meaningful annotations through interactive conversation.
 
@@ -412,6 +433,9 @@ You have access to the following tools:
 4. **list_annotations** - List existing annotations
    - table_name (optional): Filter by table name
    - column_name (optional): Filter by column name
+
+5. **clear_conversation** - Clear conversation history
+   - No arguments required
 
 **Your responsibilities:**
 1. Engage in natural conversation to understand what the user needs
