@@ -652,13 +652,17 @@ class AnnotationRequest(BaseModel):
 
 
 @router.get(
-    "/workspaces/{workspace_id}/connections/{connection_id}/schema",
+    "/workspaces/{workspace_id}/providers/{provider_id}/connections/{connection_id}/schema",
     response_model=SchemaResponse,
     status_code=status.HTTP_200_OK,
     summary="Get connection schema",
     description="Retrieve the full database schema for a connection",
 )
-async def get_connection_schema(workspace_id: UUID, connection_id: UUID) -> SchemaResponse:
+async def get_connection_schema(
+    workspace_id: UUID,
+    provider_id: UUID,
+    connection_id: UUID,
+) -> SchemaResponse:
     """
     Get the complete database schema for a connection.
 
@@ -754,12 +758,13 @@ async def get_connection_schema(workspace_id: UUID, connection_id: UUID) -> Sche
 
 
 @router.get(
-    "/workspaces/{workspace_id}/connections/{connection_id}/schema/annotations",
+    "/workspaces/{workspace_id}/providers/{provider_id}/connections/{connection_id}/schema/annotations",
     status_code=status.HTTP_200_OK,
     summary="Get all annotations for a connection",
 )
 async def get_annotations(
     workspace_id: UUID,
+    provider_id: UUID,
     connection_id: UUID,
 ):
     """Get all saved annotations for a connection."""
@@ -797,12 +802,13 @@ async def get_annotations(
 
 
 @router.post(
-    "/workspaces/{workspace_id}/connections/{connection_id}/schema/annotations",
+    "/workspaces/{workspace_id}/providers/{provider_id}/connections/{connection_id}/schema/annotations",
     status_code=status.HTTP_200_OK,
     summary="Save annotation for a table",
 )
 async def save_annotation(
     workspace_id: UUID,
+    provider_id: UUID,
     connection_id: UUID,
     request: AnnotationRequest,
 ):
@@ -872,14 +878,14 @@ async def save_annotation(
 
 
 @router.post(
-    "/workspaces/{workspace_id}/connections/{connection_id}/schema/auto-annotate",
+    "/workspaces/{workspace_id}/providers/{provider_id}/connections/{connection_id}/schema/auto-annotate",
     response_model=AutoAnnotateResponse,
     status_code=status.HTTP_200_OK,
     summary="Auto-annotate table schema",
     description="Use LLM to automatically generate schema annotations for a table",
 )
 async def auto_annotate_table(
-    workspace_id: UUID, connection_id: UUID, request: AutoAnnotateRequest
+    workspace_id: UUID, provider_id: UUID, connection_id: UUID, request: AutoAnnotateRequest
 ) -> AutoAnnotateResponse:
     """
     Automatically generate schema annotations for a table using LLM.
@@ -1380,12 +1386,13 @@ JSON OUTPUT:"""
 
 
 @router.post(
-    "/workspaces/{workspace_id}/connections/{connection_id}/schema/auto-annotate/stream",
+    "/workspaces/{workspace_id}/providers/{provider_id}/connections/{connection_id}/schema/auto-annotate/stream",
     summary="Auto-annotate table schema (streaming)",
     description="Use LLM to automatically generate schema annotations with SSE streaming",
 )
 async def auto_annotate_table_stream(
     workspace_id: UUID,
+    provider_id: UUID,
     connection_id: UUID,
     request: AutoAnnotateRequest,
 ):
