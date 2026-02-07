@@ -21,6 +21,7 @@ function SchemaAnnotation() {
   const navigate = useNavigate()
   const { currentWorkspace, workspaces, selectWorkspace, loading: wsLoading } = useWorkspace()
   const [connections, setConnections] = useState([])
+  const [connLoading, setConnLoading] = useState(false)
   const [selectedConnection, setSelectedConnection] = useState('')
   const [selectedProviderId, setSelectedProviderId] = useState('')
   const [schema, setSchema] = useState([])
@@ -46,17 +47,24 @@ function SchemaAnnotation() {
   const connParam = searchParams.get('connection')
 
   useEffect(() => {
-    if (wsLoading) return
-    if (wsParam && currentWorkspace?.id && wsParam !== currentWorkspace.id) {
+    // Fetch workspaces on mount
+    if (!workspaces.length && !wsLoading) {
+      // Workspaces empty and not loading - nothing to do
+      return
+    }
+    
+    // If we have a workspace param, ensure it's selected
+    if (wsParam && currentWorkspace?.id !== wsParam) {
       const ws = workspaces.find(w => w.id === wsParam)
       if (ws) selectWorkspace(ws)
     }
-  }, [wsLoading, wsParam, currentWorkspace, workspaces])
-
-  useEffect(() => {
-    if (wsLoading) return
-    fetchConnections(wsParam || currentWorkspace?.id)
-  }, [wsLoading, wsParam, currentWorkspace?.id])
+    
+    // Fetch connections for current workspace
+    const workspaceId = wsParam || currentWorkspace?.id
+    if (workspaceId) {
+      fetchConnections(workspaceId)
+    }
+  }, [wsLoading, wsParam, currentWorkspace, workspaces.length])
 
   useEffect(() => {
     if (selectedConnection) {
@@ -71,6 +79,7 @@ function SchemaAnnotation() {
 
   const fetchConnections = async (workspaceId) => {
     if (!workspaceId) return
+    setConnLoading(true)
     try {
       setError(null)
       const token = localStorage.getItem('access_token')
@@ -112,6 +121,8 @@ function SchemaAnnotation() {
     } catch (err) {
       console.error('Error fetching connections:', err)
       setError('Failed to load connections')
+    } finally {
+      setConnLoading(false)
     }
   }
 
@@ -397,22 +408,32 @@ function SchemaAnnotation() {
               value={wsParam || currentWorkspace?.id || ''}
               onChange={(e) => handleWorkspaceChange(e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              disabled={wsLoading}
+              disabled={wsLoading || workspaces.length === 0}
             >
-              {workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
-              ))}
+              {wsLoading || workspaces.length === 0 ? (
+                <option value="">Loading workspaces...</option>
+              ) : (
+                workspaces.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
+                ))
+              )}
             </select>
 
             <select
               value={selectedConnection}
               onChange={(e) => handleConnectionChange(e.target.value)}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              disabled={connections.length === 0}
+              disabled={connLoading || connections.length === 0}
             >
-              {connections.map((connection) => (
-                <option key={connection.id} value={connection.id}>{connection.name} ({connection.host}:{connection.port}/{connection.database})</option>
-              ))}
+              {connLoading ? (
+                <option value="">Loading connections...</option>
+              ) : connections.length === 0 ? (
+                <option value="">No connections available</option>
+              ) : (
+                connections.map((connection) => (
+                  <option key={connection.id} value={connection.id}>{connection.name} ({connection.host}:{connection.port}/{connection.database})</option>
+                ))
+              )}
             </select>
 
             <button
