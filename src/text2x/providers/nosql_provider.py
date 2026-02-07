@@ -1,4 +1,5 @@
 """NoSQL Provider Implementation for MongoDB"""
+
 import asyncio
 import time
 import json
@@ -25,6 +26,7 @@ from .base import (
 @dataclass
 class MongoDBConnectionConfig:
     """Configuration for MongoDB connection"""
+
     connection_string: str  # mongodb://host:port or mongodb+srv://...
     database: str
     username: Optional[str] = None
@@ -79,7 +81,9 @@ class MongoDBConnectionConfig:
 class NoSQLProvider(QueryProvider):
     """NoSQL Provider for MongoDB"""
 
-    def __init__(self, config: MongoDBConnectionConfig, provider_config: Optional[ProviderConfig] = None):
+    def __init__(
+        self, config: MongoDBConnectionConfig, provider_config: Optional[ProviderConfig] = None
+    ):
         """
         Initialize NoSQL Provider for MongoDB
 
@@ -165,6 +169,7 @@ class NoSQLProvider(QueryProvider):
                     cursor = collection.list_indexes()
                     async for index in cursor:
                         from .base import IndexInfo
+
                         index_info = IndexInfo(
                             name=index.get("name", ""),
                             columns=list(index.get("key", {}).keys()),
@@ -193,7 +198,7 @@ class NoSQLProvider(QueryProvider):
                     "database": self.config.database,
                     "collection_count": len(collection_names),
                     "provider_type": "mongodb",
-                }
+                },
             )
 
             # Cache the schema
@@ -210,13 +215,11 @@ class NoSQLProvider(QueryProvider):
                 metadata={
                     "error": str(e),
                     "database": self.config.database,
-                }
+                },
             )
 
     async def _infer_schema_from_samples(
-        self,
-        collection,
-        sample_size: int = 100
+        self, collection, sample_size: int = 100
     ) -> List[ColumnInfo]:
         """
         Infer schema by sampling documents from a collection
@@ -226,70 +229,25 @@ class NoSQLProvider(QueryProvider):
             sample_size: Number of documents to sample
 
         Returns:
-            List of inferred columns
+            List of inferred columns with nested structure for objects
         """
+        from collections import defaultdict
+
         field_types: Dict[str, set] = {}
-        field_nullable: Dict[str, int] = {}  # Count of docs missing this field
-        total_docs = 0
+        field_nullable: Dict[str, int] = defaultdict(int)
+        nested_fields: Dict[str, Dict[str, Dict]] = defaultdict(
+            lambda: {"types": set(), "nullable": False, "children": {}}
+        )
 
         try:
-            # Sample documents
             cursor = collection.find().limit(sample_size)
             async for doc in cursor:
-                total_docs += 1
+                self._sample_document(doc, "", field_types, field_nullable, nested_fields)
 
-                # Flatten nested structure to get all fields
-                flat_fields = self._flatten_document(doc)
-
-                for field_name, value in flat_fields.items():
-                    if field_name not in field_types:
-                        field_types[field_name] = set()
-                        field_nullable[field_name] = 0
-
-                    field_types[field_name].add(self._get_bson_type(value))
-
-                # Track missing fields
-                all_fields = set(field_types.keys())
-                doc_fields = set(flat_fields.keys())
-                missing = all_fields - doc_fields
-                for field in missing:
-                    field_nullable[field] += 1
-
-            # Convert to ColumnInfo
-            columns = []
-            for field_name, types in field_types.items():
-                # Determine the primary type (most common)
-                type_str = " | ".join(sorted(types))
-
-                # Check if field is nullable (missing in some docs)
-                nullable = field_nullable.get(field_name, 0) > 0
-
-                col_info = ColumnInfo(
-                    name=field_name,
-                    type=type_str,
-                    nullable=nullable,
-                    primary_key=(field_name == "_id"),
-                    comment=None,
-                )
-                columns.append(col_info)
-
-            # Always ensure _id is first and present
-            id_col = next((c for c in columns if c.name == "_id"), None)
-            if id_col:
-                columns = [id_col] + [c for c in columns if c.name != "_id"]
-            else:
-                # Add _id if not found in samples (edge case)
-                columns.insert(0, ColumnInfo(
-                    name="_id",
-                    type="ObjectId",
-                    nullable=False,
-                    primary_key=True,
-                ))
-
+            columns = self._build_nested_columns(field_types, field_nullable, nested_fields)
             return columns
 
         except Exception:
-            # Return minimal schema on error
             return [
                 ColumnInfo(
                     name="_id",
@@ -298,6 +256,112 @@ class NoSQLProvider(QueryProvider):
                     primary_key=True,
                 )
             ]
+
+    def _sample_document(
+        self,
+        doc: Any,
+        prefix: str,
+        field_types: Dict[str, set],
+        field_nullable: Dict[str, int],
+        nested_fields: Dict[str, Dict],
+    ) -> None:
+        """Recursively sample document to build nested schema"""
+        if doc is None:
+            return
+
+        if isinstance(doc, dict):
+            for key, value in doc.items():
+                full_key = f"{prefix}.{key}" if prefix else key
+
+                if isinstance(value, dict):
+                    nested_fields[full_key]["is_object"] = True
+                    self._sample_document(
+                        value, full_key, field_types, field_nullable, nested_fields
+                    )
+                elif isinstance(value, list):
+                    if value:
+                        first_elem = value[0]
+                        if isinstance(first_elem, dict):
+                            nested_fields[full_key]["is_object"] = True
+                            self._sample_document(
+                                first_elem, full_key, field_types, field_nullable, nested_fields
+                            )
+                        bson_type = self._get_bson_type(value)
+                        self._record_field(field_types, nested_fields, full_key, bson_type)
+                    else:
+                        self._record_field(field_types, nested_fields, full_key, "Array")
+                else:
+                    bson_type = self._get_bson_type(value)
+                    self._record_field(field_types, nested_fields, full_key, bson_type)
+
+    def _record_field(
+        self,
+        field_types: Dict[str, set],
+        nested_fields: Dict[str, Dict],
+        field_name: str,
+        bson_type: str,
+    ) -> None:
+        """Record a field and its type"""
+        if field_name not in field_types:
+            field_types[field_name] = set()
+        field_types[field_name].add(bson_type)
+        if field_name not in nested_fields:
+            nested_fields[field_name] = {"types": set(), "nullable": False, "children": {}}
+        nested_fields[field_name]["types"].add(bson_type)
+
+    def _build_nested_columns(
+        self,
+        field_types: Dict[str, set],
+        field_nullable: Dict[str, int],
+        nested_fields: Dict[str, Dict],
+    ) -> List[ColumnInfo]:
+        """Build ColumnInfo list with nested structure"""
+        columns: Dict[str, ColumnInfo] = {}
+
+        for path in sorted(field_types.keys()):
+            parts = path.split(".")
+            is_leaf = len(parts) == 1
+
+            if is_leaf:
+                col = ColumnInfo(
+                    name=path,
+                    type=self._merge_types(field_types[path]),
+                    nullable=field_nullable.get(path, 0) > 0,
+                    primary_key=(path == "_id"),
+                    nested=None,
+                )
+                columns[path] = col
+            else:
+                parent_path = ".".join(parts[:-1])
+                field_name = parts[-1]
+
+                if parent_path not in columns:
+                    columns[parent_path] = ColumnInfo(
+                        name=parent_path, type="Object", nullable=False, nested=[]
+                    )
+
+                child_col = ColumnInfo(
+                    name=field_name,
+                    type=self._merge_types(field_types[path]),
+                    nullable=field_nullable.get(path, 0) > 0,
+                )
+
+                if columns[parent_path].nested is None:
+                    columns[parent_path].nested = []
+                columns[parent_path].nested.append(child_col)
+
+        result = list(columns.values())
+        id_col = next((c for c in result if c.name == "_id"), None)
+        if id_col:
+            result = [id_col] + [c for c in result if c.name != "_id"]
+
+        return result
+
+    def _merge_types(self, types: set) -> str:
+        """Merge multiple types into a single type string"""
+        if len(types) == 1:
+            return next(iter(types))
+        return " | ".join(sorted(types))
 
     def _flatten_document(self, doc: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
         """
@@ -397,9 +461,17 @@ class NoSQLProvider(QueryProvider):
             # Validate operation type
             operation = parsed_query.get("operation", "find")
             valid_operations = [
-                "find", "find_one", "aggregate", "count_documents",
-                "insert_one", "insert_many", "update_one", "update_many",
-                "delete_one", "delete_many", "distinct"
+                "find",
+                "find_one",
+                "aggregate",
+                "count_documents",
+                "insert_one",
+                "insert_many",
+                "update_one",
+                "update_many",
+                "delete_one",
+                "delete_many",
+                "distinct",
             ]
 
             if operation not in valid_operations:
@@ -503,10 +575,7 @@ class NoSQLProvider(QueryProvider):
             )
 
     async def _execute_find(
-        self,
-        collection,
-        parsed_query: Dict[str, Any],
-        limit: int
+        self, collection, parsed_query: Dict[str, Any], limit: int
     ) -> ExecutionResult:
         """Execute find operation"""
         filter_query = parsed_query.get("filter", {})
@@ -542,11 +611,7 @@ class NoSQLProvider(QueryProvider):
             sample_rows=documents[:10],
         )
 
-    async def _execute_find_one(
-        self,
-        collection,
-        parsed_query: Dict[str, Any]
-    ) -> ExecutionResult:
+    async def _execute_find_one(self, collection, parsed_query: Dict[str, Any]) -> ExecutionResult:
         """Execute find_one operation"""
         filter_query = parsed_query.get("filter", {})
         projection = parsed_query.get("projection")
@@ -571,10 +636,7 @@ class NoSQLProvider(QueryProvider):
             )
 
     async def _execute_aggregate(
-        self,
-        collection,
-        parsed_query: Dict[str, Any],
-        limit: int
+        self, collection, parsed_query: Dict[str, Any], limit: int
     ) -> ExecutionResult:
         """Execute aggregation pipeline"""
         pipeline = parsed_query.get("pipeline", [])
@@ -603,11 +665,7 @@ class NoSQLProvider(QueryProvider):
             sample_rows=documents[:10],
         )
 
-    async def _execute_count(
-        self,
-        collection,
-        parsed_query: Dict[str, Any]
-    ) -> ExecutionResult:
+    async def _execute_count(self, collection, parsed_query: Dict[str, Any]) -> ExecutionResult:
         """Execute count_documents operation"""
         filter_query = parsed_query.get("filter", {})
         count = await collection.count_documents(filter_query)
@@ -619,11 +677,7 @@ class NoSQLProvider(QueryProvider):
             sample_rows=[{"count": count}],
         )
 
-    async def _execute_distinct(
-        self,
-        collection,
-        parsed_query: Dict[str, Any]
-    ) -> ExecutionResult:
+    async def _execute_distinct(self, collection, parsed_query: Dict[str, Any]) -> ExecutionResult:
         """Execute distinct operation"""
         field = parsed_query.get("field")
         filter_query = parsed_query.get("filter", {})
@@ -644,10 +698,7 @@ class NoSQLProvider(QueryProvider):
         )
 
     async def _execute_insert(
-        self,
-        collection,
-        parsed_query: Dict[str, Any],
-        operation: str
+        self, collection, parsed_query: Dict[str, Any], operation: str
     ) -> ExecutionResult:
         """Execute insert operation"""
         if operation == "insert_one":
@@ -677,10 +728,7 @@ class NoSQLProvider(QueryProvider):
         return ExecutionResult(success=False, error=f"Unknown insert operation: {operation}")
 
     async def _execute_update(
-        self,
-        collection,
-        parsed_query: Dict[str, Any],
-        operation: str
+        self, collection, parsed_query: Dict[str, Any], operation: str
     ) -> ExecutionResult:
         """Execute update operation"""
         filter_query = parsed_query.get("filter", {})
@@ -694,10 +742,12 @@ class NoSQLProvider(QueryProvider):
             return ExecutionResult(
                 success=True,
                 affected_rows=result.modified_count,
-                sample_rows=[{
-                    "matched_count": result.matched_count,
-                    "modified_count": result.modified_count,
-                }],
+                sample_rows=[
+                    {
+                        "matched_count": result.matched_count,
+                        "modified_count": result.modified_count,
+                    }
+                ],
             )
 
         elif operation == "update_many":
@@ -705,19 +755,18 @@ class NoSQLProvider(QueryProvider):
             return ExecutionResult(
                 success=True,
                 affected_rows=result.modified_count,
-                sample_rows=[{
-                    "matched_count": result.matched_count,
-                    "modified_count": result.modified_count,
-                }],
+                sample_rows=[
+                    {
+                        "matched_count": result.matched_count,
+                        "modified_count": result.modified_count,
+                    }
+                ],
             )
 
         return ExecutionResult(success=False, error=f"Unknown update operation: {operation}")
 
     async def _execute_delete(
-        self,
-        collection,
-        parsed_query: Dict[str, Any],
-        operation: str
+        self, collection, parsed_query: Dict[str, Any], operation: str
     ) -> ExecutionResult:
         """Execute delete operation"""
         filter_query = parsed_query.get("filter", {})
@@ -752,7 +801,7 @@ def create_nosql_provider(
     database: str = "text2x",
     username: Optional[str] = None,
     password: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> NoSQLProvider:
     """
     Create NoSQL provider with sensible defaults
@@ -772,7 +821,7 @@ def create_nosql_provider(
         database=database,
         username=username,
         password=password,
-        **kwargs
+        **kwargs,
     )
 
     return NoSQLProvider(config)

@@ -1,4 +1,5 @@
 """Tests for NoSQL MongoDB Provider"""
+
 import pytest
 import pytest_asyncio
 import asyncio
@@ -37,69 +38,64 @@ async def setup_test_database():
     await db.test_orders.drop()
 
     # Insert test data into customers collection
-    await db.test_customers.insert_many([
-        {
-            "name": "Alice Smith",
-            "email": "alice@example.com",
-            "age": 30,
-            "address": {
-                "city": "New York",
-                "state": "NY"
+    await db.test_customers.insert_many(
+        [
+            {
+                "name": "Alice Smith",
+                "email": "alice@example.com",
+                "age": 30,
+                "address": {"city": "New York", "state": "NY"},
+                "tags": ["premium", "active"],
             },
-            "tags": ["premium", "active"]
-        },
-        {
-            "name": "Bob Jones",
-            "email": "bob@example.com",
-            "age": 25,
-            "address": {
-                "city": "Los Angeles",
-                "state": "CA"
+            {
+                "name": "Bob Jones",
+                "email": "bob@example.com",
+                "age": 25,
+                "address": {"city": "Los Angeles", "state": "CA"},
+                "tags": ["active"],
             },
-            "tags": ["active"]
-        },
-        {
-            "name": "Charlie Brown",
-            "email": "charlie@example.com",
-            "age": 35,
-            "address": {
-                "city": "Chicago",
-                "state": "IL"
+            {
+                "name": "Charlie Brown",
+                "email": "charlie@example.com",
+                "age": 35,
+                "address": {"city": "Chicago", "state": "IL"},
+                "tags": ["premium"],
             },
-            "tags": ["premium"]
-        },
-    ])
+        ]
+    )
 
     # Insert test data into orders collection
     customers = await db.test_customers.find().to_list(length=None)
     customer_ids = [c["_id"] for c in customers]
 
-    await db.test_orders.insert_many([
-        {
-            "customer_id": customer_ids[0],
-            "amount": 100.50,
-            "status": "completed",
-            "items": ["item1", "item2"]
-        },
-        {
-            "customer_id": customer_ids[0],
-            "amount": 200.00,
-            "status": "completed",
-            "items": ["item3"]
-        },
-        {
-            "customer_id": customer_ids[1],
-            "amount": 150.75,
-            "status": "pending",
-            "items": ["item1", "item4"]
-        },
-        {
-            "customer_id": customer_ids[2],
-            "amount": 300.00,
-            "status": "completed",
-            "items": ["item5", "item6", "item7"]
-        },
-    ])
+    await db.test_orders.insert_many(
+        [
+            {
+                "customer_id": customer_ids[0],
+                "amount": 100.50,
+                "status": "completed",
+                "items": ["item1", "item2"],
+            },
+            {
+                "customer_id": customer_ids[0],
+                "amount": 200.00,
+                "status": "completed",
+                "items": ["item3"],
+            },
+            {
+                "customer_id": customer_ids[1],
+                "amount": 150.75,
+                "status": "pending",
+                "items": ["item1", "item4"],
+            },
+            {
+                "customer_id": customer_ids[2],
+                "amount": 300.00,
+                "status": "completed",
+                "items": ["item5", "item6", "item7"],
+            },
+        ]
+    )
 
     # Create indexes
     await db.test_customers.create_index("email", unique=True)
@@ -145,10 +141,7 @@ class TestNoSQLProvider:
         assert len(schema.collections) >= 2
 
         # Find test_customers collection
-        customers_table = next(
-            (t for t in schema.tables if t.name == "test_customers"),
-            None
-        )
+        customers_table = next((t for t in schema.tables if t.name == "test_customers"), None)
         assert customers_table is not None
 
         # Check that _id is present and is primary key
@@ -161,10 +154,7 @@ class TestNoSQLProvider:
         assert name_col is not None
 
         # Find test_orders collection
-        orders_table = next(
-            (t for t in schema.tables if t.name == "test_orders"),
-            None
-        )
+        orders_table = next((t for t in schema.tables if t.name == "test_orders"), None)
         assert orders_table is not None
 
         # Check indexes
@@ -193,11 +183,9 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_validate_syntax_valid(self, nosql_provider, setup_test_database):
         """Test syntax validation with valid query"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "find",
-            "filter": {"age": {"$gte": 25}}
-        })
+        query = json.dumps(
+            {"collection": "test_customers", "operation": "find", "filter": {"age": {"$gte": 25}}}
+        )
 
         result = await nosql_provider.validate_syntax(query)
 
@@ -217,10 +205,7 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_validate_syntax_missing_collection(self, nosql_provider):
         """Test syntax validation with missing collection field"""
-        query = json.dumps({
-            "operation": "find",
-            "filter": {}
-        })
+        query = json.dumps({"operation": "find", "filter": {}})
         result = await nosql_provider.validate_syntax(query)
 
         assert not result.valid
@@ -229,22 +214,18 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_validate_syntax_invalid_operation(self, nosql_provider):
         """Test syntax validation with invalid operation"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "invalid_operation"
-        })
+        query = json.dumps({"collection": "test_customers", "operation": "invalid_operation"})
         result = await nosql_provider.validate_syntax(query)
 
         assert not result.valid
         assert "operation" in result.error
 
     @pytest.mark.asyncio
-    async def test_validate_syntax_nonexistent_collection(self, nosql_provider, setup_test_database):
+    async def test_validate_syntax_nonexistent_collection(
+        self, nosql_provider, setup_test_database
+    ):
         """Test syntax validation with nonexistent collection"""
-        query = json.dumps({
-            "collection": "nonexistent_collection",
-            "operation": "find"
-        })
+        query = json.dumps({"collection": "nonexistent_collection", "operation": "find"})
         result = await nosql_provider.validate_syntax(query)
 
         # Should be valid but with warning
@@ -255,11 +236,9 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_find(self, nosql_provider, setup_test_database):
         """Test query execution with find operation"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "find",
-            "filter": {"age": {"$gte": 30}}
-        })
+        query = json.dumps(
+            {"collection": "test_customers", "operation": "find", "filter": {"age": {"$gte": 30}}}
+        )
 
         result = await nosql_provider.execute_query(query)
 
@@ -273,12 +252,14 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_find_with_projection(self, nosql_provider, setup_test_database):
         """Test query execution with projection"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "find",
-            "filter": {},
-            "projection": {"name": 1, "email": 1}
-        })
+        query = json.dumps(
+            {
+                "collection": "test_customers",
+                "operation": "find",
+                "filter": {},
+                "projection": {"name": 1, "email": 1},
+            }
+        )
 
         result = await nosql_provider.execute_query(query)
 
@@ -291,12 +272,14 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_find_with_sort(self, nosql_provider, setup_test_database):
         """Test query execution with sort"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "find",
-            "filter": {},
-            "sort": [("age", -1)]  # Sort by age descending
-        })
+        query = json.dumps(
+            {
+                "collection": "test_customers",
+                "operation": "find",
+                "filter": {},
+                "sort": [("age", -1)],  # Sort by age descending
+            }
+        )
 
         result = await nosql_provider.execute_query(query)
 
@@ -309,11 +292,13 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_find_one(self, nosql_provider, setup_test_database):
         """Test query execution with find_one operation"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "find_one",
-            "filter": {"name": "Alice Smith"}
-        })
+        query = json.dumps(
+            {
+                "collection": "test_customers",
+                "operation": "find_one",
+                "filter": {"name": "Alice Smith"},
+            }
+        )
 
         result = await nosql_provider.execute_query(query)
 
@@ -325,17 +310,21 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_aggregate(self, nosql_provider, setup_test_database):
         """Test query execution with aggregation pipeline"""
-        query = json.dumps({
-            "collection": "test_orders",
-            "operation": "aggregate",
-            "pipeline": [
-                {"$group": {
-                    "_id": "$status",
-                    "total_amount": {"$sum": "$amount"},
-                    "count": {"$sum": 1}
-                }}
-            ]
-        })
+        query = json.dumps(
+            {
+                "collection": "test_orders",
+                "operation": "aggregate",
+                "pipeline": [
+                    {
+                        "$group": {
+                            "_id": "$status",
+                            "total_amount": {"$sum": "$amount"},
+                            "count": {"$sum": 1},
+                        }
+                    }
+                ],
+            }
+        )
 
         result = await nosql_provider.execute_query(query)
 
@@ -347,11 +336,13 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_count_documents(self, nosql_provider, setup_test_database):
         """Test query execution with count_documents operation"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "count_documents",
-            "filter": {"age": {"$gt": 25}}
-        })
+        query = json.dumps(
+            {
+                "collection": "test_customers",
+                "operation": "count_documents",
+                "filter": {"age": {"$gt": 25}},
+            }
+        )
 
         result = await nosql_provider.execute_query(query)
 
@@ -362,11 +353,9 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_distinct(self, nosql_provider, setup_test_database):
         """Test query execution with distinct operation"""
-        query = json.dumps({
-            "collection": "test_orders",
-            "operation": "distinct",
-            "field": "status"
-        })
+        query = json.dumps(
+            {"collection": "test_orders", "operation": "distinct", "field": "status"}
+        )
 
         result = await nosql_provider.execute_query(query)
 
@@ -377,11 +366,7 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_with_limit(self, nosql_provider, setup_test_database):
         """Test query execution with limit"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "find",
-            "filter": {}
-        })
+        query = json.dumps({"collection": "test_customers", "operation": "find", "filter": {}})
 
         result = await nosql_provider.execute_query(query, limit=2)
 
@@ -391,11 +376,13 @@ class TestNoSQLProvider:
     @pytest.mark.asyncio
     async def test_execute_query_error(self, nosql_provider, setup_test_database):
         """Test query execution with error"""
-        query = json.dumps({
-            "collection": "test_customers",
-            "operation": "find",
-            "filter": {"$invalid": "operator"}
-        })
+        query = json.dumps(
+            {
+                "collection": "test_customers",
+                "operation": "find",
+                "filter": {"$invalid": "operator"},
+            }
+        )
 
         result = await nosql_provider.execute_query(query)
 
@@ -410,11 +397,8 @@ class TestNoSQLProvider:
         doc = {
             "name": "John",
             "age": 30,
-            "address": {
-                "city": "New York",
-                "zip": "10001"
-            },
-            "tags": ["tag1", "tag2"]
+            "address": {"city": "New York", "zip": "10001"},
+            "tags": ["tag1", "tag2"],
         }
 
         flattened = provider._flatten_document(doc)
@@ -425,9 +409,78 @@ class TestNoSQLProvider:
         assert "address.zip" in flattened
         assert "tags" in flattened
 
+    @pytest.mark.asyncio
+    async def test_nested_schema_structure(self, nosql_provider):
+        """Test that nested documents return proper hierarchical structure"""
+        client = AsyncIOMotorClient(TEST_CONFIG.get_connection_string())
+        db = client[TEST_CONFIG.database]
+
+        # Create test collection with nested documents
+        await db.test_nested.drop()
+        await db.test_nested.insert_many(
+            [
+                {
+                    "_id": "nested1",
+                    "level1": "value1",
+                    "metadata": {
+                        "request_id": "req-001",
+                        "user": {"id": "user-123", "name": "Alice"},
+                    },
+                    "tags": ["tag1", "tag2"],
+                },
+                {
+                    "_id": "nested2",
+                    "level1": "value2",
+                    "metadata": {
+                        "request_id": "req-002",
+                        "user": {"id": "user-456", "email": "alice@example.com"},
+                        "optional_field": "present",
+                    },
+                    "tags": [],
+                },
+            ]
+        )
+
+        try:
+            schema = await nosql_provider.get_schema(force_refresh=True)
+            nested_table = next((t for t in schema.tables if t.name == "test_nested"), None)
+
+            assert nested_table is not None, "test_nested collection not found"
+
+            # Check that we have the top-level columns with nested structure
+            col_names = [c.name for c in nested_table.columns]
+            assert "_id" in col_names
+            assert "level1" in col_names
+            assert "metadata" in col_names
+            assert "tags" in col_names
+
+            # Find metadata column and verify it has nested structure
+            metadata_col = next((c for c in nested_table.columns if c.name == "metadata"), None)
+            assert metadata_col is not None, "metadata column not found"
+            assert metadata_col.type == "Object", f"Expected Object type, got {metadata_col.type}"
+            assert metadata_col.nested is not None, "metadata should have nested columns"
+
+            # Check nested fields in metadata
+            nested_names = [c.name for c in metadata_col.nested]
+            assert "request_id" in nested_names, f"request_id not in {nested_names}"
+            assert "user" in nested_names, f"user not in {nested_names}"
+
+            # Find user column inside metadata and verify it has nested structure
+            user_col = next((c for c in metadata_col.nested if c.name == "user"), None)
+            assert user_col is not None, "user column not found in metadata"
+            assert user_col.type == "Object", f"Expected Object type for user, got {user_col.type}"
+            assert user_col.nested is not None, "user should have nested columns"
+
+            user_nested_names = [c.name for c in user_col.nested]
+            assert "id" in user_nested_names, f"id not in {user_nested_names}"
+            assert "name" in user_nested_names or "email" in user_nested_names
+
+        finally:
+            await db.test_nested.drop()
+            client.close()
+
     def test_get_bson_type(self):
         """Test BSON type detection"""
-        # Create a provider just for this test
         provider = NoSQLProvider(TEST_CONFIG)
 
         assert provider._get_bson_type("string") == "String"
