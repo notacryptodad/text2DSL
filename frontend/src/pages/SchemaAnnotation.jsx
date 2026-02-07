@@ -338,7 +338,15 @@ function SchemaAnnotation() {
       if (!response.ok) throw new Error('Failed to send message')
       const data = await response.json()
       setConversationId(data.conversation_id)
-      setChatMessages([...chatMessages, userMessage, { type: 'assistant', content: data.response, timestamp: new Date() }])
+      
+      // Check if assistant cleared the conversation
+      const isCleared = data.response.includes("Conversation cleared")
+      if (isCleared) {
+        setChatMessages([{ type: 'assistant', content: data.response, timestamp: new Date() }])
+      } else {
+        setChatMessages([...chatMessages, userMessage, { type: 'assistant', content: data.response, timestamp: new Date() }])
+      }
+      
       if (data.tool_calls?.some(tc => tc.tool === 'save_annotation')) {
         await fetchAnnotations()
       }
