@@ -30,7 +30,6 @@ class ColumnInfo:
     unique: bool = False
     comment: Optional[str] = None
     autoincrement: bool = False
-    nested: Optional[List["ColumnInfo"]] = None
 
 
 @dataclass

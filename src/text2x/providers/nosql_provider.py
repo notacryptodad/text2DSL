@@ -229,22 +229,19 @@ class NoSQLProvider(QueryProvider):
             sample_size: Number of documents to sample
 
         Returns:
-            List of inferred columns with nested structure for objects
+            List of inferred columns with flattened dot-notation for nested fields
         """
-        from collections import defaultdict
-
         field_types: Dict[str, set] = {}
-        field_nullable: Dict[str, int] = defaultdict(int)
-        nested_fields: Dict[str, Dict[str, Dict]] = defaultdict(
-            lambda: {"types": set(), "nullable": False, "children": {}}
-        )
+        field_nullable: Dict[str, int] = {}
+        total_docs = 0
 
         try:
             cursor = collection.find().limit(sample_size)
             async for doc in cursor:
-                self._sample_document(doc, "", field_types, field_nullable, nested_fields)
+                total_docs += 1
+                self._sample_document(doc, "", field_types, field_nullable)
 
-            columns = self._build_nested_columns(field_types, field_nullable, nested_fields)
+            columns = self._build_columns(field_types, field_nullable)
             return columns
 
         except Exception:
@@ -263,9 +260,8 @@ class NoSQLProvider(QueryProvider):
         prefix: str,
         field_types: Dict[str, set],
         field_nullable: Dict[str, int],
-        nested_fields: Dict[str, Dict],
     ) -> None:
-        """Recursively sample document to build nested schema"""
+        """Recursively sample document to collect all field paths"""
         if doc is None:
             return
 
@@ -274,88 +270,50 @@ class NoSQLProvider(QueryProvider):
                 full_key = f"{prefix}.{key}" if prefix else key
 
                 if isinstance(value, dict):
-                    nested_fields[full_key]["is_object"] = True
-                    self._sample_document(
-                        value, full_key, field_types, field_nullable, nested_fields
-                    )
+                    self._sample_document(value, full_key, field_types, field_nullable)
                 elif isinstance(value, list):
-                    if value:
-                        first_elem = value[0]
-                        if isinstance(first_elem, dict):
-                            nested_fields[full_key]["is_object"] = True
-                            self._sample_document(
-                                first_elem, full_key, field_types, field_nullable, nested_fields
-                            )
-                        bson_type = self._get_bson_type(value)
-                        self._record_field(field_types, nested_fields, full_key, bson_type)
-                    else:
-                        self._record_field(field_types, nested_fields, full_key, "Array")
+                    if value and isinstance(value[0], dict):
+                        self._sample_document(value[0], full_key, field_types, field_nullable)
+                    self._record_field(field_types, field_nullable, full_key, "Array")
                 else:
                     bson_type = self._get_bson_type(value)
-                    self._record_field(field_types, nested_fields, full_key, bson_type)
+                    self._record_field(field_types, field_nullable, full_key, bson_type)
 
     def _record_field(
         self,
         field_types: Dict[str, set],
-        nested_fields: Dict[str, Dict],
+        field_nullable: Dict[str, int],
         field_name: str,
         bson_type: str,
     ) -> None:
         """Record a field and its type"""
         if field_name not in field_types:
             field_types[field_name] = set()
+            field_nullable[field_name] = 0
         field_types[field_name].add(bson_type)
-        if field_name not in nested_fields:
-            nested_fields[field_name] = {"types": set(), "nullable": False, "children": {}}
-        nested_fields[field_name]["types"].add(bson_type)
 
-    def _build_nested_columns(
+    def _build_columns(
         self,
         field_types: Dict[str, set],
         field_nullable: Dict[str, int],
-        nested_fields: Dict[str, Dict],
     ) -> List[ColumnInfo]:
-        """Build ColumnInfo list with nested structure"""
-        columns: Dict[str, ColumnInfo] = {}
+        """Build ColumnInfo list from collected field data"""
+        columns = []
 
-        for path in sorted(field_types.keys()):
-            parts = path.split(".")
-            is_leaf = len(parts) == 1
+        for field_name, types in sorted(field_types.items()):
+            col_info = ColumnInfo(
+                name=field_name,
+                type=self._merge_types(types),
+                nullable=field_nullable.get(field_name, 0) > 0,
+                primary_key=(field_name == "_id"),
+            )
+            columns.append(col_info)
 
-            if is_leaf:
-                col = ColumnInfo(
-                    name=path,
-                    type=self._merge_types(field_types[path]),
-                    nullable=field_nullable.get(path, 0) > 0,
-                    primary_key=(path == "_id"),
-                    nested=None,
-                )
-                columns[path] = col
-            else:
-                parent_path = ".".join(parts[:-1])
-                field_name = parts[-1]
-
-                if parent_path not in columns:
-                    columns[parent_path] = ColumnInfo(
-                        name=parent_path, type="Object", nullable=False, nested=[]
-                    )
-
-                child_col = ColumnInfo(
-                    name=field_name,
-                    type=self._merge_types(field_types[path]),
-                    nullable=field_nullable.get(path, 0) > 0,
-                )
-
-                if columns[parent_path].nested is None:
-                    columns[parent_path].nested = []
-                columns[parent_path].nested.append(child_col)
-
-        result = list(columns.values())
-        id_col = next((c for c in result if c.name == "_id"), None)
+        id_col = next((c for c in columns if c.name == "_id"), None)
         if id_col:
-            result = [id_col] + [c for c in result if c.name != "_id"]
+            columns = [id_col] + [c for c in columns if c.name != "_id"]
 
-        return result
+        return columns
 
     def _merge_types(self, types: set) -> str:
         """Merge multiple types into a single type string"""
