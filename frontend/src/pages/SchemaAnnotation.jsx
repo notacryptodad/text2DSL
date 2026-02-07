@@ -480,11 +480,34 @@ function SchemaAnnotation() {
 
             <div className="2xl:hidden" ref={chatSectionRef}>
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[600px]">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <MessageSquare className="w-5 h-5 text-primary-500" />
                     <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Annotation Assistant</h2>
                   </div>
+                  {chatMessages.length > 0 && (
+                    <button
+                      onClick={async () => {
+                        if (conversationId) {
+                          try {
+                            const token = localStorage.getItem('access_token')
+                            await fetch(
+                              `${apiUrl}/api/v1/annotations/chat/${conversationId}`,
+                              { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }
+                            )
+                          } catch (err) {
+                            console.error('Failed to clear server conversation:', err)
+                          }
+                        }
+                        setChatMessages([])
+                        setConversationId(null)
+                      }}
+                      className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      title="Clear conversation history"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   {chatMessages.length === 0 ? (
@@ -518,11 +541,34 @@ function SchemaAnnotation() {
 
           <div className="hidden 2xl:block w-96 flex-shrink-0">
             <div ref={chatSectionRef} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[calc(100vh-12rem)] sticky top-4">
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <MessageSquare className="w-5 h-5 text-primary-500" />
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Annotation Assistant</h2>
                 </div>
+                {chatMessages.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      if (conversationId) {
+                        try {
+                          const token = localStorage.getItem('access_token')
+                          await fetch(
+                            `${apiUrl}/api/v1/annotations/chat/${conversationId}`,
+                            { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } }
+                          )
+                        } catch (err) {
+                          console.error('Failed to clear server conversation:', err)
+                        }
+                      }
+                      setChatMessages([])
+                      setConversationId(null)
+                    }}
+                    className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    title="Clear conversation history"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {chatMessages.length === 0 ? (

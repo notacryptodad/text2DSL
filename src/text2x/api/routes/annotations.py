@@ -553,6 +553,42 @@ async def get_conversation_history(conversation_id: UUID) -> List[ConversationMe
         )
 
 
+@router.delete(
+    "/chat/{conversation_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Clear conversation history",
+    description="Clear the conversation history for a specific conversation ID",
+)
+async def clear_conversation(conversation_id: UUID) -> Dict[str, str]:
+    """
+    Clear the conversation history for a specific conversation ID.
+
+    Args:
+        conversation_id: UUID of the conversation to clear
+
+    Returns:
+        Success message
+    """
+    try:
+        if conversation_id in _conversation_context:
+            del _conversation_context[conversation_id]
+            logger.info(f"Cleared conversation history: {conversation_id}")
+            return {"message": f"Conversation {conversation_id} cleared successfully"}
+        else:
+            logger.info(f"No conversation found to clear: {conversation_id}")
+            return {"message": f"No conversation found with ID {conversation_id}"}
+
+    except Exception as e:
+        logger.error(f"Error clearing conversation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="clear_error",
+                message="Failed to clear conversation history",
+            ).model_dump(),
+        )
+
+
 # Schema endpoints for Scenario 2
 class CollectionInfo(BaseModel):
     """MongoDB collection info with sampled fields."""
