@@ -9,7 +9,6 @@ import {
   ToggleLeft,
   CheckCircle,
   Circle,
-  Database,
 } from 'lucide-react'
 
 const DATA_TYPE_ICONS = {
@@ -44,84 +43,6 @@ function getDataTypeIcon(dataType) {
   return DATA_TYPE_ICONS.default
 }
 
-function NestedColumnItem({ column, tableName, depth, expandedItems, onToggle, onColumnSelect, annotations }) {
-  const colName = column.column_name || column.name
-  const dataType = column.data_type || column.type || 'string'
-  const Icon = getDataTypeIcon(dataType)
-  const isObject = dataType.toLowerCase() === 'object'
-  const isExpanded = expandedItems.has(`${tableName}.${colName}`)
-  const hasNested = column.nested && column.nested.length > 0
-  const fullName = depth === 0 ? colName : `${tableName}.${colName}`
-  const isColAnnotated = annotations[tableName]?.columns?.find(c => c.name === fullName)?.description
-
-  const paddingLeft = `${depth * 24 + 32}px`
-
-  return (
-    <>
-      <div
-        onClick={() => {
-          if (isObject && hasNested) {
-            onToggle(`${tableName}.${colName}`)
-          }
-          onColumnSelect && onColumnSelect(tableName, fullName)
-        }}
-        className="flex items-center justify-between px-4 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
-      >
-        <div className="flex items-center space-x-2 flex-1 min-w-0">
-          {isObject && hasNested ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggle(`${tableName}.${colName}`)
-              }}
-              className="flex-shrink-0 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-            >
-              {isExpanded ? (
-                <ChevronDown className="w-3 h-3 text-gray-500" />
-              ) : (
-                <ChevronRight className="w-3 h-3 text-gray-500" />
-              )}
-            </button>
-          ) : (
-            <span className="w-4 flex-shrink-0" />
-          )}
-          <Icon className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" />
-          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
-            {colName}
-          </span>
-          <span className="text-xs text-gray-500 dark:text-gray-400 font-mono flex-shrink-0">
-            {dataType}
-          </span>
-          {(column.is_nullable === false || column.nullable === false) && (
-            <span className="text-xs text-red-600 dark:text-red-400 flex-shrink-0">
-              NOT NULL
-            </span>
-          )}
-        </div>
-        {isColAnnotated && (
-          <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0 ml-2" />
-        )}
-      </div>
-      {isExpanded && hasNested && (
-        <div className="bg-gray-50 dark:bg-gray-800/30">
-          {column.nested.map((nestedCol) => (
-            <NestedColumnItem
-              key={nestedCol.name}
-              column={nestedCol}
-              tableName={fullName}
-              depth={depth + 1}
-              expandedItems={expandedItems}
-              onToggle={onToggle}
-              onColumnSelect={onColumnSelect}
-              annotations={annotations}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  )
-}
-
 function SchemaTree({ schema = [], onTableSelect, onColumnSelect, selectedTable, annotations = {} }) {
   const [expandedItems, setExpandedItems] = useState(new Set())
 
@@ -139,6 +60,10 @@ function SchemaTree({ schema = [], onTableSelect, onColumnSelect, selectedTable,
     return annotations[itemName]?.description || annotations[itemName]?.columns?.some(c => c.description)
   }
 
+  const isColumnAnnotated = (itemName, columnName) => {
+    return annotations[itemName]?.columns?.find(c => c.name === columnName)?.description
+  }
+
   const orphanedAnnotations = Object.entries(annotations)
     .filter(([tableName, ann]) => ann._orphaned)
     .map(([tableName]) => tableName)
@@ -149,16 +74,6 @@ function SchemaTree({ schema = [], onTableSelect, onColumnSelect, selectedTable,
     rowCount: item.row_count || item.document_count || 0,
     type: item.document_count ? 'mongodb' : 'sql',
   }))
-
-  const getTotalColumns = (columns) => {
-    let count = columns.length
-    for (const col of columns) {
-      if (col.nested) {
-        count += getTotalColumns(col.nested)
-      }
-    }
-    return count
-  }
 
   if (schemaItems.length === 0) {
     return (
@@ -177,7 +92,6 @@ function SchemaTree({ schema = [], onTableSelect, onColumnSelect, selectedTable,
         const isAnnotated = isItemAnnotated(itemName)
         const columns = item.columns
         const isMongoDB = item.type === 'mongodb'
-        const totalCols = getTotalColumns(columns)
 
         return (
           <div
@@ -215,7 +129,7 @@ function SchemaTree({ schema = [], onTableSelect, onColumnSelect, selectedTable,
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   {isMongoDB
                     ? `${item.rowCount} docs`
-                    : `${totalCols} cols`}
+                    : `${columns.length} cols`}
                 </span>
                 {isAnnotated ? (
                   <CheckCircle className="w-4 h-4 text-green-500" title="Annotated" />
@@ -227,18 +141,38 @@ function SchemaTree({ schema = [], onTableSelect, onColumnSelect, selectedTable,
 
             {isExpanded && columns.length > 0 && (
               <div className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
-                {columns.map((col) => (
-                  <NestedColumnItem
-                    key={col.name}
-                    column={col}
-                    tableName={itemName}
-                    depth={0}
-                    expandedItems={expandedItems}
-                    onToggle={toggleItem}
-                    onColumnSelect={onColumnSelect}
-                    annotations={annotations}
-                  />
-                ))}
+                {columns.map((col) => {
+                  const colName = col.column_name || col.name || col
+                  const dataType = col.data_type || col.type || 'string'
+                  const Icon = getDataTypeIcon(dataType)
+                  const isColAnnotated = isColumnAnnotated(itemName, colName)
+
+                  return (
+                    <div
+                      key={colName}
+                      onClick={() => onColumnSelect && onColumnSelect(itemName, colName)}
+                      className="flex items-center justify-between px-8 py-2 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                        <Icon className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                          {colName}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 font-mono flex-shrink-0">
+                          {dataType}
+                        </span>
+                        {(col.is_nullable === false || col.nullable === false) && (
+                          <span className="text-xs text-red-600 dark:text-red-400 flex-shrink-0">
+                            NOT NULL
+                          </span>
+                        )}
+                      </div>
+                      {isColAnnotated && (
+                        <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0 ml-2" />
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
