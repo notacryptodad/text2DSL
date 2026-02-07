@@ -157,6 +157,132 @@ db.users.insertMany([
     { username: 'guest', email: 'guest@example.com', role: 'guest', created_at: new Date('2024-04-01') }
 ]);
 
+// Create logs collection with nested objects (for testing nested document introspection)
+db.createCollection('logs', {
+    validator: {
+        $jsonSchema: {
+            bsonType: 'object',
+            required: ['level', 'message', 'timestamp'],
+            properties: {
+                level: { bsonType: 'string', enum: ['DEBUG', 'INFO', 'WARNING', 'ERROR'] },
+                message: { bsonType: 'string' },
+                timestamp: { bsonType: 'date' },
+                service: { bsonType: 'string' },
+                environment: { bsonType: 'string' },
+                metadata: {
+                    bsonType: 'object',
+                    properties: {
+                        request_id: { bsonType: 'string' },
+                        user_id: { bsonType: 'string' },
+                        session_id: { bsonType: 'string' },
+                        ip_address: { bsonType: 'string' },
+                        user_agent: { bsonType: 'string' }
+                    }
+                },
+                error: {
+                    bsonType: 'object',
+                    properties: {
+                        name: { bsonType: 'string' },
+                        message: { bsonType: 'string' },
+                        stack_trace: { bsonType: 'string' },
+                        context: {
+                            bsonType: 'object',
+                            properties: {
+                                file: { bsonType: 'string' },
+                                line: { bsonType: 'int' },
+                                function: { bsonType: 'string' }
+                            }
+                        }
+                    }
+                },
+                tags: { bsonType: 'array', items: { bsonType: 'string' } }
+            }
+        }
+    }
+});
+
+// Seed logs with nested documents
+db.logs.insertMany([
+    {
+        level: 'INFO',
+        message: 'User login successful',
+        timestamp: new Date('2024-06-01T10:30:00Z'),
+        service: 'auth-service',
+        environment: 'production',
+        metadata: {
+            request_id: 'req-001',
+            user_id: 'user-123',
+            session_id: 'sess-abc',
+            ip_address: '192.168.1.100',
+            user_agent: 'Mozilla/5.0'
+        },
+        tags: ['auth', 'login']
+    },
+    {
+        level: 'WARNING',
+        message: 'Rate limit approaching',
+        timestamp: new Date('2024-06-01T10:35:00Z'),
+        service: 'api-gateway',
+        environment: 'production',
+        metadata: {
+            request_id: 'req-002',
+            user_id: 'user-456',
+            session_id: 'sess-def',
+            ip_address: '10.0.0.50'
+        },
+        tags: ['rate-limit', 'warning']
+    },
+    {
+        level: 'ERROR',
+        message: 'Database connection failed',
+        timestamp: new Date('2024-06-01T11:00:00Z'),
+        service: 'database-service',
+        environment: 'staging',
+        metadata: {
+            request_id: 'req-003',
+            session_id: 'sess-ghi'
+        },
+        error: {
+            name: 'ConnectionError',
+            message: 'ECONNREFUSED 10.0.0.5:5432',
+            stack_trace: 'at Pool.connect...',
+            context: {
+                file: 'db/connection.js',
+                line: 42,
+                function: 'connect'
+            }
+        },
+        tags: ['database', 'connection', 'critical']
+    },
+    {
+        level: 'DEBUG',
+        message: 'Cache miss for key: user:123:profile',
+        timestamp: new Date('2024-06-01T11:15:00Z'),
+        service: 'cache-service',
+        environment: 'development',
+        metadata: {
+            request_id: 'req-004',
+            ip_address: '127.0.0.1'
+        },
+        tags: ['cache', 'debug']
+    },
+    {
+        level: 'INFO',
+        message: 'Order #1001 placed',
+        timestamp: new Date('2024-06-01T12:00:00Z'),
+        service: 'order-service',
+        environment: 'production',
+        metadata: {
+            request_id: 'req-005',
+            user_id: 'user-789',
+            session_id: 'sess-jkl',
+            ip_address: '192.168.1.200'
+        },
+        error: null,
+        tags: ['order', 'ecommerce']
+    }
+]);
+
 // Create indexes
 db.customers.createIndex({ email: 1 }, { unique: true });
 db.products.createIndex({ category: 1 });
@@ -167,6 +293,9 @@ db.order_items.createIndex({ order_id: 1 });
 db.order_items.createIndex({ product_id: 1 });
 db.users.createIndex({ username: 1 }, { unique: true });
 db.users.createIndex({ email: 1 }, { unique: true });
+db.logs.createIndex({ timestamp: -1 });
+db.logs.createIndex({ level: 1 });
+db.logs.createIndex({ service: 1 });
 
 // Print summary
 print("MongoDB seed completed!");
@@ -177,3 +306,4 @@ print("  products: " + db.products.countDocuments());
 print("  orders: " + db.orders.countDocuments());
 print("  order_items: " + db.order_items.countDocuments());
 print("  users: " + db.users.countDocuments());
+print("  logs: " + db.logs.countDocuments() + " (with nested objects)");
