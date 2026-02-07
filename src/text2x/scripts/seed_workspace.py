@@ -41,10 +41,10 @@ POSTGRES_PROVIDER = {
 POSTGRES_CONNECTION = {
     "name": "Test Database",
     "host": "localhost",
-    "port": 5432,
-    "database": "text2dsl_test",
+    "port": 5433,
+    "database": "text2x",
     "schema_name": "public",
-    "credentials": {"username": "postgres", "password": "postgres"},
+    "credentials": {"username": "text2x", "password": "text2x"},
 }
 
 MONGODB_PROVIDER = {
