@@ -333,51 +333,62 @@ class SchemaService:
         Returns:
             Dictionary representation of schema
         """
+        tables_data = [
+            {
+                "name": table.name,
+                "schema": table.schema,
+                "columns": [
+                    {
+                        "name": col.name,
+                        "type": col.type,
+                        "nullable": col.nullable,
+                        "default": col.default,
+                        "primary_key": col.primary_key,
+                        "unique": col.unique,
+                        "comment": col.comment,
+                        "autoincrement": col.autoincrement,
+                    }
+                    for col in table.columns
+                ],
+                "indexes": [
+                    {
+                        "name": idx.name,
+                        "columns": idx.columns,
+                        "unique": idx.unique,
+                        "type": idx.type,
+                    }
+                    for idx in table.indexes
+                ],
+                "foreign_keys": [
+                    {
+                        "name": fk.name,
+                        "constrained_columns": fk.constrained_columns,
+                        "referred_schema": fk.referred_schema,
+                        "referred_table": fk.referred_table,
+                        "referred_columns": fk.referred_columns,
+                        "on_delete": fk.on_delete,
+                        "on_update": fk.on_update,
+                    }
+                    for fk in table.foreign_keys
+                ],
+                "primary_key": table.primary_key,
+                "comment": table.comment,
+                "row_count": table.row_count,
+            }
+            for table in schema.tables
+        ]
+
+        is_mongodb = schema.metadata.get("provider_type") == "mongodb" or any(
+            "." in col.name for table in schema.tables for col in (table.columns or [])
+        )
+
+        if is_mongodb and schema.tables:
+            collections_data = []
+        else:
+            collections_data = schema.collections or []
+
         return {
-            "tables": [
-                {
-                    "name": table.name,
-                    "schema": table.schema,
-                    "columns": [
-                        {
-                            "name": col.name,
-                            "type": col.type,
-                            "nullable": col.nullable,
-                            "default": col.default,
-                            "primary_key": col.primary_key,
-                            "unique": col.unique,
-                            "comment": col.comment,
-                            "autoincrement": col.autoincrement,
-                        }
-                        for col in table.columns
-                    ],
-                    "indexes": [
-                        {
-                            "name": idx.name,
-                            "columns": idx.columns,
-                            "unique": idx.unique,
-                            "type": idx.type,
-                        }
-                        for idx in table.indexes
-                    ],
-                    "foreign_keys": [
-                        {
-                            "name": fk.name,
-                            "constrained_columns": fk.constrained_columns,
-                            "referred_schema": fk.referred_schema,
-                            "referred_table": fk.referred_table,
-                            "referred_columns": fk.referred_columns,
-                            "on_delete": fk.on_delete,
-                            "on_update": fk.on_update,
-                        }
-                        for fk in table.foreign_keys
-                    ],
-                    "primary_key": table.primary_key,
-                    "comment": table.comment,
-                    "row_count": table.row_count,
-                }
-                for table in schema.tables
-            ],
+            "tables": tables_data,
             "relationships": [
                 {
                     "from_table": rel.from_table,
@@ -388,7 +399,7 @@ class SchemaService:
                 }
                 for rel in schema.relationships
             ],
-            "collections": schema.collections,
+            "collections": collections_data,
             "metadata": schema.metadata,
         }
 
