@@ -72,3 +72,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+networks:
+  default:
+    name: text2dsl-test-net
