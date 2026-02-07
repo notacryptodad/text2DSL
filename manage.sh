@@ -62,7 +62,72 @@ run_migrations() {
     echo "Migrations completed"
 }
 
+seed_cache() {
+    echo "Seeding Redis schema cache..."
+    
+    # Get auth token
+    TOKEN=$(curl -s -X POST "http://localhost:8000/api/v1/auth/token" \
+        -H "Content-Type: application/json" \
+        -d '{"email": "admin@text2dsl.com", "password": "Admin123!"}' | uv run python -c "import sys, json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null)
+    
+    if [ -z "$TOKEN" ]; then
+        echo "Failed to get auth token"
+        return 1
+    fi
+    
+    # Get all workspaces
+    WORKSPACES=$(curl -s "http://localhost:8000/api/v1/workspaces" \
+        -H "Authorization: Bearer $TOKEN")
+    
+    # Extract workspace IDs and loop through them
+    WS_IDS=$(echo "$WORKSPACES" | uv run python -c "import sys, json; print(' '.join([w['id'] for w in json.load(sys.stdin)]))" 2>/dev/null)
+    
+    if [ -z "$WS_IDS" ]; then
+        echo "No workspaces found"
+        return 0
+    fi
+    
+    CACHE_COUNT=0
+    for WS_ID in $WS_IDS; do
+        echo "Processing workspace: $WS_ID"
+        
+        # Get providers for this workspace
+        PROVIDERS=$(curl -s "http://localhost:8000/api/v1/workspaces/$WS_ID/providers" \
+            -H "Authorization: Bearer $TOKEN")
+        
+        PROVIDER_IDS=$(echo "$PROVIDERS" | uv run python -c "import sys, json; print(' '.join([p['id'] for p in json.load(sys.stdin)]))" 2>/dev/null)
+        
+        for PROVIDER_ID in $PROVIDER_IDS; do
+            echo "  Processing provider: $PROVIDER_ID"
+            
+            # Get connections for this provider
+            CONNECTIONS=$(curl -s "http://localhost:8000/api/v1/workspaces/$WS_ID/providers/$PROVIDER_ID/connections" \
+                -H "Authorization: Bearer $TOKEN")
+            
+            CONN_IDS=$(echo "$CONNECTIONS" | uv run python -c "import sys, json; print(' '.join([c['id'] for c in json.load(sys.stdin)]))" 2>/dev/null)
+            
+            for CONN_ID in $CONN_IDS; do
+                echo "    Refreshing schema cache for connection: $CONN_ID"
+                
+                RESPONSE=$(curl -s -X POST "http://localhost:8000/api/v1/workspaces/$WS_ID/providers/$PROVIDER_ID/connections/$CONN_ID/schema/refresh" \
+                    -H "Authorization: Bearer $TOKEN")
+                
+                if echo "$RESPONSE" | grep -q "success\|schema\|tables"; then
+                    echo "    ✅ Cached schema for $CONN_ID"
+                    CACHE_COUNT=$((CACHE_COUNT + 1))
+                else
+                    echo "    ⚠️  Failed to cache $CONN_ID"
+                fi
+            done
+        done
+    done
+    
+    echo "🎉 Schema cache seeded for $CACHE_COUNT connections"
+}
+
 start_backend() {
+    local seed_cache=${1:-false}
+    
     if [ -f "$BACKEND_PID_FILE" ] && kill -0 $(cat "$BACKEND_PID_FILE") 2>/dev/null; then
         echo "Backend already running (PID: $(cat $BACKEND_PID_FILE))"
         return
@@ -102,6 +167,11 @@ start_backend() {
     for i in {1..30}; do
         if curl -s http://localhost:8000/health > /dev/null 2>&1; then
             echo "✅ Backend started successfully (PID: $BACKEND_PID)"
+            
+            # Optionally seed cache
+            if [ "$seed_cache" = "true" ]; then
+                seed_cache
+            fi
             return 0
         fi
         sleep 1
@@ -248,7 +318,16 @@ logs() {
 case $1 in
     start)
         case $2 in
-            backend) start_backend ;;
+            backend)
+                if [ "$3" = "--seed-cache" ]; then
+                    start_backend true
+                else
+                    start_backend
+                fi
+                ;;
+            backend-with-cache)
+                start_backend true
+                ;;
             frontend) start_frontend ;;
             infra) start_infra ;;
             test-infra) start_test_infra ;;
@@ -302,19 +381,28 @@ case $1 in
     status)
         status
         ;;
+    seed-cache)
+        seed_cache
+        ;;
     logs)
         logs $2
         ;;
     *)
-        echo "Usage: $0 {start|stop|force-stop|restart|status|logs} [backend|frontend|infra|test-infra]"
+        echo "Usage: $0 {start|stop|force-stop|restart|status|logs|seed-cache} [backend|frontend|infra|test-infra] [options]"
         echo ""
         echo "Commands:"
-        echo "  start [backend|frontend|infra|test-infra] - Start servers/infrastructure"
-        echo "  stop [backend|frontend]                    - Stop servers gracefully"
-        echo "  force-stop [backend|frontend]              - Force kill by port (8000/5173)"
-        echo "  restart [backend|frontend]                 - Restart servers"
-        echo "  status                                     - Show server status"
-        echo "  logs [backend|frontend]                    - Tail server logs"
+        echo "  start [backend|frontend|infra|test-infra]        - Start servers/infrastructure"
+        echo "  start backend --seed-cache                        - Start backend and populate schema cache"
+        echo "  start backend-with-cache                          - Start backend with cache seeding"
+        echo "  stop [backend|frontend]                           - Stop servers gracefully"
+        echo "  force-stop [backend|frontend]                     - Force kill by port (8000/5173)"
+        echo "  restart [backend|frontend]                        - Restart servers"
+        echo "  status                                            - Show server status"
+        echo "  logs [backend|frontend]                           - Tail server logs"
+        echo "  seed-cache                                         - Pre-populate Redis schema cache"
+        echo ""
+        echo "Options:"
+        echo "  --seed-cache    - Pre-populate Redis schema cache (backend only)"
         exit 1
         ;;
 esac
