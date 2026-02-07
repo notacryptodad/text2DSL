@@ -5,7 +5,7 @@ This guide explains how to properly start the Text2DSL local development environ
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- Python 3.12+ with `uv` package manager
+- Python 3.12+ (use `python3` command) with `uv` package manager
 - Node.js 18+ and npm
 - PostgreSQL client tools (optional, for manual DB access)
 
@@ -38,6 +38,15 @@ The project requires Docker containers for PostgreSQL, Redis, OpenSearch, and te
 
 The backend uses `uv` to manage the Python virtual environment automatically.
 
+### 3. Default Admin Credentials
+
+After starting the backend, use these credentials to log in:
+
+- **Email**: `admin@text2dsl.com`
+- **Password**: `Admin123!`
+
+These credentials are automatically created by the seed script during backend startup.
+
 ## Management Script Commands
 
 The `manage.sh` script provides convenient commands for managing the development environment:
@@ -47,6 +56,7 @@ The `manage.sh` script provides convenient commands for managing the development
 ```bash
 ./manage.sh start              # Start both backend and frontend
 ./manage.sh start backend      # Start only backend
+./manage.sh start backend --seed-cache  # Start backend and populate Redis schema cache
 ./manage.sh start frontend     # Start only frontend
 ./manage.sh start infra        # Start backend infrastructure containers
 ./manage.sh start test-infra   # Start test infrastructure containers
@@ -58,6 +68,8 @@ The `manage.sh` script provides convenient commands for managing the development
 ./manage.sh stop               # Stop both backend and frontend
 ./manage.sh stop backend       # Stop only backend
 ./manage.sh stop frontend      # Stop only frontend
+./manage.sh force-stop backend # Force kill backend (port 8000)
+./manage.sh force-stop frontend # Force kill frontend (port 5173)
 ```
 
 ### Restarting Services
@@ -79,6 +91,12 @@ The `manage.sh` script provides convenient commands for managing the development
 ```bash
 ./manage.sh logs backend       # Tail backend logs
 ./manage.sh logs frontend      # Tail frontend logs
+```
+
+### Cache Management
+
+```bash
+./manage.sh seed-cache         # Pre-populate Redis schema cache for all connections
 ```
 
 Logs are stored in:
@@ -184,7 +202,7 @@ docker compose -f docker-compose.test.yml down
 
 ## Environment Configuration
 
-Key environment variables in `.env`:
+Key environment variables in `.env` (create from `.env.example` in project root):
 
 - `DATABASE_URL` - PostgreSQL connection string
 - `REDIS_URL` - Redis connection string

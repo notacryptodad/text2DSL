@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from text2x.providers.sql_provider import SQLProvider, SQLConnectionConfig
-from text2x.providers.mongodb_provider import MongoDBProvider, MongoDBConnectionConfig
+from text2x.providers.nosql_provider import NoSQLProvider, MongoDBConnectionConfig
 from text2x.models.workspace import ProviderType
 
 if TYPE_CHECKING:
@@ -37,21 +37,25 @@ async def get_provider_instance(provider_model) -> "QueryProvider":
     username = credentials.get("username", "")
     password = credentials.get("password", "")
 
-    if provider_type == ProviderType.POSTGRESQL:
+    if provider_type == ProviderType.MONGODB:
+        connection_string = (
+            f"mongodb://{connection.host}:{connection.port}"
+            if connection.host
+            else "mongodb://localhost:27017"
+        )
+        config = MongoDBConnectionConfig(
+            connection_string=connection_string,
+            database=connection.database,
+            username=username,
+            password=password,
+        )
+        return NoSQLProvider(config)
+    elif provider_type == ProviderType.POSTGRESQL:
         dialect = "postgresql"
     elif provider_type == ProviderType.MYSQL:
         dialect = "mysql"
     elif provider_type == ProviderType.SQLITE:
         dialect = "sqlite"
-    elif provider_type == ProviderType.MONGODB:
-        config = MongoDBConnectionConfig(
-            host=connection.host or "localhost",
-            port=connection.port or 27017,
-            database=connection.database,
-            username=username,
-            password=password,
-        )
-        return MongoDBProvider(config)
     else:
         raise ValueError(f"Unsupported provider type: {provider_type}")
 
@@ -128,14 +132,18 @@ async def get_provider_by_connection_id(connection_id: UUID, workspace_id: UUID)
         elif provider_type == ProviderType.SQLITE:
             dialect = "sqlite"
         elif provider_type == ProviderType.MONGODB:
+            connection_string = (
+                f"mongodb://{connection.host}:{connection.port}"
+                if connection.host
+                else "mongodb://localhost:27017"
+            )
             config = MongoDBConnectionConfig(
-                host=connection.host or "localhost",
-                port=connection.port or 27017,
+                connection_string=connection_string,
                 database=connection.database,
                 username=username,
                 password=password,
             )
-            return MongoDBProvider(config)
+            return NoSQLProvider(config)
         else:
             raise ValueError(f"Unsupported provider type: {provider_type}")
 

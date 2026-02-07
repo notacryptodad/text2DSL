@@ -443,6 +443,7 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
                     "provider_id": request.provider_id,
                     "user_id": request.user_id,
                     "conversation_history": context["conversation_history"],
+                    "context": {"selected_table": context.get("selected_table")},
                 }
             )
 
