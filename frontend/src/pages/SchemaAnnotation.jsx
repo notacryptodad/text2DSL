@@ -274,12 +274,49 @@ function SchemaAnnotation() {
               const event = JSON.parse(line.slice(6))
               
               if (event.event === 'started') {
-                setChatMessages([...chatMessages, { 
+                setChatMessages(prev => [...prev, { 
                   type: 'assistant', 
                   content: event.message, 
                   timestamp: new Date() 
                 }])
               }
+              
+              if (event.event === 'progress') {
+                // Append progress messages
+                setChatMessages(prev => [...prev, { 
+                  type: 'assistant', 
+                  content: event.message, 
+                  timestamp: new Date() 
+                }])
+              }
+              
+              if (event.event === 'completed' || event.event === 'done') {
+                if (event.suggestions) {
+                  const { table_description, table_business_terms, columns } = event.suggestions
+                  setAutoAnnotationSuggestions({ 
+                    table_name: selectedTable, 
+                    description: table_description || '', 
+                    columns: columns || [], 
+                    business_terms: table_business_terms || [], 
+                    relationships: [] 
+                  })
+                  setChatMessages(prev => [...prev, { 
+                    type: 'assistant', 
+                    content: `Auto-annotation completed!\n\nTable: ${table_description || selectedTable}\n\nGenerated descriptions for ${columns?.length || 0} columns.`, 
+                    timestamp: new Date() 
+                  }])
+                }
+                await fetchAnnotations()
+              }
+              
+              if (event.event === 'error') {
+                throw new Error(event.error)
+              }
+            } catch (e) {
+              console.error('Error parsing SSE event:', e)
+            }
+          }
+        }
               
               if (event.event === 'progress') {
                 // Update last message or add new one
