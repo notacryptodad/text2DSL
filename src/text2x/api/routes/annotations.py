@@ -19,6 +19,7 @@ from text2x.config import settings
 from text2x.models.workspace import Connection, ProviderType
 from text2x.providers.sql_provider import SQLConnectionConfig, SQLProvider
 from text2x.repositories.annotation import SchemaAnnotationRepository
+from text2x.services.annotation_cache_service import AnnotationCacheService
 from text2x.services.schema_service import SchemaService
 from text2x.utils.observability import async_log_context
 
@@ -762,31 +763,36 @@ async def get_annotations(
     connection_id: UUID,
 ):
     """Get all saved annotations for a connection."""
-    repo = SchemaAnnotationRepository()
-    annotations = await repo.list_by_provider(str(connection_id))
+    cache_service = AnnotationCacheService()
 
-    # Group by table, nest column annotations
-    result = {}
-    for ann in annotations:
-        if ann.table_name and not ann.column_name:
-            # Table-level annotation
-            result[ann.table_name] = ann.to_dict()
-            result[ann.table_name]["columns"] = []
+    async def fetch_annotations():
+        repo = SchemaAnnotationRepository()
+        annotations = await repo.list_by_provider(str(connection_id))
 
-    # Add column annotations to their tables
-    for ann in annotations:
-        if ann.column_name and "." in ann.column_name:
-            table_name = ann.column_name.split(".")[0]
-            col_name = ann.column_name.split(".")[1]
-            if table_name in result:
-                result[table_name]["columns"].append(
-                    {
-                        "name": col_name,
-                        "description": ann.description,
-                        "sample_values": ann.examples[0] if ann.examples else "",
-                    }
-                )
+        result = {}
+        for ann in annotations:
+            if ann.table_name and not ann.column_name:
+                result[ann.table_name] = ann.to_dict()
+                result[ann.table_name]["columns"] = []
 
+        for ann in annotations:
+            if ann.column_name and "." in ann.column_name:
+                table_name = ann.column_name.split(".")[0]
+                col_name = ann.column_name.split(".")[1]
+                if table_name in result:
+                    result[table_name]["columns"].append(
+                        {
+                            "name": col_name,
+                            "description": ann.description,
+                            "sample_values": ann.examples[0] if ann.examples else "",
+                        }
+                    )
+
+        return result
+
+    result = await cache_service.get_all_annotations_for_connection(
+        connection_id, fetch_annotations
+    )
     return result
 
 
@@ -802,6 +808,7 @@ async def save_annotation(
 ):
     """Save or update annotation for a table."""
     repo = SchemaAnnotationRepository()
+    cache_service = AnnotationCacheService()
 
     # Check if table annotation exists
     existing = await repo.list_by_provider(str(connection_id))
@@ -856,6 +863,11 @@ async def save_annotation(
                 )
 
     result["columns"] = request.columns or []
+
+    # Invalidate annotation cache
+    await cache_service.invalidate_table_annotation(connection_id, request.table_name)
+    await cache_service.invalidate_all_for_connection(connection_id)
+
     return result
 
 
@@ -1507,6 +1519,16 @@ async def update_annotation(annotation_id: UUID, update: AnnotationUpdate) -> An
         logger.info(f"Updating annotation: {annotation_id}")
 
         repo = SchemaAnnotationRepository()
+        cache_service = AnnotationCacheService()
+
+        # Get annotation info before updating for cache invalidation
+        annotation_before = await repo.get_by_id(annotation_id)
+        connection_id = annotation_before.provider_id if annotation_before else None
+        table_name = (
+            annotation_before.table_name or annotation_before.column_name.split(".")[0]
+            if annotation_before and annotation_before.column_name
+            else None
+        )
 
         # Build update kwargs from request, excluding unset fields
         update_data = update.model_dump(exclude_unset=True)
@@ -1521,6 +1543,11 @@ async def update_annotation(annotation_id: UUID, update: AnnotationUpdate) -> An
                     message=f"Annotation {annotation_id} not found",
                 ).model_dump(),
             )
+
+        # Invalidate cache
+        if connection_id and table_name:
+            await cache_service.invalidate_table_annotation(UUID(connection_id), table_name)
+            await cache_service.invalidate_all_for_connection(UUID(connection_id))
 
         return AnnotationResponse(
             id=annotation.id,
@@ -1573,9 +1600,34 @@ async def delete_annotation(annotation_id: UUID) -> None:
         logger.info(f"Deleting annotation: {annotation_id}")
 
         repo = SchemaAnnotationRepository()
-        success = await repo.delete(annotation_id)
+        cache_service = AnnotationCacheService()
 
-        if not success:
+        # Get annotation info before deleting for cache invalidation
+        annotation = await repo.get_by_id(annotation_id)
+        if annotation:
+            connection_id = annotation.provider_id
+            table_name = (
+                annotation.table_name or annotation.column_name.split(".")[0]
+                if annotation.column_name
+                else None
+            )
+
+            success = await repo.delete(annotation_id)
+
+            if not success:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Annotation {annotation_id} not found",
+                    ).model_dump(),
+                )
+
+            # Invalidate cache
+            if table_name:
+                await cache_service.invalidate_table_annotation(UUID(connection_id), table_name)
+            await cache_service.invalidate_all_for_connection(UUID(connection_id))
+        else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=ErrorResponse(

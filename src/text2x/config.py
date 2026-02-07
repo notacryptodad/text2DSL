@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     redis_schema_cache_ttl: int = Field(
         default=3600, validation_alias="REDIS_SCHEMA_CACHE_TTL"
     )  # 1 hour
+    redis_annotation_cache_ttl: int = Field(
+        default=1800, validation_alias="REDIS_ANNOTATION_CACHE_TTL"
+    )  # 30 minutes
 
     # OpenSearch / Vector Store
     opensearch_url: str = Field(
@@ -163,22 +166,22 @@ class Settings(BaseSettings):
     agentcore_mode: str = Field(
         default="local",
         validation_alias="AGENTCORE_MODE",
-        description="AgentCore mode: 'local' (in-process) or 'remote' (HTTP calls)"
+        description="AgentCore mode: 'local' (in-process) or 'remote' (HTTP calls)",
     )
     agentcore_url: Optional[str] = Field(
         default=None,
         validation_alias="AGENTCORE_URL",
-        description="Base URL for remote AgentCore service"
+        description="Base URL for remote AgentCore service",
     )
     agentcore_api_key: Optional[str] = Field(
         default=None,
         validation_alias="AGENTCORE_API_KEY",
-        description="API key for remote AgentCore authentication"
+        description="API key for remote AgentCore authentication",
     )
     agentcore_timeout: int = Field(
         default=120,
         validation_alias="AGENTCORE_TIMEOUT",
-        description="Timeout in seconds for AgentCore requests"
+        description="Timeout in seconds for AgentCore requests",
     )
 
 
