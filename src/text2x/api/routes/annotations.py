@@ -412,6 +412,9 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
                 _conversation_context[conversation_id] = {
                     "conversation_history": [],
                     "provider_id": request.provider_id,
+                    "selected_table": request.context.get("selected_table")
+                    if request.context
+                    else None,
                 }
 
             context = _conversation_context[conversation_id]
@@ -419,7 +422,14 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
             # Reset conversation if requested
             if request.reset_conversation:
                 context["conversation_history"] = []
+                context["selected_table"] = (
+                    request.context.get("selected_table") if request.context else None
+                )
                 logger.info(f"Reset conversation {conversation_id}")
+
+            # Update selected_table if provided
+            if request.context and request.context.get("selected_table"):
+                context["selected_table"] = request.context.get("selected_table")
 
             # Add user message to history
             context["conversation_history"].append(
