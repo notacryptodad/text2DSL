@@ -250,29 +250,8 @@ def assistant_save_annotation(
     try:
         import asyncio
 
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                annotation = pool.submit(
-                    asyncio.run,
-                    ctx.annotation_repo.create(
-                        provider_id=ctx.provider_id,
-                        description=description,
-                        created_by=ctx.user_id,
-                        table_name=table_name,
-                        column_name=column_name,
-                        business_terms=business_terms,
-                        examples=examples,
-                        relationships=relationships,
-                        date_format=date_format,
-                        enum_values=enum_values,
-                        sensitive=sensitive,
-                    ),
-                ).result()
-        else:
-            annotation = asyncio.run(
+        def save_annotation_sync():
+            return asyncio.run(
                 ctx.annotation_repo.create(
                     provider_id=ctx.provider_id,
                     description=description,
@@ -287,6 +266,30 @@ def assistant_save_annotation(
                     sensitive=sensitive,
                 )
             )
+
+        try:
+            annotation = save_annotation_sync()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                annotation = loop.run_until_complete(
+                    ctx.annotation_repo.create(
+                        provider_id=ctx.provider_id,
+                        description=description,
+                        created_by=ctx.user_id,
+                        table_name=table_name,
+                        column_name=column_name,
+                        business_terms=business_terms,
+                        examples=examples,
+                        relationships=relationships,
+                        date_format=date_format,
+                        enum_values=enum_values,
+                        sensitive=sensitive,
+                    )
+                )
+            finally:
+                loop.close()
 
         return {
             "success": True,
@@ -325,16 +328,20 @@ def list_annotations(
     try:
         import asyncio
 
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
+        def get_annotations_sync():
+            return asyncio.run(ctx.annotation_repo.get_by_provider(ctx.provider_id))
 
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                annotations = pool.submit(
-                    asyncio.run, ctx.annotation_repo.get_by_provider(ctx.provider_id)
-                ).result()
-        else:
-            annotations = asyncio.run(ctx.annotation_repo.get_by_provider(ctx.provider_id))
+        try:
+            annotations = get_annotations_sync()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                annotations = loop.run_until_complete(
+                    ctx.annotation_repo.get_by_provider(ctx.provider_id)
+                )
+            finally:
+                loop.close()
 
         # Filter by table or column if specified
         if table_name:
