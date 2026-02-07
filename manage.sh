@@ -18,22 +18,25 @@ check_docker() {
     local env_file=${3:-""}
     
     echo "Checking $label containers..."
-    local docker_cmd="docker compose -f $compose_file"
-    if [ -n "$env_file" ]; then
-        docker_cmd="$docker_cmd --env-file $env_file"
-    fi
     
-    if ! $docker_cmd ps 2>/dev/null | grep -q "Up"; then
-        echo "Starting $label containers..."
-        if [ -n "$env_file" ]; then
+    if [ -n "$env_file" ]; then
+        if ! docker compose -f "$compose_file" --env-file "$env_file" ps 2>/dev/null | grep -q "Up"; then
+            echo "Starting $label containers..."
             docker compose -f "$compose_file" --env-file "$env_file" up -d
+            echo "Waiting for services to be ready..."
+            sleep 5
         else
-            docker compose -f "$compose_file" up -d
+            echo "$label containers already running"
         fi
-        echo "Waiting for services to be ready..."
-        sleep 5
     else
-        echo "$label containers already running"
+        if ! docker compose -f "$compose_file" ps 2>/dev/null | grep -q "Up"; then
+            echo "Starting $label containers..."
+            docker compose -f "$compose_file" up -d
+            echo "Waiting for services to be ready..."
+            sleep 5
+        else
+            echo "$label containers already running"
+        fi
     fi
 }
 
@@ -42,7 +45,7 @@ start_infra() {
 }
 
 start_test_infra() {
-    check_docker "docker-compose.test.yml" "Test infrastructure" "--env-file" "docker/.env.test"
+    check_docker "docker-compose.test.yml" "Test infrastructure" "docker/.env.test"
 }
 
 run_migrations() {
