@@ -847,17 +847,14 @@ async def get_annotations(
                 result[ann.table_name]["columns"] = []
 
         for ann in annotations:
-            if ann.column_name and "." in ann.column_name:
-                table_name = ann.column_name.split(".")[0]
-                col_name = ann.column_name.split(".")[1]
-                if table_name in result:
-                    result[table_name]["columns"].append(
-                        {
-                            "name": col_name,
-                            "description": ann.description,
-                            "sample_values": ann.examples[0] if ann.examples else "",
-                        }
-                    )
+            if ann.column_name and ann.table_name and ann.table_name in result:
+                result[ann.table_name]["columns"].append(
+                    {
+                        "name": ann.column_name,  # Use full column name (e.g., "metadata.request_id")
+                        "description": ann.description,
+                        "sample_values": ann.examples[0] if ann.examples else "",
+                    }
+                )
 
         return result
 
@@ -916,13 +913,22 @@ async def save_annotation(
     # Save column annotations
     if request.columns:
         for col in request.columns:
-            col_name = f"{request.table_name}.{col.get('name')}"
+            col_name = col.get("name")  # Use column name as-is (e.g., "metadata.request_id")
             existing_col = next((a for a in existing if a.column_name == col_name), None)
 
             if existing_col:
                 await repo.update(
                     annotation_id=existing_col.id,
                     description=col.get("description", ""),
+                    examples=[col.get("sample_values")] if col.get("sample_values") else None,
+                )
+            elif col.get("description"):
+                await repo.create(
+                    provider_id=str(connection_id),
+                    table_name=request.table_name,  # Set table_name for column annotations
+                    column_name=col_name,
+                    description=col.get("description", ""),
+                    created_by="system",
                     examples=[col.get("sample_values")] if col.get("sample_values") else None,
                 )
             elif col.get("description"):
