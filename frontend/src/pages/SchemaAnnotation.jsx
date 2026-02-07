@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Database,
@@ -11,10 +11,67 @@ import {
   Bot,
   RefreshCw,
   Table,
+  GripVertical,
 } from 'lucide-react'
 import SchemaTree from '../components/SchemaTree'
 import AnnotationEditor from '../components/AnnotationEditor'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+
+function ResizablePanel({ children, minWidth = 200, maxWidth = 500, defaultWidth = 320, storageKey }) {
+  const [width, setWidth] = useState(() => {
+    const saved = localStorage.getItem(storageKey)
+    return saved ? parseInt(saved, 10) : defaultWidth
+  })
+  const [isResizing, setIsResizing] = useState(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+
+  const startResize = useCallback((e) => {
+    setIsResizing(true)
+    startX.current = e.clientX
+    startWidth.current = width
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [width])
+
+  const stopResize = useCallback(() => {
+    setIsResizing(false)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }, [])
+
+  const resize = useCallback((e) => {
+    if (!isResizing) return
+    const diff = e.clientX - startX.current
+    const newWidth = Math.min(Math.max(startWidth.current + diff, minWidth), maxWidth)
+    setWidth(newWidth)
+    localStorage.setItem(storageKey, newWidth.toString())
+  }, [isResizing, minWidth, maxWidth, storageKey])
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', resize)
+      window.addEventListener('mouseup', stopResize)
+    }
+    return () => {
+      window.removeEventListener('mousemove', resize)
+      window.removeEventListener('mouseup', stopResize)
+    }
+  }, [isResizing, resize, stopResize])
+
+  return (
+    <div className="relative flex-shrink-0" style={{ width }}>
+      {children}
+      <div
+        onMouseDown={startResize}
+        className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary-500 transition-colors z-10 ${
+          isResizing ? 'bg-primary-500' : 'bg-transparent'
+        }`}
+        style={{ transform: 'translateX(50%)' }}
+      />
+    </div>
+  )
+}
 
 function SchemaAnnotation() {
   const [searchParams] = useSearchParams()
@@ -460,9 +517,12 @@ function SchemaAnnotation() {
         )}
 
         <div className="flex flex-col lg:flex-row gap-6">
-          <div className="w-full lg:w-80 2xl:w-72 flex-shrink-0">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sticky top-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Schema</h2>
+          <ResizablePanel minWidth={200} maxWidth={500} defaultWidth={320} storageKey="schema-widget-width">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 h-fit sticky top-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <GripVertical className="w-4 h-4 text-gray-400" />
+                Schema
+              </h2>
               {loading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
@@ -479,7 +539,7 @@ function SchemaAnnotation() {
                 </div>
               )}
             </div>
-          </div>
+          </ResizablePanel>
 
           <div className="flex-1 min-w-0 space-y-6 2xl:space-y-0">
             {showEditor && selectedTable ? (
