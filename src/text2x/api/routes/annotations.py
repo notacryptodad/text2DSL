@@ -342,6 +342,25 @@ async def annotation_chat(request: AnnotationChatRequest) -> AnnotationChatRespo
     # Generate or use existing conversation ID
     conversation_id = request.conversation_id or uuid4()
 
+    # Handle clear/start over commands
+    user_message = request.user_message.strip().lower()
+    clear_commands = ["clear", "start over", "restart", "new conversation", "reset"]
+    if (
+        user_message in clear_commands
+        or user_message.startswith("clear ")
+        or user_message.startswith("start over")
+    ):
+        # Clear the conversation
+        if conversation_id in _conversation_context:
+            del _conversation_context[conversation_id]
+
+        return AnnotationChatResponse(
+            conversation_id=conversation_id,
+            response="Conversation cleared! How can I help you with schema annotations? You can ask me to:\n- Describe a table or column\n- Suggest annotations for a table\n- Sample data from a table\n- Explain best practices for schema annotations",
+            tool_calls=[],
+            conversation_history=[],
+        )
+
     try:
         async with async_log_context(
             conversation_id=str(conversation_id),
