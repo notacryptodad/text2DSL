@@ -34,6 +34,7 @@ class AssistantToolContext:
     provider_id: str = ""
     user_id: str = "system"
     selected_table: Optional[str] = None
+    conversation_id: Optional[str] = None
 
 
 # Global context
@@ -384,20 +385,25 @@ def clear_conversation() -> dict:
         ctx = get_assistant_context()
 
         # Get conversation_id from context
-        conversation_id = ctx.conversation_id if ctx else None
+        conversation_id = ctx.conversation_id
 
-        if conversation_id and conversation_id in _conversation_context:
-            del _conversation_context[conversation_id]
-            logger.info(f"Cleared conversation history for {conversation_id}")
-            return {
-                "success": True,
-                "message": "Conversation history cleared. How can I help you start fresh?",
-            }
-        else:
-            return {
-                "success": True,
-                "message": "No conversation history to clear. How can I help you?",
-            }
+        if conversation_id:
+            try:
+                conv_uuid = UUID(conversation_id)
+                if conv_uuid in _conversation_context:
+                    del _conversation_context[conv_uuid]
+                    logger.info(f"Cleared conversation history for {conversation_id}")
+                    return {
+                        "success": True,
+                        "message": "Conversation history cleared. How can I help you start fresh?",
+                    }
+            except ValueError:
+                pass
+
+        return {
+            "success": True,
+            "message": "No conversation history to clear. How can I help you?",
+        }
     except Exception as e:
         logger.error(f"Failed to clear conversation: {e}", exc_info=True)
         return {
@@ -543,6 +549,7 @@ class AnnotationAssistantAgent:
             provider_id=provider_id,
             user_id=user_id,
             selected_table=self.conversation_context.get("selected_table"),
+            conversation_id=conversation_id,
         )
         set_assistant_context(ctx)
 
