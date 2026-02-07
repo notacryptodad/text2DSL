@@ -278,7 +278,6 @@ db.logs.insertMany([
             session_id: 'sess-jkl',
             ip_address: '192.168.1.200'
         },
-        error: null,
         tags: ['order', 'ecommerce']
     }
 ]);
