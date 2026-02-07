@@ -10,6 +10,7 @@ This agent provides conversational assistance for annotating database schemas:
 
 Supports multi-turn chat with conversation memory for iterative exploration.
 """
+
 import logging
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AssistantToolContext:
     """Context shared between annotation assistant tools."""
+
     provider: Optional[QueryProvider] = None
     annotation_repo: Optional[SchemaAnnotationRepository] = None
     provider_id: str = ""
@@ -52,6 +54,7 @@ def get_assistant_context() -> AssistantToolContext:
 
 
 # Define tools as standalone functions with @tool decorator
+
 
 @tool
 def assistant_sample_data(table_name: str, limit: int = 10) -> dict:
@@ -79,16 +82,15 @@ def assistant_sample_data(table_name: str, limit: int = 10) -> dict:
 
         query = f"SELECT * FROM {table_name} LIMIT {limit}"
 
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                result = pool.submit(
-                    asyncio.run,
-                    ctx.provider.execute_query(query, limit=limit)
-                ).result()
-        else:
+        try:
             result = asyncio.run(ctx.provider.execute_query(query, limit=limit))
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(ctx.provider.execute_query(query, limit=limit))
+            finally:
+                loop.close()
 
         if result and result.success:
             return {
@@ -142,16 +144,17 @@ def assistant_column_stats(table_name: str, column_name: str) -> dict:
         FROM {table_name}
         """
 
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                stats_result = pool.submit(
-                    asyncio.run,
-                    ctx.provider.execute_query(stats_query, limit=1)
-                ).result()
-        else:
+        try:
             stats_result = asyncio.run(ctx.provider.execute_query(stats_query, limit=1))
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                stats_result = loop.run_until_complete(
+                    ctx.provider.execute_query(stats_query, limit=1)
+                )
+            finally:
+                loop.close()
 
         if not stats_result or not stats_result.success:
             return {
@@ -168,15 +171,17 @@ def assistant_column_stats(table_name: str, column_name: str) -> dict:
         LIMIT 10
         """
 
-        if asyncio.get_event_loop().is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                sample_result = pool.submit(
-                    asyncio.run,
-                    ctx.provider.execute_query(sample_query, limit=10)
-                ).result()
-        else:
+        try:
             sample_result = asyncio.run(ctx.provider.execute_query(sample_query, limit=10))
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                sample_result = loop.run_until_complete(
+                    ctx.provider.execute_query(sample_query, limit=10)
+                )
+            finally:
+                loop.close()
 
         sample_values = []
         if sample_result and sample_result.success and sample_result.sample_rows:
@@ -248,6 +253,7 @@ def assistant_save_annotation(
         loop = asyncio.get_event_loop()
         if loop.is_running():
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 annotation = pool.submit(
                     asyncio.run,
@@ -263,22 +269,24 @@ def assistant_save_annotation(
                         date_format=date_format,
                         enum_values=enum_values,
                         sensitive=sensitive,
-                    )
+                    ),
                 ).result()
         else:
-            annotation = asyncio.run(ctx.annotation_repo.create(
-                provider_id=ctx.provider_id,
-                description=description,
-                created_by=ctx.user_id,
-                table_name=table_name,
-                column_name=column_name,
-                business_terms=business_terms,
-                examples=examples,
-                relationships=relationships,
-                date_format=date_format,
-                enum_values=enum_values,
-                sensitive=sensitive,
-            ))
+            annotation = asyncio.run(
+                ctx.annotation_repo.create(
+                    provider_id=ctx.provider_id,
+                    description=description,
+                    created_by=ctx.user_id,
+                    table_name=table_name,
+                    column_name=column_name,
+                    business_terms=business_terms,
+                    examples=examples,
+                    relationships=relationships,
+                    date_format=date_format,
+                    enum_values=enum_values,
+                    sensitive=sensitive,
+                )
+            )
 
         return {
             "success": True,
@@ -320,10 +328,10 @@ def list_annotations(
         loop = asyncio.get_event_loop()
         if loop.is_running():
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 annotations = pool.submit(
-                    asyncio.run,
-                    ctx.annotation_repo.get_by_provider(ctx.provider_id)
+                    asyncio.run, ctx.annotation_repo.get_by_provider(ctx.provider_id)
                 ).result()
         else:
             annotations = asyncio.run(ctx.annotation_repo.get_by_provider(ctx.provider_id))
@@ -331,16 +339,14 @@ def list_annotations(
         # Filter by table or column if specified
         if table_name:
             annotations = [
-                ann for ann in annotations
-                if ann.table_name == table_name or
-                   (ann.column_name and ann.column_name.startswith(f"{table_name}."))
+                ann
+                for ann in annotations
+                if ann.table_name == table_name
+                or (ann.column_name and ann.column_name.startswith(f"{table_name}."))
             ]
 
         if column_name:
-            annotations = [
-                ann for ann in annotations
-                if ann.column_name == column_name
-            ]
+            annotations = [ann for ann in annotations if ann.column_name == column_name]
 
         # Format annotations for response
         formatted_annotations = [
@@ -447,7 +453,12 @@ class AnnotationAssistantAgent:
         self.agent = Agent(
             model=model,
             system_prompt=ANNOTATION_ASSISTANT_SYSTEM_PROMPT,
-            tools=[assistant_sample_data, assistant_column_stats, assistant_save_annotation, list_annotations],
+            tools=[
+                assistant_sample_data,
+                assistant_column_stats,
+                assistant_save_annotation,
+                list_annotations,
+            ],
             name=name,
             description="Interactive annotation assistant for schema exploration",
         )
@@ -511,13 +522,17 @@ class AnnotationAssistantAgent:
         response_text = str(result)
 
         tool_calls = []
-        if hasattr(result, 'messages'):
+        if hasattr(result, "messages"):
             for msg in result.messages:
-                if hasattr(msg, 'tool_use'):
-                    tool_calls.append({
-                        "tool": msg.tool_use.name if hasattr(msg.tool_use, 'name') else str(msg.tool_use),
-                        "result": "executed",
-                    })
+                if hasattr(msg, "tool_use"):
+                    tool_calls.append(
+                        {
+                            "tool": msg.tool_use.name
+                            if hasattr(msg.tool_use, "name")
+                            else str(msg.tool_use),
+                            "result": "executed",
+                        }
+                    )
 
         return {
             "response": response_text,
