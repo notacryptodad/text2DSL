@@ -67,3 +67,7 @@ Thumbs.db
 
 # PID files
 *.pid
+
+# Docker environment files
+docker/.env
+docker/.env.test
