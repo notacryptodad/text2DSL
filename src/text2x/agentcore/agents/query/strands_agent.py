@@ -13,6 +13,8 @@ Supports multi-turn chat for iterative query refinement.
 
 import json
 import logging
+import asyncio
+import threading
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
@@ -22,6 +24,37 @@ from strands.tools import tool
 from text2x.providers.base import QueryProvider
 
 logger = logging.getLogger(__name__)
+
+# Capture the main event loop for use from Strands worker threads
+_main_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def set_main_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """Store the main event loop so tool functions can schedule coroutines on it."""
+    global _main_loop
+    _main_loop = loop
+
+
+def _run_async(coro, timeout=120):
+    """Run an async coroutine from a sync context, using the main event loop."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    # If we're in the main event loop thread, just run directly (shouldn't happen from tools)
+    if loop and loop.is_running():
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result(timeout=timeout)
+
+    # We're in a worker thread — schedule on the captured main loop
+    if _main_loop and _main_loop.is_running():
+        future = asyncio.run_coroutine_threadsafe(coro, _main_loop)
+        return future.result(timeout=timeout)
+
+    # Fallback: no main loop captured, try asyncio.run (may fail with motor/asyncpg)
+    logger.warning("[_run_async] No main event loop available, falling back to asyncio.run()")
+    return asyncio.run(coro)
 
 
 @dataclass
@@ -33,6 +66,7 @@ class QueryToolContext:
     schema_context: Dict[str, Any] = None
     enable_execution: bool = False
     query_language: str = ""
+    event_queue: Optional[asyncio.Queue] = None
 
     def __post_init__(self):
         if self.schema_context is None:
@@ -53,6 +87,15 @@ def get_query_context() -> QueryToolContext:
     if _global_context is None:
         raise RuntimeError("Query tool context not initialized")
     return _global_context
+
+
+def _emit_tool_event(ctx: QueryToolContext, tool_name: str, message: str):
+    """Push a progress event to the SSE queue if available."""
+    if ctx.event_queue and _main_loop:
+        _main_loop.call_soon_threadsafe(
+            ctx.event_queue.put_nowait,
+            {"tool": tool_name, "message": message},
+        )
 
 
 def get_mongo_schema_info(schema_context: Dict[str, Any]) -> str:
@@ -291,6 +334,7 @@ Return the SQL query that best answers this question."""
         """
         logger.info(f"[execute_sql_query] Called with query length={len(query) if query else 0}")
         ctx = get_query_context()
+        _emit_tool_event(ctx, "execute_sql_query", "Executing SQL query...")
 
         if not ctx.provider:
             logger.warning("[execute_sql_query] Provider not configured")
@@ -317,19 +361,8 @@ Return the SQL query that best answers this question."""
             async def execute_async():
                 return await ctx.provider.execute_query(query, limit=100)
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            logger.info(f"[execute_sql_query] Event loop: running={loop is not None and loop.is_running() if loop else False}, thread={__import__('threading').current_thread().name}")
-
-            if loop and loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(execute_async(), loop)
-                logger.info("[execute_sql_query] Scheduled on event loop, waiting for result...")
-                result = future.result(timeout=120)
-            else:
-                result = asyncio.run(execute_async())
+            logger.info(f"[execute_sql_query] Running async via _run_async, thread={threading.current_thread().name}")
+            result = _run_async(execute_async())
 
             logger.info(f"[execute_sql_query] Result: success={result.success if result else None}, rows={result.row_count if result and result.success else 0}")
 
@@ -372,6 +405,7 @@ Return the SQL query that best answers this question."""
             Dictionary with validation results
         """
         ctx = get_query_context()
+        _emit_tool_event(ctx, "validate_sql_query", "Validating SQL query...")
 
         if not query:
             return {"success": False, "error": "query is required"}
@@ -387,24 +421,12 @@ Return the SQL query that best answers this question."""
                 warnings.append("UPDATE without WHERE clause will affect all rows")
 
             if ctx.provider and hasattr(ctx.provider, "validate_syntax"):
-                import asyncio
-
-                logger.info(f"[validate_sql_query] Running provider validation, thread={__import__('threading').current_thread().name}")
+                logger.info(f"[validate_sql_query] Running provider validation, thread={threading.current_thread().name}")
 
                 async def validate_async():
                     return await ctx.provider.validate_syntax(query)
 
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop and loop.is_running():
-                    future = asyncio.run_coroutine_threadsafe(validate_async(), loop)
-                    logger.info("[validate_sql_query] Scheduled on event loop, waiting...")
-                    validation_result = future.result(timeout=120)
-                else:
-                    validation_result = asyncio.run(validate_async())
+                validation_result = _run_async(validate_async())
 
                 logger.info(f"[validate_sql_query] Validation result: valid={validation_result.valid}")
 
@@ -560,6 +582,7 @@ Return the MongoDB query that best answers this question. Use JSON format with c
         """
         logger.info(f"[execute_mongo_query] Called with query length={len(query) if query else 0}")
         ctx = get_query_context()
+        _emit_tool_event(ctx, "execute_mongo_query", "Executing MongoDB query...")
 
         if not ctx.provider:
             logger.warning("[execute_mongo_query] Provider not configured")
@@ -586,19 +609,8 @@ Return the MongoDB query that best answers this question. Use JSON format with c
             async def execute_async():
                 return await ctx.provider.execute_query(query, limit=100)
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            logger.info(f"[execute_mongo_query] Event loop: running={loop is not None and loop.is_running() if loop else False}, thread={__import__('threading').current_thread().name}")
-
-            if loop and loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(execute_async(), loop)
-                logger.info("[execute_mongo_query] Scheduled on event loop, waiting for result...")
-                result = future.result(timeout=120)
-            else:
-                result = asyncio.run(execute_async())
+            logger.info(f"[execute_mongo_query] Running async via _run_async, thread={threading.current_thread().name}")
+            result = _run_async(execute_async())
 
             logger.info(f"[execute_mongo_query] Result: success={result.success if result else None}, rows={result.row_count if result and result.success else 0}")
 
@@ -839,13 +851,14 @@ class QueryAgent:
             schema_context=schema_context,
             enable_execution=enable_execution,
             query_language=self._query_language,
+            event_queue=input_data.get("event_queue"),
         )
         set_query_context(ctx)
 
         if reset_conversation:
             self._update_agent()
 
-        result = self._agent(user_message)
+        result = await asyncio.to_thread(self._agent, user_message)
 
         response_text = str(result)
 

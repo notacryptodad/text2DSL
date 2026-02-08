@@ -279,6 +279,11 @@ async def generate_query_sse(request: QueryRequest, user_id: str = "anonymous"):
     """Generate SSE events for query processing."""
     from text2x.repositories.provider import ProviderRepository
     from uuid import UUID as PyUUID
+    from text2x.agentcore.agents.query.strands_agent import set_main_loop
+    import asyncio
+
+    # Capture the main event loop so Strands worker threads can schedule coroutines on it
+    set_main_loop(asyncio.get_running_loop())
 
     conversation_id = request.conversation_id or uuid4()
     turn_id = uuid4()
@@ -405,15 +410,44 @@ async def generate_query_sse(request: QueryRequest, user_id: str = "anonymous"):
                 + "\n\n"
             )
 
-            agent_result = await agent.process(
-                {
-                    "user_message": request.query,
-                    "provider_id": request.provider_id,
-                    "schema_context": schema_context,
-                    "enable_execution": enable_execution,
-                    "reset_conversation": not request.conversation_id,
-                }
-            )
+            event_queue = asyncio.Queue()
+
+            async def run_agent():
+                return await agent.process(
+                    {
+                        "user_message": request.query,
+                        "provider_id": request.provider_id,
+                        "schema_context": schema_context,
+                        "enable_execution": enable_execution,
+                        "reset_conversation": not request.conversation_id,
+                        "event_queue": event_queue,
+                    }
+                )
+
+            agent_task = asyncio.create_task(run_agent())
+
+            # Drain tool events as SSE while agent is running
+            while not agent_task.done():
+                try:
+                    event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
+                    yield (
+                        json.dumps(
+                            {
+                                "event": "progress",
+                                "data": {
+                                    "stage": "tool_execution",
+                                    "message": event.get("message", ""),
+                                    "tool": event.get("tool", ""),
+                                    "progress": 0.6,
+                                },
+                            }
+                        )
+                        + "\n\n"
+                    )
+                except asyncio.TimeoutError:
+                    continue
+
+            agent_result = await agent_task
 
             generated_query = agent_result.get("generated_query", "")
             query_explanation = agent_result.get("query_explanation", "")
