@@ -196,6 +196,7 @@ function Chat() {
         addMessage({
           type: 'assistant',
           content: content,
+          generatedQuery: data.generated_query || '',
           responseType: isPlainText ? 'text' : 'query',
           confidence: data.confidence_score,
           executionResult: data.execution_result,

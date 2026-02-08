@@ -80,6 +80,9 @@ function useQuerySSE(defaultCallbacks = {}) {
 
           if (eventType === 'progress') {
             console.log('[SSE] Setting progress')
+            if (eventPayload.stage === 'tool_execution') {
+              console.log('[SSE] 🔧 Tool event:', eventPayload.tool, '-', eventPayload.message)
+            }
             setProgress({
               stage: eventPayload.stage,
               message: eventPayload.message,

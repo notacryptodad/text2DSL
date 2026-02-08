@@ -1,5 +1,7 @@
 import { User, Bot, AlertCircle, CheckCircle, Info, Copy, Check, ChevronDown, ChevronRight, Download } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import Prism from 'prismjs'
 import '../styles/prism-custom.css'
 import 'prismjs/components/prism-sql'
@@ -9,6 +11,8 @@ import FeedbackButton from './FeedbackButton'
 
 function ChatMessage({ message, conversationId }) {
   const [copied, setCopied] = useState(false)
+
+  const stripThinkTags = (text) => text?.replace(/<think>[\s\S]*?<\/think>/g, '').trim() || ''
   const [traceExpanded, setTraceExpanded] = useState(false)
   const [agentDetailsExpanded, setAgentDetailsExpanded] = useState({})
 
@@ -86,7 +90,7 @@ function ChatMessage({ message, conversationId }) {
           <div className="bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-3 shadow-sm">
             {message.responseType === 'text' ? (
               <div className="prose prose-sm dark:prose-invert max-w-none">
-                <p className="whitespace-pre-wrap text-gray-900 dark:text-gray-100">{message.content}</p>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripThinkTags(message.content)}</ReactMarkdown>
               </div>
             ) : (
               <>
@@ -98,7 +102,7 @@ function ChatMessage({ message, conversationId }) {
                     </span>
                     <div className="flex items-center space-x-1">
                       <button
-                        onClick={() => copyToClipboard(message.content)}
+                        onClick={() => copyToClipboard(message.generatedQuery || message.content)}
                         className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
                         title="Copy query"
                       >
@@ -109,7 +113,7 @@ function ChatMessage({ message, conversationId }) {
                         )}
                       </button>
                       <button
-                        onClick={() => downloadQuery(message.content)}
+                        onClick={() => downloadQuery(message.generatedQuery || message.content)}
                         className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
                         title="Download query"
                       >
@@ -117,9 +121,32 @@ function ChatMessage({ message, conversationId }) {
                       </button>
                     </div>
                   </div>
-                  <pre className="bg-gray-900 dark:bg-gray-800 p-3 rounded text-sm overflow-x-auto">
-                    <code className={getLanguageClass(message.providerId)}>{message.content}</code>
-                  </pre>
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        code({ node, className, children, ...props }) {
+                          const isBlock = node?.position?.start?.line !== node?.position?.end?.line || className
+                          const isInsidePre = node?.parentNode?.tagName === 'pre'
+                          if (isBlock || isInsidePre) {
+                            return (
+                              <code className={className || getLanguageClass(message.providerId)} {...props}>{children}</code>
+                            )
+                          }
+                          return (
+                            <code className="bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded text-sm" {...props}>{children}</code>
+                          )
+                        },
+                        pre({ children }) {
+                          return (
+                            <pre className="bg-gray-900 dark:bg-gray-800 text-gray-100 p-3 rounded text-sm overflow-x-auto">{children}</pre>
+                          )
+                        },
+                      }}
+                    >
+                      {stripThinkTags(message.content)}
+                    </ReactMarkdown>
+                  </div>
                 </div>
 
                 {/* Query Explanation */}
