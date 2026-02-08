@@ -1,4 +1,5 @@
 """FastAPI application setup and configuration."""
+
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -54,9 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await initialize_agentcore()
         logger.info("AgentCore initialized successfully")
 
-        logger.info(
-            f"Text2DSL API started successfully on {settings.api_host}:{settings.api_port}"
-        )
+        logger.info(f"Text2DSL API started successfully on {settings.api_host}:{settings.api_port}")
 
     except Exception as e:
         logger.error(f"Failed to initialize application: {e}", exc_info=True)
@@ -176,7 +175,9 @@ async def initialize_agentcore() -> None:
     try:
         # Create configuration
         config = AgentCoreConfig(
-            model=settings.llm_model if not settings.llm_model.startswith("gpt-") else "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0",
+            model=settings.llm_model
+            if not settings.llm_model.startswith("gpt-")
+            else "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0",
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
             timeout=float(settings.llm_timeout),
@@ -246,9 +247,7 @@ async def seed_default_admin() -> None:
             await session.commit()
             await session.refresh(admin)
 
-            logger.info(
-                f"Default super admin created: {admin.email} (ID: {admin.id})"
-            )
+            logger.info(f"Default super admin created: {admin.email} (ID: {admin.id})")
 
     except Exception as e:
         logger.error(f"Failed to seed default admin: {e}")
@@ -290,10 +289,10 @@ def _serialize_validation_errors(errors: list) -> list:
         serialized_error = {}
         for key, value in error.items():
             if isinstance(value, bytes):
-                serialized_error[key] = value.decode('utf-8', errors='replace')
+                serialized_error[key] = value.decode("utf-8", errors="replace")
             elif isinstance(value, (list, tuple)):
                 serialized_error[key] = [
-                    item.decode('utf-8', errors='replace') if isinstance(item, bytes) else item
+                    item.decode("utf-8", errors="replace") if isinstance(item, bytes) else item
                     for item in value
                 ]
             else:
@@ -357,112 +356,41 @@ async def root() -> dict[str, str]:
 
 
 # Include API routers
-from text2x.api.routes import admin, annotations, auth, conversations, feedback, providers, query, review, health, metrics, workspaces, users, rag
+from text2x.api.routes import (
+    admin,
+    annotations,
+    auth,
+    conversations,
+    feedback,
+    providers,
+    query,
+    review,
+    health,
+    metrics,
+    workspaces,
+    users,
+    rag,
+)
 from text2x.agentcore.api import router as agentcore_router
 
 app.include_router(auth.router, prefix=settings.api_prefix)  # Authentication endpoints
 app.include_router(users.router, prefix=settings.api_prefix)  # User management endpoints
 app.include_router(query.router, prefix=settings.api_prefix)
-app.include_router(workspaces.router, prefix=settings.api_prefix)  # Workspaces with nested providers/connections
+app.include_router(
+    workspaces.router, prefix=settings.api_prefix
+)  # Workspaces with nested providers/connections
 app.include_router(providers.router, prefix=settings.api_prefix)  # Legacy flat provider endpoints
 app.include_router(conversations.router, prefix=settings.api_prefix)
 app.include_router(review.router, prefix=settings.api_prefix)
 app.include_router(feedback.router, prefix=settings.api_prefix)
 app.include_router(annotations.router, prefix=settings.api_prefix)
 app.include_router(rag.router, prefix=settings.api_prefix)  # RAG search endpoints
-app.include_router(admin.router, prefix=settings.api_prefix)  # Admin endpoints for super admin operations
+app.include_router(
+    admin.router, prefix=settings.api_prefix
+)  # Admin endpoints for super admin operations
 app.include_router(agentcore_router, prefix=settings.api_prefix)  # AgentCore runtime endpoints
 app.include_router(health.router)  # No prefix for health checks
 app.include_router(metrics.router)  # No prefix for metrics
-
-
-# WebSocket endpoint for streaming query processing
-@app.websocket("/ws/query")
-async def query_websocket(websocket: WebSocket) -> None:
-    """
-    WebSocket endpoint for streaming query processing.
-
-    This endpoint accepts WebSocket connections and streams query processing
-    events in real-time, including:
-    - Progress updates as agents work
-    - Clarification requests if needed
-    - Final query results
-    - Error notifications
-
-    The client should send a JSON message with the query request:
-    {
-        "provider_id": "postgres-main",
-        "query": "Show me all users",
-        "conversation_id": "optional-uuid",
-        "options": {
-            "trace_level": "none" | "summary" | "full",
-            "max_iterations": 3,
-            "confidence_threshold": 0.8,
-            "enable_execution": false
-        }
-    }
-
-    The server will respond with a stream of events:
-    {
-        "type": "progress" | "clarification" | "result" | "error",
-        "data": {...},
-        "trace": {...}  // if trace_level != "none"
-    }
-    """
-    await websocket.accept()
-    logger.info(f"WebSocket connection accepted from {websocket.client}")
-
-    try:
-        # Wait for query request from client
-        async for message in websocket.iter_json():
-            try:
-                # Import here to avoid circular dependency
-                from text2x.api.websocket import (
-                    WebSocketQueryRequest,
-                    handle_websocket_query,
-                )
-
-                # Parse and validate request
-                request = WebSocketQueryRequest(**message)
-
-                # Process query and stream events using AgentCore
-                await handle_websocket_query(websocket, request)
-
-            except ValidationError as e:
-                logger.warning(f"Invalid WebSocket message: {e}")
-                await websocket.send_json(
-                    {
-                        "type": "error",
-                        "data": {
-                            "error": "validation_error",
-                            "message": "Invalid request format",
-                            "details": {"errors": e.errors()},
-                        },
-                    }
-                )
-            except Exception as e:
-                logger.error(f"Error processing WebSocket message: {e}", exc_info=True)
-                await websocket.send_json(
-                    {
-                        "type": "error",
-                        "data": {
-                            "error": "processing_error",
-                            "message": "Failed to process query",
-                            "details": {"error": str(e)} if settings.debug else {},
-                        },
-                    }
-                )
-
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected from {websocket.client}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}", exc_info=True)
-    finally:
-        # Ensure connection is closed
-        try:
-            await websocket.close()
-        except Exception:
-            pass
 
 
 def get_app() -> FastAPI:

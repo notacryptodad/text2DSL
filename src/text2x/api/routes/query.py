@@ -1,11 +1,14 @@
 """Query processing endpoints."""
+
+import json
 import logging
 import time
 from datetime import datetime
-from typing import Optional
+from typing import AsyncGenerator, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from text2x.api.auth import User, get_current_user
 from text2x.api.models import (
@@ -17,6 +20,7 @@ from text2x.api.models import (
     QueryResponse,
     ValidationStatus,
 )
+from text2x.api.state import app_state
 from text2x.config import settings
 from text2x.repositories.annotation import SchemaAnnotationRepository
 from text2x.repositories.conversation import ConversationRepository
@@ -132,12 +136,14 @@ async def process_query(
             # Check if agent already exists
             if agent_name not in runtime.agents:
                 from text2x.agentcore.agents.query import QueryAgent
+                from text2x.providers.factory import get_provider_instance
+                from text2x.agentcore.llm.strands_provider import create_litellm_model
 
-                # Create agent instance
-                agent = QueryAgent(runtime, agent_name)
+                # Create agent instance with proper model
+                model = create_litellm_model(runtime.config)
+                agent = QueryAgent(model, name=agent_name)
 
                 # Set provider on agent
-                from text2x.providers.factory import get_provider_instance
                 query_provider = await get_provider_instance(provider)
                 agent.set_provider(query_provider)
 
@@ -150,14 +156,20 @@ async def process_query(
             # Get schema context
             schema_context = {}
             try:
-                schema = await provider.get_schema()
+                query_provider = agent.provider
+                if query_provider:
+                    schema = await query_provider.get_schema()
+                else:
+                    from text2x.providers.factory import get_provider_instance
+
+                    temp_provider = await get_provider_instance(provider)
+                    schema = await temp_provider.get_schema() if temp_provider else None
                 if schema:
                     schema_context["tables"] = [
                         {
                             "name": table.name,
                             "columns": [
-                                {"name": col.name, "type": col.type}
-                                for col in table.columns
+                                {"name": col.name, "type": col.type} for col in table.columns
                             ],
                         }
                         for table in schema.tables
@@ -166,13 +178,15 @@ async def process_query(
                 logger.warning(f"Failed to get schema: {e}")
 
             # Process query through QueryAgent
-            agent_result = await agent.process({
-                "user_message": request.query,
-                "provider_id": request.provider_id,
-                "schema_context": schema_context,
-                "enable_execution": enable_execution,
-                "reset_conversation": not request.conversation_id,
-            })
+            agent_result = await agent.process(
+                {
+                    "user_message": request.query,
+                    "provider_id": request.provider_id,
+                    "schema_context": schema_context,
+                    "enable_execution": enable_execution,
+                    "reset_conversation": not request.conversation_id,
+                }
+            )
 
             # Build API response from agent result
             generated_query = agent_result.get("generated_query", "")
@@ -185,7 +199,9 @@ async def process_query(
                 ExecutionResult as APIExecutionResult,
             )
 
-            api_validation_status = ValidationStatus.VALID if generated_query else ValidationStatus.UNKNOWN
+            api_validation_status = (
+                ValidationStatus.VALID if generated_query else ValidationStatus.UNKNOWN
+            )
             api_validation_result = APIValidationResult(
                 status=api_validation_status,
                 errors=[],
@@ -257,6 +273,221 @@ async def process_query(
                 details={"error": str(e)} if settings.debug else None,
             ).model_dump(),
         )
+
+
+async def generate_query_sse(request: QueryRequest, user_id: str = "anonymous"):
+    """Generate SSE events for query processing."""
+    from text2x.repositories.provider import ProviderRepository
+    from uuid import UUID as PyUUID
+
+    conversation_id = request.conversation_id or uuid4()
+    turn_id = uuid4()
+
+    try:
+        yield (
+            json.dumps(
+                {
+                    "event": "started",
+                    "data": {"conversation_id": str(conversation_id), "turn_id": str(turn_id)},
+                }
+            )
+            + "\n\n"
+        )
+
+        async with async_log_context(
+            conversation_id=str(conversation_id),
+            turn_id=str(turn_id),
+            provider_id=request.provider_id,
+        ):
+            enable_execution = (
+                request.options.enable_execution
+                if request.options.enable_execution is not None
+                else settings.enable_execution
+            )
+
+            yield (
+                json.dumps(
+                    {
+                        "event": "progress",
+                        "data": {
+                            "stage": "schema_retrieval",
+                            "message": "Retrieving schema...",
+                            "progress": 0.1,
+                        },
+                    }
+                )
+                + "\n\n"
+            )
+
+            provider_repo = ProviderRepository()
+            provider_uuid = PyUUID(request.provider_id) if request.provider_id else None
+            provider = await provider_repo.get_by_id(provider_uuid) if provider_uuid else None
+
+            if not provider:
+                yield (
+                    json.dumps(
+                        {
+                            "event": "error",
+                            "data": {
+                                "error": "provider_not_found",
+                                "message": f"Provider {request.provider_id} not found",
+                            },
+                        }
+                    )
+                    + "\n\n"
+                )
+                return
+
+            runtime = app_state.agentcore
+            agent_name = f"query_{request.provider_id}"
+
+            if agent_name not in runtime.agents:
+                from text2x.agentcore.agents.query import QueryAgent
+                from text2x.providers.factory import get_provider_instance
+                from text2x.agentcore.llm.strands_provider import create_litellm_model
+
+                model = create_litellm_model(runtime.config)
+                agent = QueryAgent(model, name=agent_name)
+                query_provider = await get_provider_instance(provider)
+                agent.set_provider(query_provider)
+                runtime.agents[agent_name] = agent
+
+            agent = runtime.agents[agent_name]
+
+            yield (
+                json.dumps(
+                    {
+                        "event": "progress",
+                        "data": {
+                            "stage": "query_generation",
+                            "message": "Generating query...",
+                            "progress": 0.3,
+                        },
+                    }
+                )
+                + "\n\n"
+            )
+
+            schema_context = {}
+            try:
+                query_provider = agent.provider
+                if query_provider:
+                    schema = await query_provider.get_schema()
+                else:
+                    from text2x.providers.factory import get_provider_instance
+
+                    temp_provider = await get_provider_instance(provider)
+                    schema = await temp_provider.get_schema() if temp_provider else None
+                if schema:
+                    schema_context["tables"] = [
+                        {
+                            "name": table.name,
+                            "columns": [
+                                {"name": col.name, "type": col.type} for col in table.columns
+                            ],
+                        }
+                        for table in schema.tables
+                    ]
+            except Exception as e:
+                logger.warning(f"Failed to get schema: {e}")
+
+            yield (
+                json.dumps(
+                    {
+                        "event": "progress",
+                        "data": {
+                            "stage": "generating",
+                            "message": "Processing with AI...",
+                            "progress": 0.5,
+                        },
+                    }
+                )
+                + "\n\n"
+            )
+
+            agent_result = await agent.process(
+                {
+                    "user_message": request.query,
+                    "provider_id": request.provider_id,
+                    "schema_context": schema_context,
+                    "enable_execution": enable_execution,
+                    "reset_conversation": not request.conversation_id,
+                }
+            )
+
+            generated_query = agent_result.get("generated_query", "")
+            query_explanation = agent_result.get("query_explanation", "")
+            execution_result = agent_result.get("execution_result")
+            response = agent_result.get("response", "")
+
+            yield (
+                json.dumps(
+                    {
+                        "event": "progress",
+                        "data": {
+                            "stage": "validation",
+                            "message": "Validating query...",
+                            "progress": 0.7,
+                        },
+                    }
+                )
+                + "\n\n"
+            )
+
+            api_execution_result = None
+            if execution_result:
+                api_execution_result = {
+                    "success": execution_result.get("success", False),
+                    "row_count": execution_result.get("row_count", 0),
+                    "execution_time_ms": execution_result.get("execution_time_ms", 0),
+                }
+
+            result = {
+                "conversation_id": str(conversation_id),
+                "turn_id": str(turn_id),
+                "response": response,
+                "generated_query": generated_query,
+                "confidence_score": 1.0 if generated_query else 0.0,
+                "execution_result": api_execution_result,
+                "query_explanation": query_explanation,
+            }
+
+            yield json.dumps({"event": "completed", "data": result}) + "\n\n"
+
+    except Exception as e:
+        logger.error(f"SSE query processing error: {e}", exc_info=True)
+        yield (
+            json.dumps({"event": "error", "data": {"error": "processing_error", "message": str(e)}})
+            + "\n\n"
+        )
+
+
+@router.post(
+    "/stream",
+    summary="Process query with SSE streaming",
+    description="Convert natural language to database query with real-time progress updates via SSE",
+)
+async def process_query_stream(
+    request: QueryRequest,
+    current_user: Optional[User] = Depends(get_current_user),
+):
+    """
+    Process a natural language query with SSE streaming for real-time progress updates.
+
+    Returns:
+        SSE stream of events: started, progress, completed, error
+    """
+    user_id = current_user.id if current_user else "anonymous"
+
+    return StreamingResponse(
+        generate_query_sse(request, user_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get(
@@ -440,7 +671,7 @@ async def submit_feedback(
 
             # Get the turn_id from the feedback request (assumes it's provided)
             # If not provided, we'll need to get the latest turn for this conversation
-            turn_id = feedback.turn_id if hasattr(feedback, 'turn_id') else None
+            turn_id = feedback.turn_id if hasattr(feedback, "turn_id") else None
 
             if not turn_id:
                 # Get the latest turn for this conversation
@@ -470,7 +701,9 @@ async def submit_feedback(
                     rating=rating,
                     category=category,
                     user_id="anonymous",  # Will be replaced with auth context
-                    feedback_text=feedback.feedback_text if hasattr(feedback, 'feedback_text') else None,
+                    feedback_text=feedback.feedback_text
+                    if hasattr(feedback, "feedback_text")
+                    else None,
                 )
             except Exception as e:
                 logger.error(f"Failed to submit feedback: {e}", exc_info=True)
@@ -490,6 +723,7 @@ async def submit_feedback(
                     if conversation:
                         # Get the turn to get the original query
                         from text2x.repositories.conversation import ConversationTurnRepository
+
                         turn_repo = ConversationTurnRepository()
                         turn = await turn_repo.get_by_id(turn_id)
 
@@ -508,15 +742,15 @@ async def submit_feedback(
                                     "turn_id": str(turn_id),
                                 },
                             )
-                            logger.info(f"Successfully added corrected query to RAG for turn {turn_id}")
+                            logger.info(
+                                f"Successfully added corrected query to RAG for turn {turn_id}"
+                            )
                 except Exception as e:
                     logger.error(f"Failed to add corrected query to RAG: {e}", exc_info=True)
                     # Don't fail the request if RAG addition fails
                     pass
 
-            logger.info(
-                f"Feedback submitted successfully for conversation {conversation_id}"
-            )
+            logger.info(f"Feedback submitted successfully for conversation {conversation_id}")
 
     except Exception as e:
         logger.error(f"Error submitting feedback: {e}", exc_info=True)

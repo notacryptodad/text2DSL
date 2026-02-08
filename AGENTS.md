@@ -173,6 +173,7 @@ docker compose -f docker-compose.test.yml down
 - Check if Docker containers are running: `docker ps | grep text2dsl`
 - Check backend logs: `./manage.sh logs backend`
 - Ensure `.env` file is configured correctly
+- Run `python3 -m py_compile src/text2x/api/app.py` to check for syntax errors
 
 ### Frontend won't start
 - Check if port 5173 is available
@@ -212,3 +213,32 @@ Key environment variables in `.env` (create from `.env.example` in project root)
 - `AWS_REGION` - AWS region for Bedrock (if using)
 
 See `.env.example` for all available configuration options.
+
+## Code Quality
+
+### Python Code Validation
+
+After making changes to Python files, always run `py_compile` to ensure the code compiles correctly:
+
+```bash
+# Compile a specific file
+python3 -m py_compile src/text2x/api/routes/query.py
+
+# Compile all Python files in a directory
+find src -name "*.py" -exec python3 -m py_compile {} \;
+
+# Compile entire backend
+python3 -m py_compile src/text2x/api/app.py
+```
+
+This catches syntax errors, import issues, and other compilation problems before runtime.
+
+### Frontend Code Validation
+
+Ensure frontend changes compile correctly:
+
+```bash
+cd frontend
+npm run build  # Production build
+npm run lint   # Run linting (if configured)
+```

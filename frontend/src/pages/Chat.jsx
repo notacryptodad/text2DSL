@@ -7,7 +7,7 @@ import ConversationHistory from '../components/ConversationHistory'
 import ProgressIndicator from '../components/ProgressIndicator'
 import SettingsPanel from '../components/SettingsPanel'
 import WelcomeScreen from '../components/WelcomeScreen'
-import useWebSocket from '../hooks/useWebSocket'
+import useQuerySSE from '../hooks/useQuerySSE'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 
 function Chat() {
@@ -21,6 +21,7 @@ function Chat() {
     return saved ? JSON.parse(saved) : []
   })
   const [showHistory, setShowHistory] = useState(false)
+  const [welcomeCollapsed, setWelcomeCollapsed] = useState(false)
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('querySettings')
     return saved ? JSON.parse(saved) : {
@@ -31,21 +32,29 @@ function Chat() {
     }
   })
   const messagesEndRef = useRef(null)
+  const messageIdCounter = useRef(0)
 
-    const { sendQuery, connectionState, progress, connect } = useWebSocket({
+  const generateMessageId = () => {
+    messageIdCounter.current += 1
+    return `${Date.now()}-${messageIdCounter.current}`
+  }
+
+  const { sendQuery, connectionState, progress, cancelQuery } = useQuerySSE({
     onMessage: (event) => {
-      handleWebSocketMessage(event)
+      console.log('[Chat] onMessage callback received:', event)
+      handleSSEMessage(event)
     },
     onError: (error) => {
-      console.error('WebSocket error:', error)
-      // Only show error if we were actually trying to send something
-      if (connectionState === 'connected') {
-        addMessage({
-          type: 'error',
-          content: 'Connection error. Please try again.',
-          timestamp: new Date(),
-        })
-      }
+      console.error('[Chat] onError callback received:', error)
+      addMessage({
+        type: 'error',
+        content: error.message || 'An error occurred',
+        timestamp: new Date(),
+      })
+    },
+    onComplete: (data) => {
+      console.log('[Chat] onComplete callback received:', data)
+      setConversationId(data.conversation_id)
     },
   })
 
@@ -145,13 +154,29 @@ function Chat() {
     }
   }, [messages, conversationId, selectedProvider])
 
-  const handleWebSocketMessage = (event) => {
-    const { type, data } = event
+  const handleSSEMessage = (event) => {
+    console.log('[Chat] handleSSEMessage called with:', event)
+    const { event: type, data } = event
+    console.log('[Chat] Event type:', type)
+    console.log('[Chat] Event data:', data)
 
     switch (type) {
+      case 'started': {
+        console.log('[Chat] Processing started event')
+        setConversationId(data.conversation_id)
+        addMessage({
+          type: 'progress',
+          content: 'Query processing started...',
+          stage: 'started',
+          progress: 0,
+          timestamp: new Date(),
+        })
+        break
+      }
+
       case 'progress': {
-        if (data.stage === 'started') {
-          setConversationId(data.conversation_id)
+        console.log('[Chat] Processing progress event')
+        if (data.stage !== 'started') {
           addMessage({
             type: 'progress',
             content: data.message,
@@ -163,37 +188,30 @@ function Chat() {
         break
       }
 
-      case 'result': {
-        const result = data.result
+      case 'completed': {
+        console.log('[Chat] Processing completed event')
+        console.log('[Chat] Adding assistant message with content:', data.response || data.generated_query)
+        const content = data.response || data.generated_query || ''
+        const isPlainText = !data.generated_query || data.generated_query.trim() === ''
         addMessage({
           type: 'assistant',
-          content: result.generated_query,
-          confidence: result.confidence_score,
-          validationStatus: result.validation_status,
-          executionResult: result.execution_result,
-          trace: result.reasoning_trace,
-          providerId: selectedProvider.id,
-          iterations: result.iterations,
-          turnId: result.turn_id,
-          explanation: result.query_explanation,
-          timestamp: new Date(),
-        })
-        break
-      }
-
-      case 'clarification': {
-        addMessage({
-          type: 'clarification',
-          content: data.questions || ['Please provide more details.'],
+          content: content,
+          responseType: isPlainText ? 'text' : 'query',
+          confidence: data.confidence_score,
+          executionResult: data.execution_result,
+          providerId: selectedProvider?.id,
+          turnId: data.turn_id,
+          explanation: data.query_explanation,
           timestamp: new Date(),
         })
         break
       }
 
       case 'error': {
+        console.log('[Chat] Processing error event')
         addMessage({
           type: 'error',
-          content: data.message || 'An error occurred',
+          content: data.message || data.error || 'An error occurred',
           details: data.details,
           timestamp: new Date(),
         })
@@ -201,12 +219,12 @@ function Chat() {
       }
 
       default:
-        console.warn('Unknown event type:', type)
+        console.warn('[Chat] Unknown SSE event type:', type, event)
     }
   }
 
   const addMessage = (message) => {
-    setMessages((prev) => [...prev, { id: Date.now(), ...message }])
+    setMessages((prev) => [...prev, { id: generateMessageId(), ...message }])
   }
 
   const handleSendQuery = async (query) => {
@@ -219,13 +237,6 @@ function Chat() {
       return
     }
 
-    // Connect WebSocket if not connected
-    if (connectionState !== 'connected') {
-      connect()
-      // Wait a moment for connection
-      await new Promise(resolve => setTimeout(resolve, 1000))
-    }
-
     addMessage({
       type: 'user',
       content: query,
@@ -235,7 +246,6 @@ function Chat() {
     try {
       await sendQuery({
         provider_id: selectedProvider.id,
-        workspace_id: currentWorkspace?.id,
         query,
         conversation_id: conversationId,
         options: {
@@ -330,7 +340,7 @@ function Chat() {
           <div className="lg:col-span-3">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[calc(100vh-12rem)]">
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className={`flex-1 p-6 space-y-4 ${messages.length > 0 ? 'overflow-y-auto' : ''}`}>
                 {messages.length === 0 ? (
                   <WelcomeScreen onGetStarted={handleWelcomeAction} />
                 ) : (
@@ -354,13 +364,11 @@ function Chat() {
               <div className="p-6 border-t border-gray-200 dark:border-gray-700">
                 <QueryInput
                   onSend={handleSendQuery}
-                  disabled={connectionState !== 'connected' || !selectedProvider}
+                  disabled={!selectedProvider}
                   placeholder={
                     !selectedProvider
                       ? 'Select a provider from your workspace...'
-                      : connectionState === 'connected'
-                      ? 'Ask me anything about your data...'
-                      : 'Connecting to server...'
+                      : 'Ask me anything about your data...'
                   }
                 />
               </div>
