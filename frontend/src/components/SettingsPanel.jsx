@@ -1,4 +1,4 @@
-import { Settings, Eye, EyeOff, Zap, Brain } from 'lucide-react'
+import { Settings, ChevronDown, Zap, Brain } from 'lucide-react'
 import { useState } from 'react'
 
 function SettingsPanel({ settings, onChange }) {
@@ -18,11 +18,7 @@ function SettingsPanel({ settings, onChange }) {
           <Settings className="w-5 h-5 text-primary-500" />
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Settings</h2>
         </div>
-        {isExpanded ? (
-          <EyeOff className="w-4 h-4 text-gray-500" />
-        ) : (
-          <Eye className="w-4 h-4 text-gray-500" />
-        )}
+        <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
       </button>
 
       {isExpanded && (
