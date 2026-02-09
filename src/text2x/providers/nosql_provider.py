@@ -553,8 +553,9 @@ class NoSQLProvider(QueryProvider):
         # Fetch results
         documents = []
         async for doc in cursor:
-            # Convert ObjectId to string for JSON serialization
-            doc["_id"] = str(doc["_id"])
+            # Convert ObjectId to string for JSON serialization (if _id exists)
+            if "_id" in doc and hasattr(doc["_id"], "__str__"):
+                doc["_id"] = str(doc["_id"])
             documents.append(doc)
 
         # Extract column names from first document
@@ -577,7 +578,9 @@ class NoSQLProvider(QueryProvider):
         doc = await collection.find_one(filter_query, projection)
 
         if doc:
-            doc["_id"] = str(doc["_id"])
+            # Convert ObjectId to string for JSON serialization (if _id exists)
+            if "_id" in doc and hasattr(doc["_id"], "__str__"):
+                doc["_id"] = str(doc["_id"])
             columns = list(doc.keys())
             return ExecutionResult(
                 success=True,
