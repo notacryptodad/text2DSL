@@ -9,6 +9,7 @@ import QueryHistorySidebar, { useQueryHistory } from '../components/QueryHistory
 import ProgressIndicator from '../components/ProgressIndicator'
 import SettingsPanel from '../components/SettingsPanel'
 import WelcomeScreen from '../components/WelcomeScreen'
+import TemplatesPicker from '../components/TemplatesPicker'
 import useQuerySSE from '../hooks/useQuerySSE'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 
@@ -23,8 +24,8 @@ function Chat() {
   const [showQueryHistory, setShowQueryHistory] = useState(false)
   const [settings, setSettings] = useState(() => { const saved = localStorage.getItem('querySettings'); return saved ? JSON.parse(saved) : { trace_level: 'summary', enable_execution: false, max_iterations: 5, confidence_threshold: 0.85 } })
   const messagesEndRef = useRef(null)
-  const messageIdCounter = useRef(0)
   const queryInputRef = useRef(null)
+  const messageIdCounter = useRef(0)
   const [currentQuery, setCurrentQuery] = useState('') // For live preview
   const pendingQueryRef = useRef(null)
   const { addQuery: addToQueryHistory } = useQueryHistory()
@@ -119,6 +120,13 @@ function Chat() {
     setCurrentQuery(query)
   }, [])
 
+  // Handle template selection from TemplatesPicker
+  const handleSelectTemplate = useCallback((template) => {
+    if (queryInputRef.current) {
+      queryInputRef.current.insertTemplate(template)
+    }
+  }, [])
+
   return (
     <>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -147,6 +155,13 @@ function Chat() {
 
               {/* Input */}
               <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center mb-3">
+                  <TemplatesPicker 
+                    providerType={selectedProvider?.type?.toLowerCase()} 
+                    onSelectTemplate={handleSelectTemplate}
+                    disabled={!selectedProvider}
+                  />
+                </div>
                 <QueryInput
                   ref={queryInputRef}
                   onSend={handleSendQuery}
