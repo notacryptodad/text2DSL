@@ -17,5 +17,12 @@ module.exports = {
       { allowConstantExport: true },
     ],
     'react/prop-types': 'off',
+    'no-restricted-syntax': [
+      'warn',  // start with warn, not error
+      {
+        selector: 'Literal[value=/^(p|m|gap)-(1|2|3|5|6|7|9|10|11)/]',
+        message: 'Use semantic spacing: p-sm, p-base, p-lg, p-xl',
+      },
+    ],
   },
 }
