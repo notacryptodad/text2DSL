@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
-  Moon,
-  Sun,
   Zap,
   MessageSquare,
   ClipboardCheck,
@@ -25,6 +23,7 @@ import WorkspaceSelector from './WorkspaceSelector'
 import NavigationProgress from './NavigationProgress'
 import KeyboardShortcutsHelp from './KeyboardShortcutsHelp'
 import MobileNav from './MobileNav'
+import ThemeToggle from './ThemeToggle'
 import * as ROUTES from '../constants/routes'
 
 function AppLayout({ children, darkMode, toggleDarkMode }) {
@@ -198,17 +197,7 @@ function AppLayout({ children, darkMode, toggleDarkMode }) {
               <MobileNav isSuperAdmin={isSuperAdmin} />
 
               {/* Dark Mode Toggle */}
-              <button
-                onClick={toggleDarkMode}
-                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                aria-label="Toggle dark mode"
-              >
-                {darkMode ? (
-                  <Sun className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                ) : (
-                  <Moon className="w-5 h-5 text-gray-600" />
-                )}
-              </button>
+              <ThemeToggle darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
 
               {/* Keyboard Shortcuts Button */}
               <button

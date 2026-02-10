@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import { WorkspaceProvider } from './contexts/WorkspaceContext'
+import { useTheme } from './hooks/useTheme'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/AppLayout'
 import AdminLayout from './components/AdminLayout'
@@ -24,24 +24,7 @@ import NotFound from './pages/NotFound'
 import * as ROUTES from './constants/routes'
 
 function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode')
-    if (saved !== null) return saved === 'true'
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-    localStorage.setItem('darkMode', darkMode)
-  }, [darkMode])
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode)
-  }
+  const { darkMode, toggleDarkMode } = useTheme()
 
   return (
     <Router>
