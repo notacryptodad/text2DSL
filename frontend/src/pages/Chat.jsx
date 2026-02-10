@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Database, History, X, Clock, PanelLeft } from 'lucide-react'
+import { Database, History, X, Clock, Keyboard } from 'lucide-react'
 import ChatMessage from '../components/ChatMessage'
 import ProviderSelect from '../components/ProviderSelect'
 import QueryInput from '../components/QueryInput'
@@ -10,8 +10,9 @@ import ProgressIndicator from '../components/ProgressIndicator'
 import SettingsPanel from '../components/SettingsPanel'
 import WelcomeScreen from '../components/WelcomeScreen'
 import TemplatesPicker from '../components/TemplatesPicker'
-import SchemaExplorerPanel from '../components/SchemaExplorerPanel'
+import KeyboardShortcutsHelp from '../components/KeyboardShortcutsHelp'
 import useQuerySSE from '../hooks/useQuerySSE'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 
 function Chat() {
@@ -23,10 +24,6 @@ function Chat() {
   const [conversations, setConversations] = useState(() => { const saved = localStorage.getItem('conversations'); return saved ? JSON.parse(saved) : [] })
   const [showHistory, setShowHistory] = useState(false)
   const [showQueryHistory, setShowQueryHistory] = useState(false)
-  const [showSchemaExplorer, setShowSchemaExplorer] = useState(() => {
-    const saved = localStorage.getItem('showSchemaExplorer')
-    return saved ? JSON.parse(saved) : false
-  })
   const [settings, setSettings] = useState(() => { const saved = localStorage.getItem('querySettings'); return saved ? JSON.parse(saved) : { trace_level: 'summary', enable_execution: false, max_iterations: 5, confidence_threshold: 0.85 } })
   const messagesEndRef = useRef(null)
   const queryInputRef = useRef(null)
@@ -35,40 +32,12 @@ function Chat() {
   const pendingQueryRef = useRef(null)
   const { addQuery: addToQueryHistory } = useQueryHistory()
 
+  // Track last user query for Up Arrow recall
+  const lastUserQuery = messages
+    .filter(m => m.type === 'user')
+    .slice(-1)[0]?.content || ''
+
   const generateMessageId = () => { messageIdCounter.current += 1; return `${Date.now()}-${messageIdCounter.current}` }
-
-  // Keyboard shortcut for Cmd+/ to toggle schema explorer
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Check for Cmd+/ (Mac) or Ctrl+/ (Windows/Linux)
-      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
-        e.preventDefault()
-        setShowSchemaExplorer(prev => {
-          const newValue = !prev
-          localStorage.setItem('showSchemaExplorer', JSON.stringify(newValue))
-          return newValue
-        })
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  // Save schema explorer state
-  useEffect(() => {
-    localStorage.setItem('showSchemaExplorer', JSON.stringify(showSchemaExplorer))
-  }, [showSchemaExplorer])
-
-  const handleInsertText = useCallback((text) => {
-    if (queryInputRef.current) {
-      queryInputRef.current.insertText(text)
-    }
-  }, [])
-
-  const toggleSchemaExplorer = useCallback(() => {
-    setShowSchemaExplorer(prev => !prev)
-  }, [])
 
   // eslint-disable-next-line no-unused-vars
   const { sendQuery, connectionState, progress, cancelQuery } = useQuerySSE({
@@ -77,6 +46,57 @@ function Chat() {
     onComplete: (data) => setConversationId(data.conversation_id),
   })
 
+  // Derive loading state from connection state
+  const isQueryRunning = connectionState === 'connecting' || connectionState === 'connected'
+
+  // Keyboard shortcut handlers
+  const handleProviderSwitch = useCallback(() => {
+    if (providers.length <= 1) return
+    
+    // Cycle to next provider
+    const currentIndex = providers.findIndex(p => p.id === selectedProvider?.id)
+    const nextIndex = (currentIndex + 1) % providers.length
+    setSelectedProvider(providers[nextIndex])
+  }, [providers, selectedProvider])
+
+  const handleToggleHistory = useCallback(() => {
+    setShowHistory(prev => !prev)
+  }, [])
+
+  const handleSendQueryShortcut = useCallback(() => {
+    queryInputRef.current?.submit?.()
+  }, [])
+
+  const handleCancelQuery = useCallback(() => {
+    if (isQueryRunning) {
+      cancelQuery()
+    }
+  }, [isQueryRunning, cancelQuery])
+
+  const handleClearChat = useCallback(() => {
+    setMessages([])
+    setConversationId(null)
+    queryInputRef.current?.focus?.()
+  }, [])
+
+  const handleRecallLastQuery = useCallback(() => {
+    if (lastUserQuery) {
+      queryInputRef.current?.setQuery?.(lastUserQuery)
+    }
+  }, [lastUserQuery])
+
+  // Initialize keyboard shortcuts
+  const { showHelpModal, setShowHelpModal } = useKeyboardShortcuts({
+    onProviderSwitch: handleProviderSwitch,
+    onToggleHistory: handleToggleHistory,
+    onSendQuery: handleSendQueryShortcut,
+    onCancelQuery: handleCancelQuery,
+    onClearChat: handleClearChat,
+    onRecallLastQuery: handleRecallLastQuery,
+    isQueryRunning: isQueryRunning,
+  })
+
+  // Fetch providers when workspace changes
   useEffect(() => {
     const fetchProviders = async () => {
       if (!currentWorkspace) { setProviders([]); setSelectedProvider(null); return }
@@ -117,7 +137,7 @@ function Chat() {
       case 'completed': {
         const content = data.response || data.generated_query || ''
         const isPlainText = !data.generated_query || data.generated_query.trim() === ''
-        addMessage({ type: 'assistant', content, generatedQuery: data.generated_query || '', responseType: isPlainText ? 'text' : 'query', confidence: data.confidence_score, executionResult: data.execution_result, providerId: selectedProvider?.id, turnId: data.turn_id, explanation: data.query_explanation, trace: data.reasoning_trace || data.trace, timestamp: new Date() })
+        addMessage({ type: 'assistant', content, generatedQuery: data.generated_query || '', responseType: isPlainText ? 'text' : 'query', confidence: data.confidence_score, executionResult: data.execution_result, providerId: selectedProvider?.id, turnId: data.turn_id, explanation: data.query_explanation, timestamp: new Date() })
         if (data.generated_query && pendingQueryRef.current) { addToQueryHistory({ query: pendingQueryRef.current, generatedDSL: data.generated_query, providerId: selectedProvider?.id, providerName: selectedProvider?.name, executionResult: data.execution_result }); pendingQueryRef.current = null }
         break
       }
@@ -165,32 +185,33 @@ function Chat() {
     }
   }, [])
 
+  // Detect Mac for keyboard shortcut hints
+  const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0
+  const modKey = isMac ? '⌘' : 'Ctrl'
+
   return (
     <>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <aside className="lg:col-span-1 space-y-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-              <div className="flex items-center space-x-2 mb-4"><Database className="w-5 h-5 text-primary-500" /><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Provider</h2></div>
-              <ProviderSelect providers={providers} selected={selectedProvider} onChange={setSelectedProvider} disabled={!currentWorkspace || providers.length === 0} />
-
-              {/* Schema Explorer Toggle Button */}
-              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button
-                  onClick={toggleSchemaExplorer}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-                    showSchemaExplorer
-                      ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-                      : 'bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <PanelLeft className="w-4 h-4" />
-                    <span className="text-sm font-medium">Schema Explorer</span>
-                  </div>
-                  <kbd className="px-1.5 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 rounded">⌘/</kbd>
-                </button>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <Database className="w-5 h-5 text-primary-500" />
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Provider
+                  </h2>
+                </div>
+                <span className="text-xs text-gray-400 dark:text-gray-500" title={`${modKey}+K to switch`}>
+                  {modKey}+K
+                </span>
               </div>
+              <ProviderSelect
+                providers={providers}
+                selected={selectedProvider}
+                onChange={setSelectedProvider}
+                disabled={!currentWorkspace || providers.length === 0}
+              />
 
               <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">How it works</h3>
@@ -202,80 +223,156 @@ function Chat() {
               </div>
             </div>
             <SettingsPanel settings={settings} onChange={setSettings} />
+
+            {/* Keyboard Shortcuts Button */}
+            <button
+              onClick={() => setShowHelpModal(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors text-sm"
+              title={`${modKey}+? for shortcuts`}
+            >
+              <Keyboard className="w-4 h-4" />
+              <span>Keyboard Shortcuts</span>
+              <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 rounded">
+                {modKey}+?
+              </kbd>
+            </button>
           </aside>
-
-          {/* Chat Area with Schema Explorer */}
           <div className="lg:col-span-3">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex h-[calc(100vh-12rem)] overflow-hidden">
-              {/* Schema Explorer Panel */}
-              <SchemaExplorerPanel
-                isOpen={showSchemaExplorer}
-                onClose={() => setShowSchemaExplorer(false)}
-                onInsertText={handleInsertText}
-                providerId={selectedProvider?.id}
-              />
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[calc(100vh-12rem)]">
+              <div className={`flex-1 p-6 space-y-4 ${messages.length > 0 ? 'overflow-y-auto' : ''}`}>
+                {messages.length === 0 ? <WelcomeScreen onGetStarted={handleWelcomeAction} /> : (<>{messages.map((message) => <ChatMessage key={message.id} message={message} conversationId={conversationId} />)}<div ref={messagesEndRef} /></>)}
+              </div>
+              <ProgressIndicator progress={progress} />
 
-              {/* Messages and Input */}
-              <div className="flex-1 flex flex-col min-w-0">
-                {/* Messages */}
-                <div className={`flex-1 p-6 space-y-4 ${messages.length > 0 ? 'overflow-y-auto' : ''}`}>
-                  {messages.length === 0 ? (
-                    <WelcomeScreen onGetStarted={handleWelcomeAction} />
-                  ) : (
-                    <>
-                      {messages.map((message) => (
-                        <ChatMessage
-                          key={message.id}
-                          message={message}
-                          conversationId={conversationId}
-                        />
-                      ))}
-                      <div ref={messagesEndRef} />
-                    </>
-                  )}
-                </div>
-
-                {/* Progress Indicator */}
-                <ProgressIndicator progress={progress} />
-
-                {/* Input */}
-                <div className="p-6 border-t border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center mb-3">
-                    <TemplatesPicker 
-                      providerType={selectedProvider?.type?.toLowerCase()} 
-                      onSelectTemplate={handleSelectTemplate}
-                      disabled={!selectedProvider}
-                    />
-                  </div>
-                  <QueryInput
-                    ref={queryInputRef}
-                    onSend={handleSendQuery}
-                    onQueryChange={handleQueryChange}
-                    disabled={!selectedProvider}
-                    placeholder={
-                      !selectedProvider
-                        ? 'Select a provider from your workspace...'
-                        : 'Ask me anything about your data...'
-                    }
-                  />
-                  
-                  {/* Live SQL Preview */}
-                  <QueryPreview
-                    query={currentQuery}
-                    onUseQuery={handleUsePreviewQuery}
+              {/* Input */}
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center mb-3">
+                  <TemplatesPicker 
+                    providerType={selectedProvider?.type?.toLowerCase()} 
+                    onSelectTemplate={handleSelectTemplate}
                     disabled={!selectedProvider}
                   />
                 </div>
+                <QueryInput
+                  ref={queryInputRef}
+                  onSend={handleSendQuery}
+                  onQueryChange={handleQueryChange}
+                  disabled={!selectedProvider}
+                  placeholder={
+                    !selectedProvider
+                      ? 'Select a provider from your workspace...'
+                      : 'Ask me anything about your data...'
+                  }
+                  lastQuery={lastUserQuery}
+                />
+                {isQueryRunning && (
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
+                    Press <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">Escape</kbd> to cancel
+                  </p>
+                )}
+                
+                {/* Live SQL Preview */}
+                <QueryPreview
+                  query={currentQuery}
+                  onUseQuery={handleUsePreviewQuery}
+                  disabled={!selectedProvider}
+                />
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Query History Button */}
       <button onClick={() => setShowQueryHistory(!showQueryHistory)} className="fixed bottom-24 right-8 p-4 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg transition-colors z-30" aria-label="Toggle query history" title="Search Query History"><Clock className="w-6 h-6" /></button>
-      <button onClick={() => setShowHistory(!showHistory)} className="fixed bottom-8 right-8 p-4 rounded-full bg-primary-500 hover:bg-primary-600 text-white shadow-lg transition-colors z-30" aria-label="Toggle conversation history"><History className="w-6 h-6" />{conversations.length > 0 && <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{conversations.length}</span>}</button>
+
+      {/* History Button - Fixed Position */}
+      <button
+        onClick={() => setShowHistory(!showHistory)}
+        className="group fixed bottom-8 right-8 p-4 rounded-full bg-primary-500 hover:bg-primary-600 text-white shadow-lg transition-colors z-30"
+        aria-label="Toggle conversation history"
+        title={`Toggle history (${modKey}+H)`}
+      >
+        <History className="w-6 h-6" />
+        {conversations.length > 0 && (
+          <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+            {conversations.length}
+          </span>
+        )}
+        {/* Tooltip showing shortcut */}
+        <span className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          {modKey}+H
+        </span>
+      </button>
+
+      {/* Query History Sidebar */}
       <QueryHistorySidebar isOpen={showQueryHistory} onClose={() => setShowQueryHistory(false)} onRunQuery={handleRunFromHistory} providers={providers} currentProviderId={selectedProvider?.id} />
-      {showHistory && (<div className="fixed inset-0 z-50 lg:hidden"><div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowHistory(false)} /><div className="absolute right-0 top-0 h-full w-80 bg-white dark:bg-gray-800 shadow-xl"><div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Conversation History</h2><button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"><X className="w-5 h-5 text-gray-500" /></button></div><div className="h-[calc(100%-64px)]"><ConversationHistory conversations={conversations} currentId={conversationId} onSelect={handleSelectConversation} onNew={handleNewConversation} onDelete={handleDeleteConversation} /></div></div></div>)}
-      <div className={`hidden lg:block fixed right-0 top-0 h-full w-80 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 z-40 ${showHistory ? 'translate-x-0' : 'translate-x-full'}`}><div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 mt-20"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Conversation History</h2><button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"><X className="w-5 h-5 text-gray-500" /></button></div><div className="h-[calc(100%-144px)]"><ConversationHistory conversations={conversations} currentId={conversationId} onSelect={handleSelectConversation} onNew={handleNewConversation} onDelete={handleDeleteConversation} /></div></div>
+
+      {/* Conversation History Sidebar */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={() => setShowHistory(false)}
+          />
+          <div className="absolute right-0 top-0 h-full w-80 bg-white dark:bg-gray-800 shadow-xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Conversation History
+              </h2>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="h-[calc(100%-64px)]">
+              <ConversationHistory
+                conversations={conversations}
+                currentId={conversationId}
+                onSelect={handleSelectConversation}
+                onNew={handleNewConversation}
+                onDelete={handleDeleteConversation}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop History Sidebar */}
+      <div
+        className={`hidden lg:block fixed right-0 top-0 h-full w-80 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 z-40 ${
+          showHistory ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 mt-20">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Conversation History
+          </h2>
+          <button
+            onClick={() => setShowHistory(false)}
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        <div className="h-[calc(100%-144px)]">
+          <ConversationHistory
+            conversations={conversations}
+            currentId={conversationId}
+            onSelect={handleSelectConversation}
+            onNew={handleNewConversation}
+            onDelete={handleDeleteConversation}
+          />
+        </div>
+      </div>
+
+      {/* Keyboard Shortcuts Help Modal */}
+      <KeyboardShortcutsHelp
+        isOpen={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
+      />
     </>
   )
 }
