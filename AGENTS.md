@@ -214,6 +214,67 @@ Key environment variables in `.env` (create from `.env.example` in project root)
 
 See `.env.example` for all available configuration options.
 
+## Frontend Design Guidelines
+
+These guidelines help maintain UI consistency and prevent common issues when AI coding agents work on frontend code.
+
+### 1. Restrict Tailwind Classes
+
+Agents love adding arbitrary spacing/colors everywhere. Enforce semantic tokens:
+
+```js
+// In .eslintrc.js - ban arbitrary spacing
+'no-restricted-syntax': [
+  'error',
+  {
+    selector: 'Literal[value=/^(p|m|gap)-(1|2|3|5|6|7|9|10|11)/]',
+    message: 'Use semantic spacing: p-sm, p-base, p-lg, p-xl',
+  },
+]
+```
+
+Define allowed values in `tailwind.config.js`:
+```js
+spacing: {
+  'sm': '0.5rem',    // 8px
+  'base': '1rem',    // 16px  
+  'lg': '1.5rem',    // 24px
+  'xl': '2rem',      // 32px
+}
+```
+
+### 2. Keep Leaf Components Presentational
+
+Business logic (fetching, state) lives in parent/container components. Presentational components only receive props and render UI.
+
+Enforce via ESLint (ban hooks in presentational components):
+```js
+{
+  selector: 'CallExpression[callee.name="useState"]',
+  message: 'View components should not manage state. Use controlled props.',
+}
+```
+
+Organize by concern:
+```
+components/
+  presentational/   # Pure UI, no hooks
+  containers/       # State + logic
+```
+
+### 3. Enforce Icon Library
+
+We use `lucide-react`. Prevent random inline SVGs to maintain consistent icon sizing/style.
+
+### 4. Why This Matters
+
+- Agents look for patterns to follow - clear separation gives them examples
+- Frankenstein components (1000+ lines mixing state + rendering) are hard to audit
+- Semantic tokens prevent drift toward inconsistent spacing/colors
+- Smaller focused components are easier for both humans and agents to understand
+
+Source: [Vibe Kanban Guide](https://www.vibekanban.com/vibe-guide#restrict-tailwind)
+
 ## Code Quality
 
 ### Python Code Validation
