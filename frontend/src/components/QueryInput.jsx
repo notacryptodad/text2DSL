@@ -13,30 +13,36 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
     }
   }, [query, onQueryChange])
 
-  // Expose methods via ref
+  // Expose methods via ref (merged from both branches)
   useImperativeHandle(ref, () => ({
     getValue: () => query,
     setValue: (value) => setQuery(value),
-    insertTemplate: (template) => {
-      setQuery(template)
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus()
-          const match = template.match(/\{\{(\w+)\}\}/)
-          if (match) {
-            const start = template.indexOf(match[0])
-            const end = start + match[0].length
-            textareaRef.current.setSelectionRange(start, end)
-          }
-        }
-      }, 0)
-    },
     focus: () => textareaRef.current?.focus(),
-    clear: () => setQuery('')
-  }))
+    clear: () => setQuery(''),
+    insertText: (text) => {
+      if (!textareaRef.current) return
+      
+      const textarea = textareaRef.current
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const currentValue = query
+      
+      // Insert text at cursor position
+      const newValue = currentValue.substring(0, start) + text + currentValue.substring(end)
+      setQuery(newValue)
+      
+      // Set cursor position after inserted text
+      requestAnimationFrame(() => {
+        const newPos = start + text.length
+        textarea.focus()
+        textarea.setSelectionRange(newPos, newPos)
+      })
+    },
+  }), [query])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
     if (!query.trim() || disabled || isLoading) return
 
     setIsLoading(true)
@@ -55,28 +61,6 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
       e.preventDefault()
       handleSubmit(e)
     }
-    
-    if (e.key === 'Tab' && query.includes('{{')) {
-      const textarea = e.target
-      const cursorPos = textarea.selectionStart
-      const text = query
-      
-      const regex = /\{\{(\w+)\}\}/g
-      let match
-      let nextPlaceholder = null
-      let firstPlaceholder = null
-      
-      while ((match = regex.exec(text)) !== null) {
-        if (!firstPlaceholder) firstPlaceholder = { start: match.index, end: match.index + match[0].length }
-        if (match.index > cursorPos && !nextPlaceholder) nextPlaceholder = { start: match.index, end: match.index + match[0].length }
-      }
-      
-      const targetPlaceholder = nextPlaceholder || firstPlaceholder
-      if (targetPlaceholder) {
-        e.preventDefault()
-        textarea.setSelectionRange(targetPlaceholder.start, targetPlaceholder.end)
-      }
-    }
   }
 
   return (
@@ -91,14 +75,17 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
           disabled={disabled || isLoading}
           rows={1}
           className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-none text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ minHeight: '48px', maxHeight: '120px' }}
+          style={{
+            minHeight: '48px',
+            maxHeight: '120px',
+          }}
           onInput={(e) => {
             e.target.style.height = 'auto'
             e.target.style.height = e.target.scrollHeight + 'px'
           }}
         />
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Press Enter to send, Shift+Enter for new line{query.includes('{{') && ', Tab to jump between placeholders'}
+          Press Enter to send, Shift+Enter for new line
         </p>
       </div>
       <button
@@ -107,7 +94,11 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
         className="flex-shrink-0 p-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white rounded-lg transition-colors disabled:cursor-not-allowed shadow-sm hover:shadow-md"
         aria-label="Send query"
       >
-        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+        {isLoading ? (
+          <Loader2 className="w-5 h-5 animate-spin" />
+        ) : (
+          <Send className="w-5 h-5" />
+        )}
       </button>
     </form>
   )

@@ -12,10 +12,48 @@ const KeyboardShortcutsHelp = ({ isOpen, onClose }) => {
     { keys: ['g', 'w'], description: 'Go to Workspaces' },
   ];
 
+  const chatShortcuts = [
+    { keys: ['⌘', '/'], description: 'Toggle Schema Explorer panel' },
+  ];
+
   const generalShortcuts = [
     { keys: ['?'], description: 'Show keyboard shortcuts' },
     { keys: ['Escape'], description: 'Close modals' },
   ];
+
+  const renderShortcutSection = (title, shortcuts) => (
+    <div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+        {title}
+      </h3>
+      <div className="space-y-2">
+        {shortcuts.map((shortcut, index) => (
+          <div
+            key={index}
+            className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
+          >
+            <span className="text-gray-700 dark:text-gray-300">
+              {shortcut.description}
+            </span>
+            <div className="flex items-center gap-1">
+              {shortcut.keys.map((key, keyIndex) => (
+                <React.Fragment key={keyIndex}>
+                  <kbd className="px-3 py-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm">
+                    {key}
+                  </kbd>
+                  {keyIndex < shortcut.keys.length - 1 && (
+                    <span className="text-gray-500 dark:text-gray-400 text-sm mx-1">
+                      {shortcut.keys.length === 2 && shortcut.keys[0] === '⌘' ? '+' : 'then'}
+                    </span>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -44,67 +82,9 @@ const KeyboardShortcutsHelp = ({ isOpen, onClose }) => {
 
           {/* Content */}
           <div className="space-y-6">
-            {/* Navigation Shortcuts */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-                Navigation
-              </h3>
-              <div className="space-y-2">
-                {navigationShortcuts.map((shortcut, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
-                  >
-                    <span className="text-gray-700 dark:text-gray-300">
-                      {shortcut.description}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {shortcut.keys.map((key, keyIndex) => (
-                        <React.Fragment key={keyIndex}>
-                          <kbd className="px-3 py-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm">
-                            {key}
-                          </kbd>
-                          {keyIndex < shortcut.keys.length - 1 && (
-                            <span className="text-gray-500 dark:text-gray-400 text-sm mx-1">
-                              then
-                            </span>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* General Shortcuts */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-                General
-              </h3>
-              <div className="space-y-2">
-                {generalShortcuts.map((shortcut, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
-                  >
-                    <span className="text-gray-700 dark:text-gray-300">
-                      {shortcut.description}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {shortcut.keys.map((key, keyIndex) => (
-                        <kbd
-                          key={keyIndex}
-                          className="px-3 py-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm"
-                        >
-                          {key}
-                        </kbd>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {renderShortcutSection('Navigation', navigationShortcuts)}
+            {renderShortcutSection('Chat', chatShortcuts)}
+            {renderShortcutSection('General', generalShortcuts)}
           </div>
 
           {/* Footer tip */}
