@@ -106,6 +106,7 @@ function ChatMessage({ message, conversationId }) {
                         onClick={() => copyToClipboard(message.generatedQuery || message.content)}
                         className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
                         title="Copy query"
+                        aria-label={copied ? "Copied query to clipboard" : "Copy query to clipboard"}
                       >
                         {copied ? (
                           <Check className="w-4 h-4 text-green-500" />
@@ -117,6 +118,7 @@ function ChatMessage({ message, conversationId }) {
                         onClick={() => downloadQuery(message.generatedQuery || message.content)}
                         className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
                         title="Download query"
+                        aria-label="Download query as file"
                       >
                         <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                       </button>
@@ -228,6 +230,7 @@ function ChatMessage({ message, conversationId }) {
                     <button
                       onClick={() => setTraceExpanded(!traceExpanded)}
                       className="flex items-center justify-between w-full text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:text-gray-800 dark:hover:text-gray-200"
+                      aria-expanded={traceExpanded}
                     >
                       <span>Processing Details & Reasoning Trace</span>
                       {traceExpanded ? (
@@ -277,6 +280,7 @@ function ChatMessage({ message, conversationId }) {
                                 <button
                                   onClick={() => toggleAgentDetails(key)}
                                   className="flex items-center justify-between w-full text-left"
+                                  aria-expanded={!!agentDetailsExpanded[key]}
                                 >
                                   <div className="flex items-center space-x-2">
                                     <span>{icon}</span>
