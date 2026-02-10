@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Database, History, X } from 'lucide-react'
 import ChatMessage from '../components/ChatMessage'
 import ProviderSelect from '../components/ProviderSelect'
 import QueryInput from '../components/QueryInput'
+import QueryPreview from '../components/QueryPreview'
 import ConversationHistory from '../components/ConversationHistory'
 import ProgressIndicator from '../components/ProgressIndicator'
 import SettingsPanel from '../components/SettingsPanel'
@@ -33,6 +34,8 @@ function Chat() {
   })
   const messagesEndRef = useRef(null)
   const messageIdCounter = useRef(0)
+  const queryInputRef = useRef(null)
+  const [currentQuery, setCurrentQuery] = useState('') // For live preview
 
   const generateMessageId = () => {
     messageIdCounter.current += 1
@@ -293,6 +296,22 @@ function Chat() {
     }
   }
 
+  // Handle using SQL from preview - sends the natural language query
+  const handleUsePreviewQuery = useCallback(() => {
+    if (currentQuery.trim()) {
+      handleSendQuery(currentQuery)
+      if (queryInputRef.current) {
+        queryInputRef.current.clear()
+      }
+      setCurrentQuery('')
+    }
+  }, [currentQuery])
+
+  // Handle query change for live preview
+  const handleQueryChange = useCallback((query) => {
+    setCurrentQuery(query)
+  }, [])
+
   return (
     <>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -364,13 +383,22 @@ function Chat() {
               {/* Input */}
               <div className="p-6 border-t border-gray-200 dark:border-gray-700">
                 <QueryInput
+                  ref={queryInputRef}
                   onSend={handleSendQuery}
+                  onQueryChange={handleQueryChange}
                   disabled={!selectedProvider}
                   placeholder={
                     !selectedProvider
                       ? 'Select a provider from your workspace...'
                       : 'Ask me anything about your data...'
                   }
+                />
+                
+                {/* Live SQL Preview */}
+                <QueryPreview
+                  query={currentQuery}
+                  onUseQuery={handleUsePreviewQuery}
+                  disabled={!selectedProvider}
                 />
               </div>
             </div>
