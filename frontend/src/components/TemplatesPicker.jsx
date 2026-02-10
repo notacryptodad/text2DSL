@@ -56,9 +56,9 @@ function TemplatesPicker({ providerType, onSelectTemplate, disabled }) {
   return (
     <div className="relative" ref={dropdownRef}>
       <button type="button" onClick={() => setIsOpen(!isOpen)} disabled={disabled}
-        className={\`inline-flex items-center space-x-1.5 px-3 py-2 text-sm font-medium rounded-lg border transition-colors \${disabled ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-primary-300 dark:hover:border-primary-600'}\`}
+        className={`inline-flex items-center space-x-1.5 px-3 py-2 text-sm font-medium rounded-lg border transition-colors \${disabled ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-primary-300 dark:hover:border-primary-600'}`}
         title="Query Templates">
-        <FileText className="w-4 h-4" /><span>Templates</span><ChevronDown className={\`w-4 h-4 transition-transform \${isOpen ? 'rotate-180' : ''}\`} />
+        <FileText className="w-4 h-4" /><span>Templates</span><ChevronDown className={`w-4 h-4 transition-transform \${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
@@ -78,10 +78,10 @@ function TemplatesPicker({ providerType, onSelectTemplate, disabled }) {
           </div>
 
           <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-wrap gap-1">
-            <button onClick={() => setSelectedCategory(null)} className={\`px-2 py-1 text-xs rounded-full transition-colors \${!selectedCategory ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}\`}>All</button>
+            <button onClick={() => setSelectedCategory(null)} className={`px-2 py-1 text-xs rounded-full transition-colors \${!selectedCategory ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>All</button>
             {availableCategories.map(category => (
               <button key={category.id} onClick={() => setSelectedCategory(category.id === selectedCategory ? null : category.id)}
-                className={\`px-2 py-1 text-xs rounded-full transition-colors flex items-center space-x-1 \${selectedCategory === category.id ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}\`}>
+                className={`px-2 py-1 text-xs rounded-full transition-colors flex items-center space-x-1 \${selectedCategory === category.id ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
                 <span>{category.icon}</span><span>{category.name}</span>
               </button>
             ))}
