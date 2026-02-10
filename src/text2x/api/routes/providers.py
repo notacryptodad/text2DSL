@@ -318,6 +318,107 @@ async def get_provider_schema(
         )
 
 
+@router.get(
+    "/{provider_id}/health",
+    summary="Check provider health",
+    description="Test connection to a provider and return health status with latency",
+)
+async def check_provider_health(provider_id: UUID) -> dict:
+    """Check the health/connectivity of a specific provider."""
+    import time as time_module
+
+    try:
+        logger.info(f"Health check for provider {provider_id}")
+
+        async with await get_session() as session:
+            provider_stmt = select(Provider).where(Provider.id == provider_id)
+            provider_result = await session.execute(provider_stmt)
+            provider = provider_result.scalar_one_or_none()
+
+            if not provider:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse(
+                        error="not_found",
+                        message=f"Provider {provider_id} not found",
+                    ).model_dump(),
+                )
+
+            conn_stmt = select(Connection).where(Connection.provider_id == provider_id).limit(1)
+            conn_result = await session.execute(conn_stmt)
+            connection = conn_result.scalar_one_or_none()
+
+            if not connection:
+                return {
+                    "status": "disconnected",
+                    "latency_ms": None,
+                    "last_check": datetime.utcnow().isoformat() + "Z",
+                    "message": "No connections configured for this provider",
+                    "provider_id": str(provider_id),
+                    "provider_name": provider.name,
+                }
+
+            try:
+                schema_service = SchemaService()
+                start_time = time_module.time()
+                schema_def = await schema_service.get_schema(connection.id)
+                latency_ms = (time_module.time() - start_time) * 1000
+
+                if schema_def:
+                    if latency_ms < 1000:
+                        health_status = "connected"
+                        message = "Connection healthy"
+                    elif latency_ms < 5000:
+                        health_status = "degraded"
+                        message = "Connection slow but operational"
+                    else:
+                        health_status = "degraded"
+                        message = "Connection very slow"
+
+                    return {
+                        "status": health_status,
+                        "latency_ms": round(latency_ms, 2),
+                        "last_check": datetime.utcnow().isoformat() + "Z",
+                        "message": message,
+                        "provider_id": str(provider_id),
+                        "provider_name": provider.name,
+                        "table_count": len(schema_def.tables) if schema_def.tables else 0,
+                    }
+                else:
+                    return {
+                        "status": "unknown",
+                        "latency_ms": round(latency_ms, 2),
+                        "last_check": datetime.utcnow().isoformat() + "Z",
+                        "message": "Connection established but schema unavailable",
+                        "provider_id": str(provider_id),
+                        "provider_name": provider.name,
+                    }
+
+            except Exception as conn_error:
+                logger.warning(f"Connection test failed for provider {provider_id}: {conn_error}")
+                return {
+                    "status": "disconnected",
+                    "latency_ms": None,
+                    "last_check": datetime.utcnow().isoformat() + "Z",
+                    "message": f"Connection failed: {str(conn_error)[:100]}",
+                    "provider_id": str(provider_id),
+                    "provider_name": provider.name,
+                    "error": str(conn_error)[:200],
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking provider health: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error="health_check_error",
+                message="Failed to check provider health",
+            ).model_dump(),
+        )
+
+
 @router.post(
     "/{provider_id}/schema/refresh",
     status_code=status.HTTP_202_ACCEPTED,

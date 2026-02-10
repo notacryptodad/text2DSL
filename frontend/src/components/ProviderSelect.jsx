@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react'
+import ConnectionHealthBadge from './ConnectionHealthBadge'
 
 function ProviderSelect({ providers, selected, onChange, disabled = false }) {
   if (providers.length === 0) {
@@ -29,9 +30,12 @@ function ProviderSelect({ providers, selected, onChange, disabled = false }) {
           <div className="flex items-center space-x-3">
             <span className="text-2xl">{provider.icon}</span>
             <div className="text-left">
-              <p className="font-semibold text-gray-900 dark:text-white">
-                {provider.name}
-              </p>
+              <div className="flex items-center space-x-2">
+                <p className="font-semibold text-gray-900 dark:text-white">
+                  {provider.name}
+                </p>
+                <ConnectionHealthBadge providerId={provider.id} />
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {provider.type}
               </p>
