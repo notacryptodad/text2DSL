@@ -1,9 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
 import { Send, Loader2 } from 'lucide-react'
 
-function QueryInput({ onSend, disabled, placeholder }) {
+const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholder, onQueryChange }, ref) {
   const [query, setQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const textareaRef = useRef(null)
+
+  // Notify parent of query changes for live preview
+  useEffect(() => {
+    if (onQueryChange) {
+      onQueryChange(query)
+    }
+  }, [query, onQueryChange])
+
+  // Expose methods via ref
+  useImperativeHandle(ref, () => ({
+    getValue: () => query,
+    setValue: (value) => setQuery(value),
+    focus: () => textareaRef.current?.focus(),
+    clear: () => setQuery(''),
+  }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -32,6 +48,7 @@ function QueryInput({ onSend, disabled, placeholder }) {
     <form onSubmit={handleSubmit} className="flex items-end space-x-3">
       <div className="flex-1">
         <textarea
+          ref={textareaRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -66,6 +83,6 @@ function QueryInput({ onSend, disabled, placeholder }) {
       </button>
     </form>
   )
-}
+})
 
 export default QueryInput
