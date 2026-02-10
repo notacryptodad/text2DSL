@@ -8,6 +8,7 @@ import 'prismjs/components/prism-sql'
 import 'prismjs/components/prism-mongodb'
 import 'prismjs/components/prism-splunk-spl'
 import FeedbackButton from './FeedbackButton'
+import ConfidenceMeter from './ConfidenceMeter'
 
 function ChatMessage({ message, conversationId }) {
   const [copied, setCopied] = useState(false)
@@ -166,38 +167,13 @@ function ChatMessage({ message, conversationId }) {
                   </div>
                 )}
 
-                {/* Confidence Score */}
+                {/* Confidence Meter */}
                 {message.confidence !== undefined && (
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">
-                        Confidence Score
-                      </span>
-                      <span
-                        className={`font-semibold ${
-                          message.confidence >= 0.85
-                            ? 'text-green-600 dark:text-green-400'
-                            : message.confidence >= 0.7
-                            ? 'text-yellow-600 dark:text-yellow-400'
-                            : 'text-red-600 dark:text-red-400'
-                        }`}
-                      >
-                        {(message.confidence * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mt-1">
-                      <div
-                        className={`h-2 rounded-full transition-all ${
-                          message.confidence >= 0.85
-                            ? 'bg-green-500'
-                            : message.confidence >= 0.7
-                            ? 'bg-yellow-500'
-                            : 'bg-red-500'
-                        }`}
-                        style={{ width: `${message.confidence * 100}%` }}
-                      />
-                    </div>
-                  </div>
+                  <ConfidenceMeter 
+                    confidence={message.confidence}
+                    history={message.confidenceHistory || []}
+                    showHistory={message.confidenceHistory && message.confidenceHistory.length > 1}
+                  />
                 )}
 
                 {/* Validation Status */}
