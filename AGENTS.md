@@ -2,6 +2,70 @@
 
 This guide explains how to properly start the Text2DSL local development environment.
 
+## Parallel Feature Development (AI Agents)
+
+When running multiple AI coding agents in parallel, **each agent MUST work in an isolated directory** to prevent git branch conflicts.
+
+### Using Git Worktrees (Recommended)
+
+Git worktrees share the same `.git` history but provide isolated working directories:
+
+```bash
+# Setup: From the main repo
+cd /home/ubuntu/text2DSL
+git fetch origin main
+
+# Create isolated worktree for each feature
+git worktree add /home/ubuntu/text2DSL-issue-42 -b feature/42-query-history origin/main
+git worktree add /home/ubuntu/text2DSL-issue-43 -b feature/43-schema-explorer origin/main
+```
+
+Each worktree:
+- Has its own directory and branch
+- Can run `npm install` independently
+- No branch switching conflicts with other agents
+
+### Sub-Agent Task Template
+
+When spawning sub-agents for parallel feature work, use this pattern:
+
+```
+**Setup:**
+1. cd /home/ubuntu/text2DSL && git fetch origin main
+2. git worktree add /home/ubuntu/text2DSL-issue-{N} -b feature/{N}-{name} origin/main
+3. cd /home/ubuntu/text2DSL-issue-{N}/frontend && npm install
+
+**Do all work in /home/ubuntu/text2DSL-issue-{N}**
+
+**When done:**
+1. git add -A && git commit -m "feat: description (#N)"
+2. git push -u origin feature/{N}-{name}
+3. gh pr create --title "feat: Title" --body "Closes #{N}" --base main
+
+**Cleanup (optional):**
+cd /home/ubuntu/text2DSL && git worktree remove /home/ubuntu/text2DSL-issue-{N}
+```
+
+### Alternative: Separate Clones
+
+Simpler but uses more disk space:
+
+```bash
+git clone --depth 1 https://github.com/notacryptodad/text2DSL.git /home/ubuntu/text2DSL-issue-{N}
+cd /home/ubuntu/text2DSL-issue-{N}
+git checkout -b feature/{N}-{name}
+```
+
+### Why This Matters
+
+Without isolation, parallel agents will:
+- Switch branches out from under each other
+- Create merge conflicts
+- Commit to wrong branches
+- Cause mysterious "branch changed" errors
+
+**Rule: One agent = One directory. Never share.**
+
 ## Prerequisites
 
 - Docker and Docker Compose installed
