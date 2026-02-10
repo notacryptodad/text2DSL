@@ -37,6 +37,28 @@ body {
   @apply transition-colors duration-200;
 }
 
+/* Theme transition - smooth color changes when toggling dark/light mode */
+html,
+body,
+#root {
+  @apply transition-colors duration-300;
+}
+
+/* Apply smooth transitions to major UI elements for theme changes */
+.bg-white,
+.bg-gray-50,
+.bg-gray-100,
+.bg-gray-800,
+.bg-gray-900,
+.border-gray-200,
+.border-gray-700,
+.text-gray-600,
+.text-gray-400,
+.text-gray-900,
+.text-white {
+  @apply transition-colors duration-300;
+}
+
 /* Code block styling */
 pre code {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
