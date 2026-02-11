@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Database, History, X, Clock } from 'lucide-react'
+import { Database, History, X, Clock, PanelLeft } from 'lucide-react'
 import ChatMessage from '../components/ChatMessage'
 import ProviderSelect from '../components/ProviderSelect'
 import QueryInput from '../components/QueryInput'
@@ -10,6 +10,7 @@ import ProgressIndicator from '../components/ProgressIndicator'
 import SettingsPanel from '../components/SettingsPanel'
 import WelcomeScreen from '../components/WelcomeScreen'
 import TemplatesPicker from '../components/TemplatesPicker'
+import SchemaExplorerPanel from '../components/SchemaExplorerPanel'
 import useQuerySSE from '../hooks/useQuerySSE'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 
@@ -22,6 +23,10 @@ function Chat() {
   const [conversations, setConversations] = useState(() => { const saved = localStorage.getItem('conversations'); return saved ? JSON.parse(saved) : [] })
   const [showHistory, setShowHistory] = useState(false)
   const [showQueryHistory, setShowQueryHistory] = useState(false)
+  const [showSchemaExplorer, setShowSchemaExplorer] = useState(() => {
+    const saved = localStorage.getItem('showSchemaExplorer')
+    return saved ? JSON.parse(saved) : false
+  })
   const [settings, setSettings] = useState(() => { const saved = localStorage.getItem('querySettings'); return saved ? JSON.parse(saved) : { trace_level: 'summary', enable_execution: false, max_iterations: 5, confidence_threshold: 0.85 } })
   const messagesEndRef = useRef(null)
   const queryInputRef = useRef(null)
@@ -31,6 +36,39 @@ function Chat() {
   const { addQuery: addToQueryHistory } = useQueryHistory()
 
   const generateMessageId = () => { messageIdCounter.current += 1; return `${Date.now()}-${messageIdCounter.current}` }
+
+  // Keyboard shortcut for Cmd+/ to toggle schema explorer
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Check for Cmd+/ (Mac) or Ctrl+/ (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault()
+        setShowSchemaExplorer(prev => {
+          const newValue = !prev
+          localStorage.setItem('showSchemaExplorer', JSON.stringify(newValue))
+          return newValue
+        })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  // Save schema explorer state
+  useEffect(() => {
+    localStorage.setItem('showSchemaExplorer', JSON.stringify(showSchemaExplorer))
+  }, [showSchemaExplorer])
+
+  const handleInsertText = useCallback((text) => {
+    if (queryInputRef.current) {
+      queryInputRef.current.insertText(text)
+    }
+  }, [])
+
+  const toggleSchemaExplorer = useCallback(() => {
+    setShowSchemaExplorer(prev => !prev)
+  }, [])
 
   // eslint-disable-next-line no-unused-vars
   const { sendQuery, connectionState, progress, cancelQuery } = useQuerySSE({
@@ -135,6 +173,25 @@ function Chat() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
               <div className="flex items-center space-x-2 mb-4"><Database className="w-5 h-5 text-primary-500" /><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Provider</h2></div>
               <ProviderSelect providers={providers} selected={selectedProvider} onChange={setSelectedProvider} disabled={!currentWorkspace || providers.length === 0} />
+
+              {/* Schema Explorer Toggle Button */}
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={toggleSchemaExplorer}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
+                    showSchemaExplorer
+                      ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
+                      : 'bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <PanelLeft className="w-4 h-4" />
+                    <span className="text-sm font-medium">Schema Explorer</span>
+                  </div>
+                  <kbd className="px-1.5 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 rounded">⌘/</kbd>
+                </button>
+              </div>
+
               <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">How it works</h3>
                 <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
@@ -146,40 +203,69 @@ function Chat() {
             </div>
             <SettingsPanel settings={settings} onChange={setSettings} />
           </aside>
-          <div className="lg:col-span-3">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col h-[calc(100vh-12rem)]">
-              <div className={`flex-1 p-6 space-y-4 ${messages.length > 0 ? 'overflow-y-auto' : ''}`}>
-                {messages.length === 0 ? <WelcomeScreen onGetStarted={handleWelcomeAction} /> : (<>{messages.map((message) => <ChatMessage key={message.id} message={message} conversationId={conversationId} />)}<div ref={messagesEndRef} /></>)}
-              </div>
-              <ProgressIndicator progress={progress} />
 
-              {/* Input */}
-              <div className="p-6 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex items-center mb-3">
-                  <TemplatesPicker 
-                    providerType={selectedProvider?.type?.toLowerCase()} 
-                    onSelectTemplate={handleSelectTemplate}
+          {/* Chat Area with Schema Explorer */}
+          <div className="lg:col-span-3">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex h-[calc(100vh-12rem)] overflow-hidden">
+              {/* Schema Explorer Panel */}
+              <SchemaExplorerPanel
+                isOpen={showSchemaExplorer}
+                onClose={() => setShowSchemaExplorer(false)}
+                onInsertText={handleInsertText}
+                providerId={selectedProvider?.id}
+              />
+
+              {/* Messages and Input */}
+              <div className="flex-1 flex flex-col min-w-0">
+                {/* Messages */}
+                <div className={`flex-1 p-6 space-y-4 ${messages.length > 0 ? 'overflow-y-auto' : ''}`}>
+                  {messages.length === 0 ? (
+                    <WelcomeScreen onGetStarted={handleWelcomeAction} />
+                  ) : (
+                    <>
+                      {messages.map((message) => (
+                        <ChatMessage
+                          key={message.id}
+                          message={message}
+                          conversationId={conversationId}
+                        />
+                      ))}
+                      <div ref={messagesEndRef} />
+                    </>
+                  )}
+                </div>
+
+                {/* Progress Indicator */}
+                <ProgressIndicator progress={progress} />
+
+                {/* Input */}
+                <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center mb-3">
+                    <TemplatesPicker 
+                      providerType={selectedProvider?.type?.toLowerCase()} 
+                      onSelectTemplate={handleSelectTemplate}
+                      disabled={!selectedProvider}
+                    />
+                  </div>
+                  <QueryInput
+                    ref={queryInputRef}
+                    onSend={handleSendQuery}
+                    onQueryChange={handleQueryChange}
+                    disabled={!selectedProvider}
+                    placeholder={
+                      !selectedProvider
+                        ? 'Select a provider from your workspace...'
+                        : 'Ask me anything about your data...'
+                    }
+                  />
+                  
+                  {/* Live SQL Preview */}
+                  <QueryPreview
+                    query={currentQuery}
+                    onUseQuery={handleUsePreviewQuery}
                     disabled={!selectedProvider}
                   />
                 </div>
-                <QueryInput
-                  ref={queryInputRef}
-                  onSend={handleSendQuery}
-                  onQueryChange={handleQueryChange}
-                  disabled={!selectedProvider}
-                  placeholder={
-                    !selectedProvider
-                      ? 'Select a provider from your workspace...'
-                      : 'Ask me anything about your data...'
-                  }
-                />
-                
-                {/* Live SQL Preview */}
-                <QueryPreview
-                  query={currentQuery}
-                  onUseQuery={handleUsePreviewQuery}
-                  disabled={!selectedProvider}
-                />
               </div>
             </div>
           </div>
