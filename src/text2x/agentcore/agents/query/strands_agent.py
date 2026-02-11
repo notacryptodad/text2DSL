@@ -25,6 +25,15 @@ from text2x.providers.base import QueryProvider
 
 logger = logging.getLogger(__name__)
 
+# Import RAG lookup tool
+try:
+    from text2x.agentcore.tools.rag_lookup import search_similar_queries
+
+    RAG_TOOLS = [search_similar_queries]
+except ImportError:
+    logger.warning("RAG lookup tool not available")
+    RAG_TOOLS = []
+
 # Capture the main event loop for use from Strands worker threads
 _main_loop: Optional[asyncio.AbstractEventLoop] = None
 

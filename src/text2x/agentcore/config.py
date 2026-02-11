@@ -17,6 +17,7 @@ class AgentCoreConfig:
         use_litellm: Whether to use LiteLLM (default: True)
         api_base: API base URL for non-Bedrock providers
         api_key: API key for non-Bedrock providers
+        rag_mode: RAG retrieval mode ('agent', 'always', 'never')
     """
 
     model: str = "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -27,6 +28,7 @@ class AgentCoreConfig:
     use_litellm: bool = True
     api_base: Optional[str] = None
     api_key: Optional[str] = None
+    rag_mode: str = "agent"  # Values: 'agent' (default), 'always', 'never'
 
     @classmethod
     def from_env(cls) -> "AgentCoreConfig":
@@ -42,4 +44,5 @@ class AgentCoreConfig:
             use_litellm=os.getenv("AGENTCORE_USE_LITELLM", "true").lower() == "true",
             api_base=os.getenv("LLM_API_BASE"),
             api_key=os.getenv("LLM_API_KEY"),
+            rag_mode=os.getenv("AGENTCORE_RAG_MODE", cls.rag_mode),
         )
