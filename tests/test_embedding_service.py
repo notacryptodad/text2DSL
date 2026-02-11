@@ -338,6 +338,176 @@ def test_get_embedding_service_caching():
 
 
 # ============================================================================
+# Redis Caching Tests
+# ============================================================================
+
+@pytest.fixture
+def mock_redis_client():
+    """Mock Redis async client"""
+    redis_mock = MagicMock()
+    redis_mock.get = MagicMock(return_value=None)
+    redis_mock.setex = MagicMock()
+    return redis_mock
+
+
+@pytest.mark.asyncio
+async def test_redis_cache_initialization():
+    """Test that Redis cache initializes correctly with URL"""
+    with patch("boto3.client"), \
+         patch("text2x.services.embedding_service.aioredis") as mock_aioredis:
+        mock_redis = MagicMock()
+        mock_aioredis.from_url.return_value = mock_redis
+
+        service = BedrockEmbeddingService(
+            region="us-east-1",
+            model_id="amazon.titan-embed-text-v2:0",
+            redis_url="redis://localhost:6379/0",
+            redis_ttl=7200
+        )
+
+        assert service.redis_client is not None
+        assert service.redis_ttl == 7200
+        mock_aioredis.from_url.assert_called_once_with(
+            "redis://localhost:6379/0",
+            encoding="utf-8",
+            decode_responses=False
+        )
+
+
+@pytest.mark.asyncio
+async def test_redis_cache_disabled_without_url():
+    """Test that Redis cache is disabled when no URL provided"""
+    with patch("boto3.client"):
+        service = BedrockEmbeddingService(
+            region="us-east-1",
+            model_id="amazon.titan-embed-text-v2:0"
+        )
+
+        assert service.redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_cache_key_generation(embedding_service):
+    """Test that cache keys are generated correctly using SHA256"""
+    text = "How many customers do we have?"
+    cache_key = embedding_service._get_cache_key(text)
+
+    assert cache_key.startswith("embedding:")
+    assert len(cache_key) == len("embedding:") + 64  # SHA256 hex digest length
+
+
+@pytest.mark.asyncio
+async def test_embed_text_with_cache_miss(mock_bedrock_client):
+    """Test embedding generation with cache miss"""
+    with patch("boto3.client", return_value=mock_bedrock_client), \
+         patch("text2x.services.embedding_service.aioredis") as mock_aioredis:
+
+        mock_redis = MagicMock()
+        mock_redis.get = MagicMock(return_value=None)  # Cache miss
+        mock_redis.setex = MagicMock()
+        mock_aioredis.from_url.return_value = mock_redis
+
+        service = BedrockEmbeddingService(
+            region="us-east-1",
+            model_id="amazon.titan-embed-text-v2:0",
+            redis_url="redis://localhost:6379/0"
+        )
+
+        text = "Test query"
+        embedding = await service.embed_text(text)
+
+        # Should have tried to get from cache
+        assert mock_redis.get.called
+
+        # Should have generated embedding
+        assert embedding is not None
+        assert len(embedding) == 1024
+
+        # Should have cached the result
+        assert mock_redis.setex.called
+
+
+@pytest.mark.asyncio
+async def test_embed_text_with_cache_hit(mock_bedrock_client):
+    """Test embedding retrieval from cache"""
+    cached_embedding = [0.5] * 1024
+
+    with patch("boto3.client", return_value=mock_bedrock_client), \
+         patch("text2x.services.embedding_service.aioredis") as mock_aioredis:
+
+        mock_redis = MagicMock()
+        # Return cached embedding
+        mock_redis.get = MagicMock(return_value=json.dumps(cached_embedding).encode())
+        mock_aioredis.from_url.return_value = mock_redis
+
+        service = BedrockEmbeddingService(
+            region="us-east-1",
+            model_id="amazon.titan-embed-text-v2:0",
+            redis_url="redis://localhost:6379/0"
+        )
+
+        text = "Test query"
+        embedding = await service.embed_text(text)
+
+        # Should have retrieved from cache
+        assert embedding == cached_embedding
+
+        # Should NOT have called Bedrock (cache hit)
+        assert not mock_bedrock_client.invoke_model.called
+
+
+@pytest.mark.asyncio
+async def test_cache_with_ttl(mock_bedrock_client):
+    """Test that cache respects TTL setting"""
+    with patch("boto3.client", return_value=mock_bedrock_client), \
+         patch("text2x.services.embedding_service.aioredis") as mock_aioredis:
+
+        mock_redis = MagicMock()
+        mock_redis.get = MagicMock(return_value=None)
+        mock_redis.setex = MagicMock()
+        mock_aioredis.from_url.return_value = mock_redis
+
+        custom_ttl = 7200
+        service = BedrockEmbeddingService(
+            region="us-east-1",
+            model_id="amazon.titan-embed-text-v2:0",
+            redis_url="redis://localhost:6379/0",
+            redis_ttl=custom_ttl
+        )
+
+        await service.embed_text("Test query")
+
+        # Verify setex was called with correct TTL
+        call_args = mock_redis.setex.call_args
+        assert call_args[0][1] == custom_ttl  # Second argument is TTL
+
+
+@pytest.mark.asyncio
+async def test_cache_error_handling(mock_bedrock_client):
+    """Test that cache errors don't break embedding generation"""
+    with patch("boto3.client", return_value=mock_bedrock_client), \
+         patch("text2x.services.embedding_service.aioredis") as mock_aioredis:
+
+        mock_redis = MagicMock()
+        # Make cache operations fail
+        mock_redis.get = MagicMock(side_effect=Exception("Redis connection error"))
+        mock_redis.setex = MagicMock(side_effect=Exception("Redis connection error"))
+        mock_aioredis.from_url.return_value = mock_redis
+
+        service = BedrockEmbeddingService(
+            region="us-east-1",
+            model_id="amazon.titan-embed-text-v2:0",
+            redis_url="redis://localhost:6379/0"
+        )
+
+        # Should still work even if cache fails
+        embedding = await service.embed_text("Test query")
+
+        assert embedding is not None
+        assert len(embedding) == 1024
+
+
+# ============================================================================
 # Retry Logic Tests
 # ============================================================================
 
