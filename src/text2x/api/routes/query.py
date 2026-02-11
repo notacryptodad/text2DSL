@@ -177,12 +177,78 @@ async def process_query(
             except Exception as e:
                 logger.warning(f"Failed to get schema: {e}")
 
+            # Retrieve RAG examples for query context
+            rag_examples = []
+            enable_rag = settings.enable_rag
+
+            if enable_rag and app_state.opensearch_client:
+                try:
+                    from text2x.services.opensearch_service import OpenSearchService
+
+                    rag_start_time = time.time()
+
+                    # Initialize RAG service
+                    opensearch_service = OpenSearchService(
+                        settings=settings,
+                        opensearch_client=app_state.opensearch_client,
+                    )
+                    rag_service = RAGService(
+                        opensearch_service=opensearch_service,
+                    )
+
+                    # Search for similar examples (only approved good examples)
+                    raw_examples = await rag_service.search_examples(
+                        query=request.query,
+                        provider_id=request.provider_id,
+                        limit=settings.rag_examples_limit,
+                        min_similarity=settings.rag_min_similarity,
+                        include_sample_queries=True,
+                    )
+
+                    # Filter for good examples with approved status
+                    from text2x.models.rag import ExampleStatus
+
+                    filtered_examples = [
+                        ex
+                        for ex in raw_examples
+                        if ex.is_good_example and ex.status == ExampleStatus.APPROVED
+                    ]
+
+                    # Convert to dict format for agent
+                    rag_examples = [
+                        {
+                            "natural_language_query": ex.natural_language_query,
+                            "generated_query": (
+                                ex.get_query_for_rag()
+                                if hasattr(ex, "get_query_for_rag")
+                                else ex.generated_query
+                            ),
+                            "similarity_score": getattr(ex, "similarity_score", 0.0),
+                        }
+                        for ex in filtered_examples
+                    ]
+
+                    rag_duration = time.time() - rag_start_time
+                    logger.info(
+                        f"Retrieved {len(rag_examples)} RAG examples for query "
+                        f"(filtered from {len(raw_examples)} results, {rag_duration:.2f}s)"
+                    )
+
+                    # Record RAG retrieval metrics
+                    if rag_examples:
+                        record_rag_retrieval(provider_type)
+
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve RAG examples: {e}", exc_info=True)
+                    # Continue without examples - graceful degradation
+
             # Process query through QueryAgent
             agent_result = await agent.process(
                 {
                     "user_message": request.query,
                     "provider_id": request.provider_id,
                     "schema_context": schema_context,
+                    "rag_examples": rag_examples,  # NEW: Pass RAG examples
                     "enable_execution": enable_execution,
                     "reset_conversation": not request.conversation_id,
                 }

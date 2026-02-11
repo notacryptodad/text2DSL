@@ -147,8 +147,61 @@ def get_sql_schema_info(schema_context: Dict[str, Any]) -> str:
     return schema_info
 
 
-def get_system_prompt(schema_context: Dict[str, Any], query_language: str) -> str:
-    """Get system prompt based on query language."""
+def _format_rag_examples(rag_examples: list) -> str:
+    """Format RAG examples for inclusion in system prompt.
+
+    Args:
+        rag_examples: List of example dicts with 'natural_language_query' and 'generated_query'
+
+    Returns:
+        Formatted string with examples
+    """
+    if not rag_examples:
+        return ""
+
+    examples_text = "\n\n**Relevant Example Queries:**\n\n"
+    examples_text += "Use these similar queries as guidance, but adapt them to the user's specific question.\n\n"
+
+    # Limit to top 3-5 examples
+    limited_examples = rag_examples[:5]
+
+    for i, ex in enumerate(limited_examples, 1):
+        # Extract fields - support both dict and object formats
+        if isinstance(ex, dict):
+            question = ex.get("natural_language_query") or ex.get("question", "")
+            query = ex.get("generated_query") or ex.get("query") or ex.get("sql", "")
+            score = ex.get("similarity_score", 0.0)
+        else:
+            # Handle RAGExample object
+            question = getattr(ex, "natural_language_query", "")
+            query = getattr(ex, "generated_query", "")
+            if hasattr(ex, "get_query_for_rag"):
+                query = ex.get_query_for_rag()
+            score = getattr(ex, "similarity_score", 0.0)
+
+        if question and query:
+            examples_text += f"**Example {i}** (relevance: {score:.1%}):\n"
+            examples_text += f"- User asked: {question}\n"
+            examples_text += f"- Query: {query}\n\n"
+
+    return examples_text
+
+
+def get_system_prompt(
+    schema_context: Dict[str, Any],
+    query_language: str,
+    rag_examples: Optional[list] = None,
+) -> str:
+    """Get system prompt based on query language.
+
+    Args:
+        schema_context: Database schema information
+        query_language: Target query language (SQL, MongoDB Query, SPL)
+        rag_examples: Optional list of similar example queries for RAG
+
+    Returns:
+        System prompt with schema and optional RAG examples
+    """
 
     if query_language == "MongoDB Query":
         schema_info = get_mongo_schema_info(schema_context)
@@ -204,7 +257,7 @@ Example query format:
 }}
 ```
 
-Start by greeting the user and asking how you can help them query their MongoDB database."""
+{_format_rag_examples(rag_examples) if rag_examples else ""}Start by greeting the user and asking how you can help them query their MongoDB database."""
 
     elif query_language == "SPL":
         return """You are an expert Splunk SPL (Search Processing Language) query generation assistant.
@@ -268,7 +321,7 @@ When responding to user questions:
 4. Note any assumptions or limitations
 5. Offer to refine or modify the query if needed
 
-Start by greeting the user and asking how you can help them query their database."""
+{_format_rag_examples(rag_examples) if rag_examples else ""}Start by greeting the user and asking how you can help them query their database."""
 
 
 SQL_TOOLS = []
@@ -778,6 +831,7 @@ class QueryAgent:
         self._schema_context: Dict[str, Any] = {}
         self._query_language = "SQL"
         self._agent: Optional[Agent] = None
+        self._rag_examples: Optional[list] = None
 
         self._update_agent()
 
@@ -795,7 +849,11 @@ class QueryAgent:
         tools = self._get_tools_for_language(self._query_language)
         self._agent = Agent(
             model=self._model,
-            system_prompt=get_system_prompt(self._schema_context, self._query_language),
+            system_prompt=get_system_prompt(
+                self._schema_context,
+                self._query_language,
+                getattr(self, "_rag_examples", None),
+            ),
             tools=tools,
             name=self.name,
             description=f"Query agent for {self._query_language}",
@@ -827,6 +885,7 @@ class QueryAgent:
             - user_message: str - User's natural language question
             - provider_id: str - Provider ID for context
             - schema_context: dict - Optional schema context (tables, columns)
+            - rag_examples: list - Optional RAG examples for context (NEW)
             - enable_execution: bool - Whether to execute the query (default: False)
             - reset_conversation: bool - Reset conversation history
 
@@ -836,12 +895,18 @@ class QueryAgent:
             - query_explanation: str - Explanation of what the query does
             - execution_result: dict - Query execution result (if executed)
             - tool_calls: List[Dict] - Tool calls made (if any)
+            - rag_examples_used: int - Number of RAG examples used (if any)
         """
         user_message = input_data["user_message"]
         provider_id = input_data.get("provider_id", "")
         schema_context = input_data.get("schema_context", {})
+        rag_examples = input_data.get("rag_examples", [])
         enable_execution = input_data.get("enable_execution", False)
         reset_conversation = input_data.get("reset_conversation", False)
+
+        # Store RAG examples for use in system prompt
+        self._rag_examples = rag_examples
+        logger.info(f"Processing query with {len(rag_examples)} RAG examples")
 
         self._update_schema_context(schema_context)
 
@@ -909,8 +974,13 @@ class QueryAgent:
             "execution_result": execution_result,
             "tool_calls": tool_calls,
             "query_language": self._query_language,
+            "rag_examples_used": len(rag_examples) if rag_examples else 0,
         }
 
     def get_system_prompt(self, schema_context: Dict[str, Any] = None) -> str:
         """Get system prompt for query agent."""
-        return get_system_prompt(schema_context or self._schema_context, self._query_language)
+        return get_system_prompt(
+            schema_context or self._schema_context,
+            self._query_language,
+            self._rag_examples,
+        )
