@@ -79,7 +79,7 @@ function Chat() {
       case 'completed': {
         const content = data.response || data.generated_query || ''
         const isPlainText = !data.generated_query || data.generated_query.trim() === ''
-        addMessage({ type: 'assistant', content, generatedQuery: data.generated_query || '', responseType: isPlainText ? 'text' : 'query', confidence: data.confidence_score, executionResult: data.execution_result, providerId: selectedProvider?.id, turnId: data.turn_id, explanation: data.query_explanation, timestamp: new Date() })
+        addMessage({ type: 'assistant', content, generatedQuery: data.generated_query || '', responseType: isPlainText ? 'text' : 'query', confidence: data.confidence_score, executionResult: data.execution_result, providerId: selectedProvider?.id, turnId: data.turn_id, explanation: data.query_explanation, trace: data.reasoning_trace || data.trace, timestamp: new Date() })
         if (data.generated_query && pendingQueryRef.current) { addToQueryHistory({ query: pendingQueryRef.current, generatedDSL: data.generated_query, providerId: selectedProvider?.id, providerName: selectedProvider?.name, executionResult: data.execution_result }); pendingQueryRef.current = null }
         break
       }

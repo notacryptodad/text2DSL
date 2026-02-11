@@ -1,4 +1,4 @@
-import { User, Bot, AlertCircle, CheckCircle, Info, Copy, Check, ChevronDown, ChevronRight, Download } from 'lucide-react'
+import { User, Bot, AlertCircle, CheckCircle, Info, Copy, Check, Download } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -9,13 +9,12 @@ import 'prismjs/components/prism-mongodb'
 import 'prismjs/components/prism-splunk-spl'
 import FeedbackButton from './FeedbackButton'
 import ConfidenceMeter from './ConfidenceMeter'
+import AgentTimeline from './AgentTimeline'
 
 function ChatMessage({ message, conversationId }) {
   const [copied, setCopied] = useState(false)
 
   const stripThinkTags = (text) => text?.replace(/<think>[\s\S]*?<\/think>/g, '').trim() || ''
-  const [traceExpanded, setTraceExpanded] = useState(false)
-  const [agentDetailsExpanded, setAgentDetailsExpanded] = useState({})
 
   useEffect(() => {
     // Highlight code after render
@@ -43,13 +42,6 @@ function ChatMessage({ message, conversationId }) {
       hour: '2-digit',
       minute: '2-digit',
     })
-  }
-
-  const toggleAgentDetails = (agentName) => {
-    setAgentDetailsExpanded(prev => ({
-      ...prev,
-      [agentName]: !prev[agentName]
-    }))
   }
 
   const getLanguageClass = (providerId) => {
@@ -222,118 +214,13 @@ function ChatMessage({ message, conversationId }) {
                   </div>
                 )}
 
-                {/* Trace Info */}
+                {/* Agent Timeline - Visual trace of agent processing */}
                 {message.trace && (
-                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-                    <button
-                      onClick={() => setTraceExpanded(!traceExpanded)}
-                      className="flex items-center justify-between w-full text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:text-gray-800 dark:hover:text-gray-200"
-                    >
-                      <span>Processing Details & Reasoning Trace</span>
-                      {traceExpanded ? (
-                        <ChevronDown className="w-4 h-4" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4" />
-                      )}
-                    </button>
-
-                    {traceExpanded && (
-                      <div className="mt-3 space-y-3">
-                        {/* Summary Stats */}
-                        <div className="grid grid-cols-3 gap-2 text-xs">
-                          <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                            <div className="text-gray-500 dark:text-gray-400">Total Time</div>
-                            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                              {message.trace.orchestrator_latency_ms}ms
-                            </div>
-                          </div>
-                          <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                            <div className="text-gray-500 dark:text-gray-400">Total Tokens</div>
-                            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                              {message.trace.total_tokens_input + message.trace.total_tokens_output}
-                            </div>
-                          </div>
-                          <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                            <div className="text-gray-500 dark:text-gray-400">Cost</div>
-                            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-                              ${message.trace.total_cost_usd.toFixed(4)}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Agent Traces */}
-                        <div className="space-y-2">
-                          {[
-                            { key: 'schema_agent', label: 'Schema Expert', icon: '🗂️' },
-                            { key: 'rag_agent', label: 'RAG Retrieval', icon: '🔍' },
-                            { key: 'query_builder_agent', label: 'Query Builder', icon: '⚙️' },
-                            { key: 'validator_agent', label: 'Validator', icon: '✓' },
-                          ].map(({ key, label, icon }) => {
-                            const agent = message.trace[key]
-                            if (!agent) return null
-
-                            return (
-                              <div key={key} className="bg-gray-50 dark:bg-gray-800 rounded p-2">
-                                <button
-                                  onClick={() => toggleAgentDetails(key)}
-                                  className="flex items-center justify-between w-full text-left"
-                                >
-                                  <div className="flex items-center space-x-2">
-                                    <span>{icon}</span>
-                                    <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                      {label}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                                      {agent.latency_ms}ms
-                                    </span>
-                                    {agentDetailsExpanded[key] ? (
-                                      <ChevronDown className="w-3 h-3" />
-                                    ) : (
-                                      <ChevronRight className="w-3 h-3" />
-                                    )}
-                                  </div>
-                                </button>
-
-                                {agentDetailsExpanded[key] && (
-                                  <div className="mt-2 pl-6 space-y-1 text-xs text-gray-700 dark:text-gray-300">
-                                    <div className="flex justify-between">
-                                      <span>Input Tokens:</span>
-                                      <span className="font-mono">{agent.tokens_input}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Output Tokens:</span>
-                                      <span className="font-mono">{agent.tokens_output}</span>
-                                    </div>
-                                    {agent.iterations > 1 && (
-                                      <div className="flex justify-between">
-                                        <span>Iterations:</span>
-                                        <span className="font-mono">{agent.iterations}</span>
-                                      </div>
-                                    )}
-                                    {agent.details && Object.keys(agent.details).length > 0 && (
-                                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                        <div className="font-semibold mb-1">Details:</div>
-                                        {Object.entries(agent.details).map(([k, v]) => (
-                                          <div key={k} className="flex justify-between">
-                                            <span className="capitalize">{k.replace(/_/g, ' ')}:</span>
-                                            <span className="font-mono">
-                                              {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-                                            </span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <AgentTimeline 
+                    trace={message.trace} 
+                    progress={message.progress}
+                    isProcessing={false}
+                  />
                 )}
               </>
             )}
@@ -415,9 +302,20 @@ function ChatMessage({ message, conversationId }) {
 
   if (message.type === 'progress') {
     return (
-      <div className="flex items-center justify-center">
-        <div className="bg-gray-100 dark:bg-gray-700 rounded-full px-4 py-2 text-sm text-gray-600 dark:text-gray-400">
-          <span className="animate-pulse">{message.content}</span>
+      <div className="flex items-start space-x-3">
+        <div className="flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+            <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-pulse" />
+          </div>
+        </div>
+        <div className="flex-1 max-w-3xl">
+          <div className="bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-3 shadow-sm">
+            <AgentTimeline 
+              trace={null}
+              progress={{ stage: message.stage, message: message.content }}
+              isProcessing={true}
+            />
+          </div>
         </div>
       </div>
     )
