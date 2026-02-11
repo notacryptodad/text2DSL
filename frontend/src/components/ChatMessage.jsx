@@ -10,6 +10,7 @@ import 'prismjs/components/prism-splunk-spl'
 import FeedbackButton from './FeedbackButton'
 import ConfidenceMeter from './ConfidenceMeter'
 import AgentTimeline from './AgentTimeline'
+import ResultsVisualization from './results/ResultsVisualization'
 
 function ChatMessage({ message, conversationId }) {
   const [copied, setCopied] = useState(false)
@@ -210,6 +211,19 @@ function ChatMessage({ message, conversationId }) {
                       <p className="text-sm text-red-600 dark:text-red-400">
                         {message.executionResult.error || 'Execution failed'}
                       </p>
+                    )}
+
+                    {/* Results Visualization */}
+                    {message.executionResult.success &&
+                     message.executionResult.data &&
+                     message.executionResult.data.length > 0 && (
+                      <div className="mt-4">
+                        <ResultsVisualization
+                          data={message.executionResult.data}
+                          rowCount={message.executionResult.row_count}
+                          executionTimeMs={message.executionResult.execution_time_ms}
+                        />
+                      </div>
                     )}
                   </div>
                 )}
