@@ -41,8 +41,13 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
   }
 
   const handleKeyDown = (e) => {
-    // Regular Enter (without Shift) to send
-    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+    // Regular Enter (without Shift) or Cmd/Ctrl+Enter to send
+    if (e.key === 'Enter') {
+      if (e.shiftKey && !e.metaKey && !e.ctrlKey) {
+        // Shift+Enter: let it pass (newline)
+        return
+      }
+      // Enter (no shift) OR Mod+Enter -> Submit
       e.preventDefault()
       handleSubmit(e)
       return
@@ -69,6 +74,7 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
+          aria-label="Query input"
           disabled={disabled || isLoading}
           rows={1}
           className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none resize-none text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
