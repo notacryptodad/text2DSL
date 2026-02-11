@@ -196,10 +196,38 @@ def _format_rag_examples(rag_examples: list) -> str:
     return examples_text
 
 
+def _get_rag_tool_guidance() -> str:
+    """Get guidance text for the RAG search tool when in agent mode."""
+    return """
+**Similar Query Search Tool:**
+You have access to a tool to search for similar example queries that can help you generate better queries:
+
+- **Tool name**: `search_similar_queries`
+- **When to use it**:
+  - For complex queries (joins, aggregations, multiple conditions, subqueries)
+  - When you need examples of specific database syntax or patterns
+  - When the user's question is ambiguous or could benefit from similar examples
+  - When you're unsure about the exact approach to take
+
+- **How to use it**:
+  - Provide search keywords that describe the query intent (e.g., "join users orders", "group by date count", "subquery filter")
+  - Request 2-3 examples (more for very complex queries)
+  - The tool returns similar queries with their similarity scores
+
+- **Important**:
+  - Use examples as guidance, not copy-paste - adapt them to the user's specific needs
+  - Examples show patterns and approaches, not exact solutions
+  - Don't search for every simple query - use your judgment
+  - You can search multiple times with different keywords if needed
+
+"""
+
+
 def get_system_prompt(
     schema_context: Dict[str, Any],
     query_language: str,
     rag_examples: Optional[list] = None,
+    rag_mode: str = "always",
 ) -> str:
     """Get system prompt based on query language.
 
@@ -207,9 +235,10 @@ def get_system_prompt(
         schema_context: Database schema information
         query_language: Target query language (SQL, MongoDB Query, SPL)
         rag_examples: Optional list of similar example queries for RAG
+        rag_mode: RAG mode - 'always', 'agent', or 'never'
 
     Returns:
-        System prompt with schema and optional RAG examples
+        System prompt with schema and optional RAG examples or tool guidance
     """
 
     if query_language == "MongoDB Query":
@@ -231,6 +260,7 @@ You have access to the following tools:
 4. **explain_mongo_query** - Explain what a MongoDB query does in natural language
    - query (required): MongoDB query as JSON string
 
+{_get_rag_tool_guidance() if rag_mode == 'agent' else ''}
 **MongoDB Query Format:**
 - Use `find` operation for simple queries with filter, projection, sort
 - Use `aggregate` operation for complex pipelines with $match, $group, $lookup, etc.
@@ -266,7 +296,7 @@ Example query format:
 }}
 ```
 
-{_format_rag_examples(rag_examples) if rag_examples else ""}Start by greeting the user and asking how you can help them query their MongoDB database."""
+{_format_rag_examples(rag_examples) if rag_mode == 'always' and rag_examples else ''}Start by greeting the user and asking how you can help them query their MongoDB database."""
 
     elif query_language == "SPL":
         return """You are an expert Splunk SPL (Search Processing Language) query generation assistant.
@@ -306,6 +336,7 @@ You have access to the following tools:
 4. **explain_sql_query** - Explain what a SQL query does in natural language
    - query (required): The SQL query to explain
 
+{_get_rag_tool_guidance() if rag_mode == 'agent' else ''}
 **Your responsibilities:**
 1. Understand user's natural language questions and convert them to SQL
 2. Generate accurate, efficient, and safe SQL queries
@@ -330,7 +361,7 @@ When responding to user questions:
 4. Note any assumptions or limitations
 5. Offer to refine or modify the query if needed
 
-{_format_rag_examples(rag_examples) if rag_examples else ""}Start by greeting the user and asking how you can help them query their database."""
+{_format_rag_examples(rag_examples) if rag_mode == 'always' and rag_examples else ''}Start by greeting the user and asking how you can help them query their database."""
 
 
 SQL_TOOLS = []
@@ -841,6 +872,7 @@ class QueryAgent:
         self._query_language = "SQL"
         self._agent: Optional[Agent] = None
         self._rag_examples: Optional[list] = None
+        self._rag_mode: str = "agent"  # Values: 'agent', 'always', 'never'
 
         self._update_agent()
 
@@ -848,20 +880,36 @@ class QueryAgent:
 
     def _get_tools_for_language(self, query_language: str):
         """Get tools appropriate for the query language."""
+        base_tools = []
         if query_language == "MongoDB Query":
-            return MONGODB_TOOLS
+            base_tools = MONGODB_TOOLS
         else:
-            return SQL_TOOLS
+            base_tools = SQL_TOOLS
+
+        # Add RAG tools if in agent mode
+        if self._rag_mode == "agent" and RAG_TOOLS:
+            return base_tools + RAG_TOOLS
+
+        return base_tools
 
     def _update_agent(self):
         """Recreate the agent with current settings."""
         tools = self._get_tools_for_language(self._query_language)
+
+        # Determine RAG examples to pass based on mode
+        rag_examples_for_prompt = None
+        if self._rag_mode == "always":
+            rag_examples_for_prompt = getattr(self, "_rag_examples", None)
+        # In 'agent' mode, don't pass examples to prompt - tool will fetch them
+        # In 'never' mode, no examples
+
         self._agent = Agent(
             model=self._model,
             system_prompt=get_system_prompt(
                 self._schema_context,
                 self._query_language,
-                getattr(self, "_rag_examples", None),
+                rag_examples_for_prompt,
+                self._rag_mode,
             ),
             tools=tools,
             name=self.name,
@@ -894,7 +942,10 @@ class QueryAgent:
             - user_message: str - User's natural language question
             - provider_id: str - Provider ID for context
             - schema_context: dict - Optional schema context (tables, columns)
-            - rag_examples: list - Optional RAG examples for context (NEW)
+            - rag_examples: list - Optional RAG examples for context (used when rag_mode='always')
+            - rag_mode: str - RAG mode ('agent', 'always', 'never')
+            - opensearch_service: OpenSearchService - For RAG tool (when rag_mode='agent')
+            - rag_service: RAGService - For RAG tool (when rag_mode='agent')
             - enable_execution: bool - Whether to execute the query (default: False)
             - reset_conversation: bool - Reset conversation history
 
@@ -910,12 +961,28 @@ class QueryAgent:
         provider_id = input_data.get("provider_id", "")
         schema_context = input_data.get("schema_context", {})
         rag_examples = input_data.get("rag_examples", [])
+        rag_mode = input_data.get("rag_mode", "always")
         enable_execution = input_data.get("enable_execution", False)
         reset_conversation = input_data.get("reset_conversation", False)
 
-        # Store RAG examples for use in system prompt
+        # Store RAG mode and examples
+        self._rag_mode = rag_mode
         self._rag_examples = rag_examples
-        logger.info(f"Processing query with {len(rag_examples)} RAG examples")
+
+        logger.info(
+            f"Processing query with rag_mode={rag_mode}, "
+            f"{len(rag_examples)} RAG examples"
+        )
+
+        # Initialize RAG tool if in agent mode
+        if rag_mode == "agent" and RAG_TOOLS:
+            from text2x.agentcore.tools.rag_lookup import init_rag_tool
+
+            opensearch_service = input_data.get("opensearch_service")
+            rag_service = input_data.get("rag_service")
+            if opensearch_service and rag_service:
+                init_rag_tool(opensearch_service, rag_service, _main_loop)
+                logger.debug("RAG tool initialized for agent mode")
 
         self._update_schema_context(schema_context)
 
