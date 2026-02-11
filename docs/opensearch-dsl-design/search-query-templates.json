@@ -1,0 +1,809 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "OpenSearch query templates for DSL example retrieval",
+    "author": "Query Patterns Analyst",
+    "created": "2026-02-11",
+    "embedding_model": "amazon.titan-embed-text-v2:0",
+    "embedding_dimension": 1024,
+    "similarity_metric": "cosine"
+  },
+  "patterns": {
+    "1_simple_match": {
+      "name": "Simple Match Query",
+      "use_case": "Basic keyword matching on natural language queries",
+      "performance": "Fast (BM25), good for exact term matches",
+      "when_to_use": "User query contains specific keywords or SQL terms",
+      "query": {
+        "size": 10,
+        "query": {
+          "bool": {
+            "must": [
+              {
+                "match": {
+                  "question": {
+                    "query": "{{user_query}}",
+                    "operator": "or",
+                    "minimum_should_match": "50%"
+                  }
+                }
+              }
+            ],
+            "filter": [
+              {"term": {"status": "approved"}},
+              {"term": {"provider_id": "{{provider}}"}}
+            ]
+          }
+        }
+      },
+      "example": {
+        "user_query": "count customers",
+        "provider": "postgres",
+        "description": "Find queries about counting customers"
+      }
+    },
+    "2_multi_match": {
+      "name": "Multi-Match Query",
+      "use_case": "Search across multiple fields (question, SQL, tables, intent)",
+      "performance": "Medium, comprehensive coverage across fields",
+      "when_to_use": "Need to match terms in different fields with field-specific boosting",
+      "query": {
+        "size": 10,
+        "query": {
+          "bool": {
+            "must": [
+              {
+                "multi_match": {
+                  "query": "{{user_query}}",
+                  "fields": [
+                    "question^3",
+                    "sql^2",
+                    "involved_tables^1.5",
+                    "query_intent^1"
+                  ],
+                  "type": "best_fields",
+                  "tie_breaker": 0.3,
+                  "operator": "or",
+                  "minimum_should_match": "40%"
+                }
+              }
+            ],
+            "filter": [
+              {"term": {"status": "approved"}},
+              {"term": {"provider_id": "{{provider}}"}}
+            ]
+          }
+        }
+      },
+      "example": {
+        "user_query": "orders join customers total revenue",
+        "provider": "postgres",
+        "description": "Search across question, SQL, and table fields for join queries"
+      },
+      "tuning": {
+        "field_boosts": {
+          "question": "3x - Natural language is primary signal",
+          "sql": "2x - SQL patterns are important",
+          "involved_tables": "1.5x - Table names help with specificity",
+          "query_intent": "1x - Intent is secondary signal"
+        },
+        "tie_breaker": "0.3 - Use 30% of scores from other matching fields"
+      }
+    },
+    "3_query_string": {
+      "name": "Query String Search",
+      "use_case": "Advanced queries with boolean operators, phrases, wildcards",
+      "performance": "Flexible but requires query sanitization",
+      "when_to_use": "Power users with complex search expressions",
+      "query": {
+        "size": 10,
+        "query": {
+          "bool": {
+            "must": [
+              {
+                "query_string": {
+                  "query": "{{sanitized_query}}",
+                  "fields": ["question^3", "sql^2"],
+                  "default_operator": "OR",
+                  "analyze_wildcard": true,
+                  "allow_leading_wildcard": false,
+                  "fuzziness": "AUTO"
+                }
+              }
+            ],
+            "filter": [
+              {"term": {"status": "approved"}},
+              {"term": {"provider_id": "{{provider}}"}}
+            ]
+          }
+        }
+      },
+      "example": {
+        "sanitized_query": "(aggregation OR GROUP BY) AND (customers OR users)",
+        "provider": "postgres",
+        "description": "Find aggregation queries on customer/user tables"
+      },
+      "security_notes": [
+        "MUST sanitize user input to prevent injection",
+        "Disable allow_leading_wildcard to prevent performance issues",
+        "Consider using simple_query_string for safer alternative"
+      ]
+    },
+    "4_pure_knn": {
+      "name": "Pure k-NN Vector Search",
+      "use_case": "Find semantically similar queries using embeddings",
+      "performance": "Excellent for conceptual similarity, HNSW algorithm",
+      "when_to_use": "Vague/conceptual queries without specific keywords",
+      "query": {
+        "size": 10,
+        "query": {
+          "bool": {
+            "must": [
+              {
+                "knn": {
+                  "embedding": {
+                    "vector": "{{query_embedding}}",
+                    "k": 20
+                  }
+                }
+              }
+            ],
+            "filter": [
+              {"term": {"status": "approved"}},
+              {"term": {"provider_id": "{{provider}}"}}
+            ]
+          }
+        }
+      },
+      "example": {
+        "query_embedding": "[0.123, 0.456, ..., 0.789]",
+        "provider": "postgres",
+        "description": "Find queries similar to 'show me customer insights'"
+      },
+      "tuning": {
+        "k": "Number of nearest neighbors to find (20-50 recommended)",
+        "ef_search": "512 - Trade-off between recall and speed (index setting)"
+      }
+    },
+    "5_knn_with_prefilter": {
+      "name": "k-NN with Pre-Filter",
+      "use_case": "Semantic search limited to specific metadata",
+      "performance": "Faster and more targeted than pure k-NN",
+      "when_to_use": "Know query characteristics (difficulty, intent, tables)",
+      "query": {
+        "size": 10,
+        "query": {
+          "bool": {
+            "must": [
+              {
+                "knn": {
+                  "embedding": {
+                    "vector": "{{query_embedding}}",
+                    "k": 20,
+                    "filter": {
+                      "bool": {
+                        "must": [
+                          {"term": {"status": "approved"}},
+                          {"term": {"provider_id": "{{provider}}"}},
+                          {"term": {"difficulty": "{{difficulty}}"}},
+                          {"term": {"query_intent": "{{intent}}"}}
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "example": {
+        "query_embedding": "[0.123, 0.456, ..., 0.789]",
+        "provider": "postgres",
+        "difficulty": "medium",
+        "intent": "aggregation",
+        "description": "Find medium-difficulty aggregation queries"
+      },
+      "tuning": {
+        "note": "Pre-filtering happens before k-NN search, improving performance",
+        "trade_off": "Smaller candidate set may reduce recall but increases precision"
+      }
+    },
+    "6_hybrid_script_score": {
+      "name": "Hybrid Search - Script Score",
+      "use_case": "Weighted combination of vector + keyword scores",
+      "performance": "Balanced relevance, slower due to script execution",
+      "when_to_use": "Default choice for most queries, balanced approach",
+      "query": {
+        "size": 10,
+        "query": {
+          "script_score": {
+            "query": {
+              "bool": {
+                "should": [
+                  {
+                    "match": {
+                      "question": {
+                        "query": "{{user_query}}",
+                        "boost": 0.3
+                      }
+                    }
+                  },
+                  {
+                    "match": {
+                      "sql": {
+                        "query": "{{user_query}}",
+                        "boost": 0.2
+                      }
+                    }
+                  }
+                ],
+                "filter": [
+                  {"term": {"status": "approved"}},
+                  {"term": {"provider_id": "{{provider}}"}}
+                ]
+              }
+            },
+            "script": {
+              "source": "float vectorScore = cosineSimilarity(params.query_vector, 'embedding') + 1.0; float keywordScore = _score; return params.vector_weight * vectorScore + params.keyword_weight * keywordScore;",
+              "params": {
+                "query_vector": "{{query_embedding}}",
+                "vector_weight": 0.7,
+                "keyword_weight": 0.3
+              }
+            }
+          }
+        }
+      },
+      "example": {
+        "user_query": "top customers by revenue",
+        "query_embedding": "[0.123, 0.456, ..., 0.789]",
+        "provider": "postgres",
+        "vector_weight": 0.7,
+        "keyword_weight": 0.3,
+        "description": "Hybrid search with 70% semantic, 30% keyword"
+      },
+      "tuning": {
+        "vector_weight_guidelines": {
+          "0.8-0.9": "Vague/conceptual queries (e.g., 'show insights')",
+          "0.7": "Balanced/default for most queries",
+          "0.4-0.5": "Specific term queries (e.g., 'GROUP BY customers')"
+        },
+        "keyword_weight_guidelines": {
+          "0.5-0.6": "Queries with SQL keywords or specific terms",
+          "0.3": "Default balanced approach",
+          "0.1-0.2": "Conceptual queries without specific terms"
+        },
+        "note": "cosine similarity returns [-1, 1], adding 1.0 shifts to [0, 2]"
+      }
+    },
+    "7_hybrid_rrf": {
+      "name": "Hybrid Search - Reciprocal Rank Fusion (RRF)",
+      "use_case": "Combine vector + keyword using rank-based fusion",
+      "performance": "Often better than weighted scoring, no script overhead",
+      "when_to_use": "When script_score is too slow or rank-based fusion preferred",
+      "implementation": "client_side",
+      "queries": {
+        "vector_query": {
+          "size": 20,
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "knn": {
+                    "embedding": {
+                      "vector": "{{query_embedding}}",
+                      "k": 20
+                    }
+                  }
+                }
+              ],
+              "filter": [
+                {"term": {"status": "approved"}},
+                {"term": {"provider_id": "{{provider}}"}}
+              ]
+            }
+          }
+        },
+        "keyword_query": {
+          "size": 20,
+          "query": {
+            "bool": {
+              "should": [
+                {
+                  "match": {
+                    "question": {
+                      "query": "{{user_query}}",
+                      "boost": 3
+                    }
+                  }
+                },
+                {
+                  "match": {
+                    "sql": {
+                      "query": "{{user_query}}",
+                      "boost": 2
+                    }
+                  }
+                }
+              ],
+              "filter": [
+                {"term": {"status": "approved"}},
+                {"term": {"provider_id": "{{provider}}"}}
+              ]
+            }
+          }
+        }
+      },
+      "fusion_algorithm": {
+        "description": "Reciprocal Rank Fusion",
+        "formula": "score(doc) = sum over queries( 1 / (k + rank(doc, query)) )",
+        "k_constant": 60,
+        "pseudocode": "def rrf_score(doc_id, rankings, k=60):\n    score = 0\n    for rank_list in rankings:\n        if doc_id in rank_list:\n            rank = rank_list.index(doc_id) + 1\n            score += 1 / (k + rank)\n    return score"
+      },
+      "example": {
+        "user_query": "revenue by product category",
+        "query_embedding": "[0.123, 0.456, ..., 0.789]",
+        "provider": "postgres",
+        "description": "Run both queries, merge with RRF on client side"
+      },
+      "tuning": {
+        "k_constant": {
+          "60": "Default, works well for most cases",
+          "30-50": "More emphasis on top-ranked results",
+          "70-100": "More balanced across all ranks"
+        },
+        "note": "RRF is parameter-free and often outperforms weighted combinations"
+      }
+    },
+    "8_boost_by_metadata": {
+      "name": "Boost by Metadata Signals",
+      "use_case": "Promote results based on quality indicators",
+      "performance": "Fast, combines with any base query",
+      "when_to_use": "Want to favor high-quality or relevant examples",
+      "query": {
+        "size": 10,
+        "query": {
+          "function_score": {
+            "query": {
+              "bool": {
+                "should": [
+                  {
+                    "match": {
+                      "question": {
+                        "query": "{{user_query}}"
+                      }
+                    }
+                  }
+                ],
+                "filter": [
+                  {"term": {"status": "approved"}},
+                  {"term": {"provider_id": "{{provider}}"}}
+                ]
+              }
+            },
+            "functions": [
+              {
+                "filter": {"term": {"is_good_example": true}},
+                "weight": 1.2
+              },
+              {
+                "filter": {"term": {"reviewed_by": "expert"}},
+                "weight": 1.15
+              },
+              {
+                "filter": {"term": {"complexity_level": "{{target_complexity}}"}},
+                "weight": 1.1
+              },
+              {
+                "filter": {
+                  "terms": {"involved_tables": "{{target_tables}}"}
+                },
+                "weight": 1.25
+              },
+              {
+                "gauss": {
+                  "created_at": {
+                    "origin": "now",
+                    "scale": "30d",
+                    "offset": "7d",
+                    "decay": 0.5
+                  }
+                }
+              }
+            ],
+            "score_mode": "multiply",
+            "boost_mode": "multiply",
+            "max_boost": 2.0,
+            "min_score": 0.5
+          }
+        }
+      },
+      "example": {
+        "user_query": "monthly sales report",
+        "provider": "postgres",
+        "target_complexity": "medium",
+        "target_tables": ["orders", "products"],
+        "description": "Boost queries that match complexity and involve target tables"
+      },
+      "boost_factors": {
+        "is_good_example": "1.2x - Favor examples marked as good",
+        "reviewed_by_expert": "1.15x - Expert-reviewed examples are higher quality",
+        "complexity_match": "1.1x - Match query complexity level",
+        "table_overlap": "1.25x - Examples using same tables are more relevant",
+        "recency": "Gauss decay - Favor recent examples with 30-day half-life"
+      },
+      "tuning": {
+        "score_mode": {
+          "multiply": "Multiply all function scores together",
+          "sum": "Add all function scores",
+          "avg": "Average all function scores",
+          "max": "Use highest function score"
+        },
+        "boost_mode": {
+          "multiply": "Multiply query score by function score",
+          "replace": "Replace query score with function score",
+          "sum": "Add query score and function score"
+        },
+        "max_boost": "Cap maximum boost to prevent outliers",
+        "min_score": "Filter out results below threshold"
+      }
+    },
+    "9_custom_scoring": {
+      "name": "Custom Multi-Signal Scoring",
+      "use_case": "Complex relevance logic with multiple factors",
+      "performance": "Most flexible but computationally expensive",
+      "when_to_use": "Need fine-grained control over relevance scoring",
+      "query": {
+        "size": 10,
+        "query": {
+          "script_score": {
+            "query": {
+              "bool": {
+                "should": [
+                  {
+                    "match": {
+                      "question": {
+                        "query": "{{user_query}}"
+                      }
+                    }
+                  }
+                ],
+                "filter": [
+                  {"term": {"status": "approved"}},
+                  {"term": {"provider_id": "{{provider}}"}}
+                ]
+              }
+            },
+            "script": {
+              "source": "float baseScore = _score; float vectorScore = cosineSimilarity(params.query_vector, 'embedding') + 1.0; float qualityBoost = doc['is_good_example'].value ? 1.2 : 1.0; float expertBoost = doc['reviewed_by'].value == 'expert' ? 1.15 : 1.0; float complexityMatch = doc['complexity_level'].value == params.target_complexity ? 1.15 : 1.0; float tableOverlap = 0.0; for (table in params.target_tables) { if (doc['involved_tables'].contains(table)) { tableOverlap += 0.15; } } float recencyScore = 1.0; if (doc.containsKey('created_at')) { long age_ms = new Date().getTime() - doc['created_at'].value.getMillis(); float age_days = age_ms / (1000.0 * 60 * 60 * 24); recencyScore = Math.max(0.5, 1.0 - (age_days / 180.0)); } return baseScore * vectorScore * qualityBoost * expertBoost * complexityMatch * (1.0 + tableOverlap) * recencyScore;",
+              "params": {
+                "query_vector": "{{query_embedding}}",
+                "target_complexity": "{{complexity}}",
+                "target_tables": ["{{table1}}", "{{table2}}"]
+              }
+            }
+          }
+        }
+      },
+      "example": {
+        "user_query": "customers who purchased in last 30 days",
+        "query_embedding": "[0.123, 0.456, ..., 0.789]",
+        "provider": "postgres",
+        "complexity": "medium",
+        "target_tables": ["customers", "orders"],
+        "description": "Complex scoring with quality, tables, recency"
+      },
+      "scoring_components": {
+        "baseScore": "BM25 keyword matching score",
+        "vectorScore": "Cosine similarity [0-2 range]",
+        "qualityBoost": "1.2x if is_good_example",
+        "expertBoost": "1.15x if reviewed by expert",
+        "complexityMatch": "1.15x if complexity matches",
+        "tableOverlap": "+0.15 per matching table",
+        "recencyScore": "Linear decay over 180 days, min 0.5"
+      },
+      "tuning": {
+        "warning": "Script scoring is expensive, use sparingly",
+        "optimization": "Pre-compute signals where possible",
+        "caching": "Enable script caching in OpenSearch config"
+      }
+    },
+    "10_metadata_filters": {
+      "name": "Metadata Filtering",
+      "use_case": "Narrow results by query characteristics",
+      "performance": "Very fast, uses inverted index",
+      "when_to_use": "Know specific constraints (tables, intent, difficulty)",
+      "query": {
+        "size": 10,
+        "query": {
+          "bool": {
+            "must": [
+              {
+                "match": {
+                  "question": {
+                    "query": "{{user_query}}"
+                  }
+                }
+              }
+            ],
+            "filter": [
+              {"term": {"status": "approved"}},
+              {"term": {"provider_id": "{{provider}}"}},
+              {"term": {"query_intent": "{{intent}}"}},
+              {"term": {"difficulty": "{{difficulty}}"}},
+              {"terms": {"involved_tables": "{{tables}}"}},
+              {"term": {"is_good_example": true}},
+              {
+                "range": {
+                  "created_at": {
+                    "gte": "{{start_date}}",
+                    "lte": "{{end_date}}"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "example": {
+        "user_query": "group by aggregation",
+        "provider": "postgres",
+        "intent": "aggregation",
+        "difficulty": "medium",
+        "tables": ["orders", "customers"],
+        "start_date": "now-6M",
+        "end_date": "now",
+        "description": "Find medium aggregations on specific tables from last 6 months"
+      },
+      "filter_categories": {
+        "status": ["approved", "rejected", "pending_review"],
+        "provider_id": ["postgres", "mysql", "mongodb", "splunk", "etc"],
+        "query_intent": ["aggregation", "filter", "join", "window", "subquery", "union", "cte"],
+        "difficulty": ["simple", "medium", "complex"],
+        "is_good_example": [true, false],
+        "reviewed_by": ["expert", "system", "user"]
+      },
+      "tuning": {
+        "note": "Filters do not affect score, only eliminate documents",
+        "performance": "Use filters instead of 'must' when possible",
+        "caching": "Filter results are cached by OpenSearch"
+      }
+    }
+  },
+  "decision_tree": {
+    "description": "Guide for selecting the appropriate query pattern",
+    "steps": [
+      {
+        "step": 1,
+        "question": "Do you know specific metadata (tables, intent, difficulty)?",
+        "if_yes": "Use Pattern 10 (metadata_filters) or Pattern 5 (knn_with_prefilter)",
+        "if_no": "Continue to step 2"
+      },
+      {
+        "step": 2,
+        "question": "Is the query vague/conceptual without specific keywords?",
+        "if_yes": "Use Pattern 4 (pure_knn) or Pattern 6 (hybrid with high vector weight 0.8-0.9)",
+        "if_no": "Continue to step 3"
+      },
+      {
+        "step": 3,
+        "question": "Does query contain specific SQL keywords (JOIN, GROUP BY, etc)?",
+        "if_yes": "Use Pattern 6 (hybrid with high keyword weight 0.5-0.6)",
+        "if_no": "Continue to step 4"
+      },
+      {
+        "step": 4,
+        "question": "Need comprehensive cross-field search?",
+        "if_yes": "Use Pattern 2 (multi_match)",
+        "if_no": "Continue to step 5"
+      },
+      {
+        "step": 5,
+        "question": "Is performance critical or script_score too slow?",
+        "if_yes": "Use Pattern 7 (hybrid_rrf)",
+        "if_no": "Use Pattern 6 (hybrid_script_score) - DEFAULT"
+      },
+      {
+        "step": 6,
+        "question": "Want to boost high-quality results?",
+        "if_yes": "Apply Pattern 8 (boost_by_metadata) on top of base query",
+        "if_no": "Use base query as-is"
+      }
+    ],
+    "examples": {
+      "vague_query": {
+        "input": "show me insights about customers",
+        "analysis": "No specific keywords, conceptual",
+        "pattern": "4_pure_knn or 6_hybrid_script_score (vector_weight=0.9)"
+      },
+      "specific_query": {
+        "input": "GROUP BY customer_id with SUM(revenue)",
+        "analysis": "SQL keywords present, specific",
+        "pattern": "6_hybrid_script_score (keyword_weight=0.5)"
+      },
+      "table_specific_query": {
+        "input": "join orders and customers",
+        "analysis": "Tables and intent known",
+        "pattern": "10_metadata_filters or 5_knn_with_prefilter"
+      },
+      "default_query": {
+        "input": "top customers by sales",
+        "analysis": "Balanced query, some keywords",
+        "pattern": "6_hybrid_script_score (default weights 0.7/0.3)"
+      }
+    }
+  },
+  "relevance_tuning": {
+    "weight_tuning": {
+      "query_types": [
+        {
+          "type": "conceptual",
+          "characteristics": "Vague, high-level, no specific terms",
+          "vector_weight": "0.8-0.9",
+          "keyword_weight": "0.1-0.2",
+          "example": "show me customer insights"
+        },
+        {
+          "type": "specific_terms",
+          "characteristics": "Contains exact SQL keywords or technical terms",
+          "vector_weight": "0.4-0.5",
+          "keyword_weight": "0.5-0.6",
+          "example": "GROUP BY with HAVING clause"
+        },
+        {
+          "type": "sql_patterns",
+          "characteristics": "Describes SQL structure",
+          "vector_weight": "0.6",
+          "keyword_weight": "0.4",
+          "example": "subquery in WHERE clause"
+        },
+        {
+          "type": "default_balanced",
+          "characteristics": "Mix of natural language and specific terms",
+          "vector_weight": "0.7",
+          "keyword_weight": "0.3",
+          "example": "top 10 customers by revenue"
+        }
+      ]
+    },
+    "boost_tuning": {
+      "factors": [
+        {
+          "factor": "is_good_example",
+          "recommended_boost": "1.1-1.3",
+          "default": 1.2,
+          "rationale": "Good examples are more useful for learning"
+        },
+        {
+          "factor": "reviewed_by_expert",
+          "recommended_boost": "1.1-1.2",
+          "default": 1.15,
+          "rationale": "Expert review ensures quality"
+        },
+        {
+          "factor": "complexity_match",
+          "recommended_boost": "1.05-1.15",
+          "default": 1.1,
+          "rationale": "Matching complexity level is helpful"
+        },
+        {
+          "factor": "table_overlap",
+          "recommended_boost": "1.2-1.5",
+          "default": 1.25,
+          "rationale": "Same tables = highly relevant context"
+        }
+      ],
+      "recency_decay": {
+        "scale": "30-90 days",
+        "default": "30d",
+        "decay": 0.5,
+        "rationale": "Newer examples may reflect current best practices"
+      }
+    },
+    "threshold_tuning": {
+      "min_similarity_score": {
+        "high_precision": "0.8 - Only very similar results",
+        "balanced": "0.7 - Default, good precision/recall balance",
+        "high_recall": "0.6 - More results, some false positives",
+        "default": 0.7
+      },
+      "top_k_results": {
+        "simple_queries": "3-5 examples sufficient",
+        "complex_queries": "7-10 examples for more context",
+        "default": 5
+      },
+      "minimum_should_match": {
+        "strict": "75% - High precision",
+        "balanced": "50% - Default",
+        "lenient": "30% - High recall",
+        "default": "50%"
+      }
+    },
+    "field_boosts": {
+      "question": {
+        "boost": 3,
+        "rationale": "Natural language query is primary matching signal"
+      },
+      "sql": {
+        "boost": 2,
+        "rationale": "SQL patterns are important for technical queries"
+      },
+      "involved_tables": {
+        "boost": 1.5,
+        "rationale": "Table names provide context and specificity"
+      },
+      "query_intent": {
+        "boost": 1,
+        "rationale": "Intent is helpful but secondary"
+      }
+    }
+  },
+  "performance_targets": {
+    "latency": {
+      "p50": "< 50ms",
+      "p95": "< 200ms",
+      "p99": "< 500ms"
+    },
+    "accuracy": {
+      "top_1_precision": "> 60%",
+      "top_5_precision": "> 80%",
+      "top_10_recall": "> 90%"
+    },
+    "throughput": {
+      "queries_per_second": "> 100 QPS per node",
+      "concurrent_searches": "> 50 simultaneous"
+    }
+  },
+  "best_practices": {
+    "query_classification": [
+      "Analyze query before search to determine pattern",
+      "Extract tables, SQL keywords, intent signals",
+      "Classify complexity (simple/medium/complex)",
+      "Select pattern based on classification"
+    ],
+    "performance_optimization": [
+      "Use filters instead of must clauses when possible",
+      "Pre-filter k-NN searches to reduce candidate set",
+      "Cache frequently used queries",
+      "Monitor slow queries and optimize patterns",
+      "Use RRF instead of script_score when performance critical"
+    ],
+    "relevance_optimization": [
+      "A/B test different weight combinations",
+      "Collect user feedback (clicks, query refinements)",
+      "Tune thresholds based on precision/recall metrics",
+      "Adjust boosts based on example quality distribution",
+      "Re-train embeddings periodically for domain adaptation"
+    ],
+    "result_diversity": [
+      "Avoid returning duplicate or near-duplicate examples",
+      "Include examples from different complexity levels",
+      "Mix different query intents when applicable",
+      "Consider using collapse feature to deduplicate by SQL pattern"
+    ]
+  },
+  "integration_notes": {
+    "for_agents": [
+      "Start with pattern 6 (hybrid_script_score) as default",
+      "Apply decision tree logic for pattern selection",
+      "Always include provider_id filter",
+      "Use min_similarity_score=0.7 as baseline",
+      "Return top-5 results for most queries, top-10 for complex",
+      "Cache search results for identical queries (5-10 min TTL)"
+    ],
+    "for_rag_service": [
+      "Merge dynamic RAG examples with static sample queries",
+      "Sort combined results by score descending",
+      "De-duplicate by similarity threshold (cosine > 0.95)",
+      "Apply pattern 8 (metadata boost) to final results",
+      "Track which patterns perform best for analytics"
+    ],
+    "error_handling": [
+      "If OpenSearch unavailable, fall back to database keyword search",
+      "If embedding generation fails, use pure keyword search (pattern 1 or 2)",
+      "If no results above threshold, relax min_score by 0.1 and retry",
+      "Log failed queries for offline analysis"
+    ]
+  }
+}
