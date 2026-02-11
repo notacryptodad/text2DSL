@@ -1,0 +1,158 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2,
+      "number_of_replicas": 1,
+      "refresh_interval": "5s",
+      "max_result_window": 10000,
+      "max_inner_result_window": 100,
+      "knn": true,
+      "knn.algo_param.ef_search": 512
+    },
+    "analysis": {
+      "analyzer": {
+        "natural_language_analyzer": {
+          "type": "standard",
+          "stopwords": "_english_"
+        },
+        "dsl_query_analyzer": {
+          "type": "custom",
+          "tokenizer": "whitespace",
+          "filter": ["lowercase"]
+        },
+        "sql_keyword_analyzer": {
+          "type": "custom",
+          "tokenizer": "sql_keyword_tokenizer",
+          "filter": ["lowercase", "sql_keyword_filter"]
+        }
+      },
+      "tokenizer": {
+        "sql_keyword_tokenizer": {
+          "type": "pattern",
+          "pattern": "([\\s,()]+)",
+          "group": -1
+        }
+      },
+      "filter": {
+        "sql_keyword_filter": {
+          "type": "keyword_marker",
+          "keywords": [
+            "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER",
+            "GROUP", "BY", "ORDER", "HAVING", "UNION", "INSERT", "UPDATE", "DELETE",
+            "CREATE", "DROP", "ALTER", "TABLE", "INDEX", "VIEW", "AS", "ON", "AND",
+            "OR", "NOT", "IN", "BETWEEN", "LIKE", "IS", "NULL", "DISTINCT", "COUNT",
+            "SUM", "AVG", "MAX", "MIN", "LIMIT", "OFFSET", "CASE", "WHEN", "THEN",
+            "ELSE", "END", "WITH"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": {
+        "type": "keyword"
+      },
+      "provider_type": {
+        "type": "keyword"
+      },
+      "provider_id": {
+        "type": "keyword"
+      },
+      "natural_language_query": {
+        "type": "text",
+        "analyzer": "natural_language_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "dsl_query": {
+        "type": "text",
+        "index": false
+      },
+      "dsl_query_analyzed": {
+        "type": "text",
+        "analyzer": "dsl_query_analyzer"
+      },
+      "embedding": {
+        "type": "knn_vector",
+        "dimension": 1024,
+        "method": {
+          "name": "hnsw",
+          "space_type": "cosinesimil",
+          "engine": "nmslib",
+          "parameters": {
+            "ef_construction": 512,
+            "m": 16
+          }
+        }
+      },
+      "embedding_model": {
+        "type": "keyword"
+      },
+      "query_intent": {
+        "type": "keyword"
+      },
+      "complexity_level": {
+        "type": "keyword"
+      },
+      "difficulty": {
+        "type": "keyword"
+      },
+      "involved_tables": {
+        "type": "keyword"
+      },
+      "involved_fields": {
+        "type": "keyword"
+      },
+      "is_good_example": {
+        "type": "boolean"
+      },
+      "status": {
+        "type": "keyword"
+      },
+      "reviewed_by": {
+        "type": "keyword"
+      },
+      "reviewed_at": {
+        "type": "date"
+      },
+      "expert_corrected_query": {
+        "type": "text",
+        "index": false
+      },
+      "source": {
+        "type": "keyword"
+      },
+      "source_conversation_id": {
+        "type": "keyword"
+      },
+      "source_metadata": {
+        "type": "object",
+        "enabled": true,
+        "dynamic": true
+      },
+      "usage_count": {
+        "type": "integer"
+      },
+      "success_rate": {
+        "type": "float"
+      },
+      "avg_similarity_score": {
+        "type": "float"
+      },
+      "created_at": {
+        "type": "date"
+      },
+      "updated_at": {
+        "type": "date"
+      },
+      "indexed_at": {
+        "type": "date"
+      }
+    }
+  }
+}
