@@ -26,6 +26,28 @@ test.describe('Scenario 3: Query Generation', () => {
     await expect(queryInput).toBeVisible();
   });
 
+  test('mock: should submit query using keyboard shortcut (Ctrl+Enter)', async ({ page }) => {
+    const chatPage = new ChatPage(page);
+
+    // Setup mock WebSocket responses BEFORE navigation
+    await setupMockWebSocket(page, MOCK_QUERY_RESPONSES.simpleQuery.events);
+
+    await chatPage.goto();
+    await chatPage.setupWebSocketInterception();
+
+    // Submit query using keyboard
+    await chatPage.submitQueryWithKeyboard(TEST_QUERIES.simple);
+
+    // Wait for completion
+    await page.waitForTimeout(2500); // Wait for all mock events
+
+    // Get WebSocket messages
+    const messages = await chatPage.getWebSocketMessages();
+
+    // Verify we received messages
+    expect(messages.length).toBeGreaterThan(0);
+  });
+
   test('mock: should submit query and receive result', async ({ page }) => {
     const chatPage = new ChatPage(page);
 

@@ -91,6 +91,16 @@ export class ChatPage {
   }
 
   /**
+   * Submit a query using keyboard shortcut (Ctrl+Enter)
+   *
+   * @param {string} query - The query text
+   */
+  async submitQueryWithKeyboard(query) {
+    await this.page.fill(this.queryInput, query);
+    await this.page.keyboard.press('Control+Enter');
+  }
+
+  /**
    * Wait for query to complete processing
    *
    * @param {number} timeout - Maximum time to wait (default 60s)
