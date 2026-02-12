@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 from strands import Agent
 from strands.tools import tool
+from strands.tools.executors import ConcurrentToolExecutor
 
 from text2x.providers.base import QueryProvider
 
@@ -912,6 +913,7 @@ class QueryAgent:
                 self._rag_mode,
             ),
             tools=tools,
+            tool_executor=ConcurrentToolExecutor(),
             name=self.name,
             description=f"Query agent for {self._query_language}",
         )
