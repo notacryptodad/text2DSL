@@ -285,6 +285,8 @@ class OpenSearchService:
         query_intent: Optional[str] = None,
         min_score: float = 0.0,
         hybrid: bool = True,
+        vector_weight: float = 0.7,
+        keyword_weight: float = 0.3,
     ) -> List[Dict[str, Any]]:
         """
         Search for similar documents using k-NN vector search.
@@ -292,7 +294,7 @@ class OpenSearchService:
         Supports:
         - Pure vector search (using query_vector)
         - Pure text search (using query_text with BM25)
-        - Hybrid search (combining both with weights)
+        - Hybrid search (combining both with configurable weights)
 
         Args:
             query_vector: Query embedding vector (optional if query_text provided)
@@ -302,6 +304,8 @@ class OpenSearchService:
             query_intent: Filter by query intent
             min_score: Minimum similarity score threshold
             hybrid: If True, use hybrid search combining vector + keyword
+            vector_weight: Weight for semantic/embedding similarity (0.0-1.0)
+            keyword_weight: Weight for BM25 keyword matching (0.0-1.0)
 
         Returns:
             List of matching documents with scores and metadata
@@ -328,6 +332,8 @@ class OpenSearchService:
                     k=k,
                     provider_id=provider_id,
                     query_intent=query_intent,
+                    vector_weight=vector_weight,
+                    keyword_weight=keyword_weight,
                 )
             else:
                 # Pure vector search

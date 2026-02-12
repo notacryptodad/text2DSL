@@ -59,6 +59,8 @@ def search_similar_queries(
     keywords: str,
     limit: int = 3,
     provider_id: str = "",
+    vector_weight: float = 0.7,
+    keyword_weight: float = 0.3,
 ) -> dict:
     """Search for similar example queries to help generate the current query.
 
@@ -69,6 +71,12 @@ def search_similar_queries(
 
     Don't use this for simple queries or basic schema lookups.
 
+    **Weight tuning guidance:**
+    - Default (0.7 vector, 0.3 keyword): Good for semantic similarity
+    - High vector (0.9, 0.1): User query is vague, need conceptually similar examples
+    - High keyword (0.3, 0.7): User query has specific terms/table names to match exactly
+    - Balanced (0.5, 0.5): Mix of specific terms and general intent
+
     Args:
         keywords: Search keywords describing the query intent and structure.
                  Examples: "join users orders", "group by date aggregate count",
@@ -76,6 +84,10 @@ def search_similar_queries(
         limit: Maximum number of examples to return (1-5, default 3).
                Use 2-3 for most queries, 4-5 for very complex queries.
         provider_id: Optional provider ID to filter examples (leave empty to search all).
+        vector_weight: Weight for semantic/embedding similarity (0.0-1.0, default 0.7).
+                      Higher = more emphasis on conceptual similarity.
+        keyword_weight: Weight for BM25 keyword matching (0.0-1.0, default 0.3).
+                       Higher = more emphasis on exact term matching.
 
     Returns:
         Dictionary with the following structure:
@@ -93,13 +105,14 @@ def search_similar_queries(
             ],
             "count": number of examples returned,
             "search_keywords": keywords that were searched,
+            "weights": {"vector": 0.7, "keyword": 0.3},
             "error": "error message if success=False"
         }
 
     Examples:
         search_similar_queries("join users orders", limit=3)
-        search_similar_queries("aggregate sales by month", limit=2)
-        search_similar_queries("nested subquery filter", limit=4)
+        search_similar_queries("aggregate sales by month", limit=2, vector_weight=0.8, keyword_weight=0.2)
+        search_similar_queries("customers table filter", keyword_weight=0.7, vector_weight=0.3)
     """
     # Validate services are initialized
     if not _rag_service:
@@ -124,10 +137,21 @@ def search_similar_queries(
     # Clamp limit to valid range
     limit = max(1, min(5, limit))
 
+    # Normalize weights (ensure they sum to 1.0)
+    vector_weight = max(0.0, min(1.0, vector_weight))
+    keyword_weight = max(0.0, min(1.0, keyword_weight))
+    total_weight = vector_weight + keyword_weight
+    if total_weight > 0:
+        vector_weight = vector_weight / total_weight
+        keyword_weight = keyword_weight / total_weight
+    else:
+        vector_weight, keyword_weight = 0.7, 0.3  # fallback to defaults
+
     try:
         logger.info(
             f"[search_similar_queries] Searching with keywords='{keywords}', "
-            f"provider={provider_id or 'all'}, limit={limit}"
+            f"provider={provider_id or 'all'}, limit={limit}, "
+            f"weights=(vector={vector_weight:.2f}, keyword={keyword_weight:.2f})"
         )
 
         # Run async search
@@ -138,6 +162,8 @@ def search_similar_queries(
                 limit=limit,
                 min_similarity=0.6,  # Use reasonable threshold
                 include_sample_queries=True,
+                vector_weight=vector_weight,
+                keyword_weight=keyword_weight,
             )
 
         raw_examples = _run_async(search_async())
@@ -184,6 +210,7 @@ def search_similar_queries(
             "examples": examples,
             "count": len(examples),
             "search_keywords": keywords,
+            "weights": {"vector": round(vector_weight, 2), "keyword": round(keyword_weight, 2)},
         }
 
     except Exception as e:
@@ -194,4 +221,5 @@ def search_similar_queries(
             "count": 0,
             "error": f"Search failed: {str(e)}",
             "search_keywords": keywords,
+            "weights": {"vector": round(vector_weight, 2), "keyword": round(keyword_weight, 2)},
         }

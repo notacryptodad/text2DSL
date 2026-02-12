@@ -163,6 +163,8 @@ class RAGService:
         query_intent: Optional[str] = None,
         min_similarity: float = 0.7,
         include_sample_queries: bool = True,
+        vector_weight: float = 0.7,
+        keyword_weight: float = 0.3,
     ) -> List[RAGExample]:
         """
         Search for similar examples using hybrid retrieval.
@@ -181,6 +183,8 @@ class RAGService:
             query_intent: Optional intent filter (aggregation, filter, etc.)
             min_similarity: Minimum similarity threshold (0.0 to 1.0)
             include_sample_queries: Whether to include sample queries from reference index
+            vector_weight: Weight for semantic/embedding similarity (0.0-1.0)
+            keyword_weight: Weight for BM25 keyword matching (0.0-1.0)
 
         Returns:
             List of similar RAG examples, ranked by relevance
@@ -191,7 +195,8 @@ class RAGService:
         logger.info(
             f"Searching RAG examples: query='{query[:50]}...', "
             f"provider={provider_id}, limit={limit}, intent={query_intent}, "
-            f"include_samples={include_sample_queries}"
+            f"include_samples={include_sample_queries}, "
+            f"weights=(vector={vector_weight:.2f}, keyword={keyword_weight:.2f})"
         )
 
         if not query or not provider_id:
@@ -208,6 +213,8 @@ class RAGService:
                     query_intent=query_intent,
                     min_similarity=min_similarity,
                     limit=limit,
+                    vector_weight=vector_weight,
+                    keyword_weight=keyword_weight,
                 )
             except Exception as e:
                 logger.warning(f"OpenSearch search failed: {e}, falling back to database")
@@ -257,6 +264,8 @@ class RAGService:
         query_intent: Optional[str],
         min_similarity: float,
         limit: int,
+        vector_weight: float = 0.7,
+        keyword_weight: float = 0.3,
     ) -> List[RAGExample]:
         """
         Search examples using OpenSearch hybrid search.
@@ -269,11 +278,13 @@ class RAGService:
             query_intent: Optional intent filter
             min_similarity: Minimum similarity threshold
             limit: Maximum results
+            vector_weight: Weight for semantic/embedding similarity (0.0-1.0)
+            keyword_weight: Weight for BM25 keyword matching (0.0-1.0)
 
         Returns:
             List of RAG examples from OpenSearch
         """
-        logger.debug(f"Searching OpenSearch with query: '{query[:50]}...'")
+        logger.debug(f"Searching OpenSearch with query: '{query[:50]}...', weights=(vector={vector_weight:.2f}, keyword={keyword_weight:.2f})")
 
         # Search OpenSearch with hybrid search
         search_results = await self.opensearch_service.search_similar(
@@ -283,6 +294,8 @@ class RAGService:
             query_intent=query_intent,
             min_score=min_similarity,
             hybrid=True,
+            vector_weight=vector_weight,
+            keyword_weight=keyword_weight,
         )
 
         # Convert search results to RAGExample objects
