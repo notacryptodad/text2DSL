@@ -49,11 +49,13 @@ function ConnectionHealthBadge({ providerId, className = '' }) {
 
   return (
     <div className={`relative inline-flex items-center ${className}`}>
-      <button
+      <div
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        onClick={() => setShowTooltip(!showTooltip)}
-        className="relative flex items-center space-x-1.5 focus:outline-none"
+        onClick={(e) => { e.stopPropagation(); setShowTooltip(!showTooltip) }}
+        className="relative flex items-center space-x-1.5 cursor-pointer"
+        role="button"
+        tabIndex={0}
         aria-label={`Connection status: ${label}`}
       >
         <span className="relative flex h-3 w-3">
@@ -62,7 +64,7 @@ function ConnectionHealthBadge({ providerId, className = '' }) {
           )}
           <span className={`relative inline-flex rounded-full h-3 w-3 ${color} ring-2 ${ringColor}`} />
         </span>
-      </button>
+      </div>
 
       {showTooltip && (
         <div className="absolute left-1/2 transform -translate-x-1/2 top-full mt-2 z-50" onMouseEnter={() => setShowTooltip(true)} onMouseLeave={() => setShowTooltip(false)}>

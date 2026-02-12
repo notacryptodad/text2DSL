@@ -250,26 +250,29 @@ def assistant_save_annotation(
 
     try:
         import asyncio
-        import nest_asyncio
+        from text2x.models.base import get_db
+        from text2x.repositories.annotation import SchemaAnnotationRepository
 
-        nest_asyncio.apply()
+        async def _create_annotation():
+            db = get_db()
+            async with db.session() as session:
+                repo = SchemaAnnotationRepository(session)
+                return await repo.create(
+                    provider_id=ctx.provider_id,
+                    description=description,
+                    created_by=ctx.user_id,
+                    table_name=table_name,
+                    column_name=column_name,
+                    business_terms=business_terms,
+                    examples=examples,
+                    relationships=relationships,
+                    date_format=date_format,
+                    enum_values=enum_values,
+                    sensitive=sensitive,
+                )
 
-        loop = asyncio.get_event_loop()
-        annotation = loop.run_until_complete(
-            ctx.annotation_repo.create(
-                provider_id=ctx.provider_id,
-                description=description,
-                created_by=ctx.user_id,
-                table_name=table_name,
-                column_name=column_name,
-                business_terms=business_terms,
-                examples=examples,
-                relationships=relationships,
-                date_format=date_format,
-                enum_values=enum_values,
-                sensitive=sensitive,
-            )
-        )
+        # Run in a new event loop to avoid loop conflicts
+        annotation = asyncio.run(_create_annotation())
 
         return {
             "success": True,
@@ -307,21 +310,16 @@ def list_annotations(
 
     try:
         import asyncio
+        from text2x.models.base import get_db
+        from text2x.repositories.annotation import SchemaAnnotationRepository
 
-        def get_annotations_sync():
-            return asyncio.run(ctx.annotation_repo.get_by_provider(ctx.provider_id))
+        async def _get_annotations():
+            db = get_db()
+            async with db.session() as session:
+                repo = SchemaAnnotationRepository(session)
+                return await repo.get_by_provider(ctx.provider_id)
 
-        try:
-            annotations = get_annotations_sync()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                annotations = loop.run_until_complete(
-                    ctx.annotation_repo.get_by_provider(ctx.provider_id)
-                )
-            finally:
-                loop.close()
+        annotations = asyncio.run(_get_annotations())
 
         # Filter by table or column if specified
         if table_name:
