@@ -128,6 +128,26 @@ rag_examples_total_gauge = Gauge(
     registry=REGISTRY,
 )
 
+rag_retrieval_latency_histogram = Histogram(
+    "text2dsl_rag_retrieval_latency_seconds",
+    "RAG retrieval latency in seconds",
+    ["provider_type"],
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0),
+    registry=REGISTRY,
+)
+
+rag_cache_hits_counter = Counter(
+    "text2dsl_rag_cache_hits_total",
+    "Total RAG cache hits",
+    registry=REGISTRY,
+)
+
+rag_cache_misses_counter = Counter(
+    "text2dsl_rag_cache_misses_total",
+    "Total RAG cache misses",
+    registry=REGISTRY,
+)
+
 # Review Queue Metrics
 review_queue_size_gauge = Gauge(
     "text2dsl_review_queue_size",
@@ -230,6 +250,21 @@ def record_tokens_by_agent(agent_type: str, token_type: str, count: int) -> None
 def record_rag_retrieval(provider_type: str) -> None:
     """Record RAG retrieval event."""
     rag_retrieval_counter.labels(provider_type=provider_type).inc()
+
+
+def record_rag_retrieval_latency(provider_type: str, latency_seconds: float) -> None:
+    """Record RAG retrieval latency."""
+    rag_retrieval_latency_histogram.labels(provider_type=provider_type).observe(latency_seconds)
+
+
+def record_rag_cache_hit() -> None:
+    """Record RAG cache hit."""
+    rag_cache_hits_counter.inc()
+
+
+def record_rag_cache_miss() -> None:
+    """Record RAG cache miss."""
+    rag_cache_misses_counter.inc()
 
 
 def set_rag_example_usage_rate(provider_type: str, rate: float) -> None:

@@ -235,8 +235,22 @@ async def process_query(
                     )
 
                     # Record RAG retrieval metrics
+                    from text2x.utils.observability import (
+                        record_rag_retrieval_latency,
+                        record_rag_cache_hit,
+                        record_rag_cache_miss,
+                    )
+
+                    record_rag_retrieval_latency(provider_type, rag_duration)
                     if rag_examples:
                         record_rag_retrieval(provider_type)
+
+                    # Record cache stats
+                    cache_stats = RAGService.get_cache_stats()
+                    if cache_stats["cache_hits"] > 0:
+                        record_rag_cache_hit()
+                    else:
+                        record_rag_cache_miss()
 
                 except Exception as e:
                     logger.warning(f"Failed to retrieve RAG examples: {e}", exc_info=True)

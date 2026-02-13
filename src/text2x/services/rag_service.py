@@ -3,14 +3,16 @@ RAG (Retrieval-Augmented Generation) service for managing query examples.
 
 This service provides:
 - Adding/removing examples to the RAG index
-- Searching for similar examples
+- Searching for similar examples with in-memory LRU caching
 - Integration with OpenSearch for vector embeddings
 - Managing approved examples for query generation
 """
 
+import hashlib
 import logging
+import time
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
 from text2x.models.rag import ExampleStatus, RAGExample
@@ -22,6 +24,13 @@ logger = logging.getLogger(__name__)
 
 class RAGService:
     """Service for managing RAG examples and retrieval."""
+
+    # Class-level LRU cache shared across instances (per-process)
+    _search_cache: Dict[str, Tuple[List[RAGExample], float]] = {}
+    _cache_max_size: int = 1000
+    _cache_ttl: int = 3600  # 1 hour
+    _cache_hits: int = 0
+    _cache_misses: int = 0
 
     def __init__(
         self,
@@ -37,6 +46,58 @@ class RAGService:
         """
         self.rag_repo = rag_repo or RAGExampleRepository()
         self.opensearch_service = opensearch_service
+
+    @classmethod
+    def _make_cache_key(
+        cls, query: str, provider_id: str, query_intent: Optional[str]
+    ) -> str:
+        """Generate deterministic cache key from search parameters."""
+        content = f"{query}:{provider_id}:{query_intent or 'none'}"
+        return hashlib.sha256(content.encode()).hexdigest()
+
+    @classmethod
+    def _get_cached(cls, cache_key: str) -> Optional[List[RAGExample]]:
+        """Get cached results if still valid."""
+        if cache_key in cls._search_cache:
+            results, cached_time = cls._search_cache[cache_key]
+            if time.time() - cached_time < cls._cache_ttl:
+                cls._cache_hits += 1
+                logger.debug(f"RAG cache hit: {cache_key[:8]}")
+                return results
+            else:
+                del cls._search_cache[cache_key]
+        cls._cache_misses += 1
+        return None
+
+    @classmethod
+    def _set_cached(cls, cache_key: str, results: List[RAGExample]) -> None:
+        """Store results in cache with LRU eviction."""
+        cls._search_cache[cache_key] = (results, time.time())
+        # Evict oldest entries if over limit
+        if len(cls._search_cache) > cls._cache_max_size:
+            sorted_keys = sorted(
+                cls._search_cache.keys(),
+                key=lambda k: cls._search_cache[k][1],
+            )
+            for old_key in sorted_keys[: len(sorted_keys) // 10]:
+                del cls._search_cache[old_key]
+
+    @classmethod
+    def invalidate_cache(cls) -> None:
+        """Clear the entire search cache. Call when new examples are approved."""
+        cls._search_cache.clear()
+        logger.info("RAG search cache invalidated")
+
+    @classmethod
+    def get_cache_stats(cls) -> Dict:
+        """Return cache statistics for observability."""
+        total = cls._cache_hits + cls._cache_misses
+        return {
+            "cache_size": len(cls._search_cache),
+            "cache_hits": cls._cache_hits,
+            "cache_misses": cls._cache_misses,
+            "cache_hit_rate": cls._cache_hits / total if total > 0 else 0.0,
+        }
 
     async def add_example(
         self,
@@ -165,28 +226,23 @@ class RAGService:
         include_sample_queries: bool = True,
     ) -> List[RAGExample]:
         """
-        Search for similar examples using hybrid retrieval.
+        Search for similar examples using hybrid retrieval with LRU caching.
 
-        This performs a hybrid search combining:
-        1. Keyword-based search (PostgreSQL full-text search)
-        2. Vector similarity search (OpenSearch embeddings) if available
-        3. Sample queries from the reference index (if include_sample_queries=True)
-
-        Only approved good examples are returned for use in query generation.
+        Cache strategy (from integration-design.md):
+        - In-memory LRU: 1000 entries, 1-hour TTL
+        - Cache key: sha256(query + provider_id + query_intent)
+        - Invalidated when new examples are approved
 
         Args:
             query: Natural language query to search for
             provider_id: Provider ID to filter by
             limit: Maximum number of examples to return
-            query_intent: Optional intent filter (aggregation, filter, etc.)
-            min_similarity: Minimum similarity threshold (0.0 to 1.0)
-            include_sample_queries: Whether to include sample queries from reference index
+            query_intent: Optional intent filter
+            min_similarity: Minimum similarity threshold
+            include_sample_queries: Whether to include sample queries
 
         Returns:
             List of similar RAG examples, ranked by relevance
-
-        Raises:
-            ValueError: If inputs are invalid
         """
         logger.info(
             f"Searching RAG examples: query='{query[:50]}...', "
@@ -196,6 +252,13 @@ class RAGService:
 
         if not query or not provider_id:
             raise ValueError("query and provider_id are required")
+
+        # Check cache first
+        cache_key = self._make_cache_key(query, provider_id, query_intent)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            logger.info(f"Returning {len(cached)} cached RAG examples")
+            return cached[:limit]
 
         examples = []
 
@@ -246,6 +309,9 @@ class RAGService:
 
         # Limit to requested number
         examples = examples[:limit]
+
+        # Store in cache
+        self._set_cached(cache_key, examples)
 
         logger.info(f"Found {len(examples)} similar RAG examples")
         return examples
