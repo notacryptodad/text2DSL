@@ -20,13 +20,7 @@ import Prism from 'prismjs'
 import '../styles/prism-custom.css'
 import * as ROUTES from '../constants/routes'
 import 'prismjs/components/prism-sql'
-
-const PROVIDERS = [
-  { id: 'sql-postgres', name: 'PostgreSQL' },
-  { id: 'sql-mysql', name: 'MySQL' },
-  { id: 'nosql-mongodb', name: 'MongoDB' },
-  { id: 'splunk', name: 'Splunk' },
-]
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 const STATUS_OPTIONS = [
   { value: 'pending_review', label: 'Pending Review' },
@@ -35,6 +29,8 @@ const STATUS_OPTIONS = [
 ]
 
 function Review() {
+  const { currentWorkspace, workspaces, selectWorkspace, loading: wsLoading } = useWorkspace()
+  const [providers, setProviders] = useState([])
   const [queueItems, setQueueItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -60,9 +56,13 @@ function Review() {
   const [stats, setStats] = useState(null)
 
   useEffect(() => {
+    fetchProviders()
+  }, [currentWorkspace])
+
+  useEffect(() => {
     fetchQueueItems()
     fetchStats()
-  }, [currentPage, selectedProvider, selectedStatus])
+  }, [currentPage, selectedProvider, selectedStatus, currentWorkspace])
 
   useEffect(() => {
     // Highlight code when modal opens or correctedQuery changes
@@ -71,7 +71,31 @@ function Review() {
     }
   }, [showModal, correctedQuery])
 
+  const fetchProviders = async () => {
+    if (!currentWorkspace) {
+      setProviders([])
+      return
+    }
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(`/api/v1/workspaces/${currentWorkspace.id}/providers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setProviders(data.map(p => ({ id: p.id, name: p.name, type: p.type || p.provider_type })))
+      }
+    } catch (err) {
+      console.error('Error fetching providers:', err)
+    }
+  }
+
   const fetchQueueItems = async () => {
+    if (!currentWorkspace) {
+      setQueueItems([])
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       setError(null)
@@ -402,6 +426,27 @@ function Review() {
               </span>
             </div>
 
+            {/* Workspace Filter */}
+            <select
+              value={currentWorkspace?.id || ''}
+              onChange={(e) => {
+                const ws = workspaces.find(w => w.id === e.target.value)
+                if (ws) selectWorkspace(ws)
+                setSelectedProvider('all')
+                setCurrentPage(1)
+              }}
+              className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              disabled={wsLoading || workspaces.length === 0}
+            >
+              {wsLoading || workspaces.length === 0 ? (
+                <option value="">Loading workspaces...</option>
+              ) : (
+                workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>{ws.name}</option>
+                ))
+              )}
+            </select>
+
             {/* Provider Filter */}
             <select
               value={selectedProvider}
@@ -412,7 +457,7 @@ function Review() {
               className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="all">All Providers</option>
-              {PROVIDERS.map((provider) => (
+              {providers.map((provider) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.name}
                 </option>

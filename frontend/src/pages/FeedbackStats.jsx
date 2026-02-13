@@ -10,6 +10,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import FeedbackChart from '../components/FeedbackChart'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 const CATEGORY_LABELS = {
   wrong_table: 'Wrong Table',
@@ -22,6 +23,8 @@ const CATEGORY_LABELS = {
 }
 
 function FeedbackStats() {
+  const { currentWorkspace, workspaces, selectWorkspace, loading: wsLoading } = useWorkspace()
+  const [providers, setProviders] = useState([])
   const [stats, setStats] = useState(null)
   const [feedbackList, setFeedbackList] = useState([])
   const [loading, setLoading] = useState(true)
@@ -29,21 +32,22 @@ function FeedbackStats() {
 
   // Filters
   const [dateRange, setDateRange] = useState('7d') // 7d, 30d, 90d, all
-  const [selectedWorkspace, setSelectedWorkspace] = useState('all')
-  const [workspaces, setWorkspaces] = useState([])
+  const [selectedProvider, setSelectedProvider] = useState('all')
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(20)
 
   useEffect(() => {
-    fetchWorkspaces()
+    fetchProviders()
+  }, [currentWorkspace])
+
+  useEffect(() => {
     fetchStats()
     fetchFeedbackList()
-  }, [dateRange, selectedWorkspace, currentPage])
+  }, [dateRange, currentWorkspace, selectedProvider, currentPage])
 
   const getApiUrl = () => {
-    // Use empty string to leverage Vite proxy - avoids CORS issues
     return ''
   }
 
@@ -54,30 +58,39 @@ function FeedbackStats() {
     }
   }
 
-  const fetchWorkspaces = async () => {
+  const fetchProviders = async () => {
+    if (!currentWorkspace) {
+      setProviders([])
+      return
+    }
     try {
-      const response = await fetch(`${getApiUrl()}/api/v1/workspaces`, {
+      const response = await fetch(`${getApiUrl()}/api/v1/workspaces/${currentWorkspace.id}/providers`, {
         headers: getAuthHeaders(),
       })
       if (response.ok) {
         const data = await response.json()
-        setWorkspaces(data)
+        setProviders(data.map(p => ({ id: p.id, name: p.name, type: p.type || p.provider_type })))
       }
     } catch (err) {
-      console.error('Error fetching workspaces:', err)
+      console.error('Error fetching providers:', err)
     }
   }
 
   const fetchStats = async () => {
+    if (!currentWorkspace) {
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       setError(null)
 
       const params = new URLSearchParams({
         date_range: dateRange,
+        workspace_id: currentWorkspace.id,
       })
-      if (selectedWorkspace !== 'all') {
-        params.append('workspace_id', selectedWorkspace)
+      if (selectedProvider !== 'all') {
+        params.append('provider_id', selectedProvider)
       }
 
       const response = await fetch(`${getApiUrl()}/api/v1/feedback/stats?${params}`, {
@@ -96,14 +109,16 @@ function FeedbackStats() {
   }
 
   const fetchFeedbackList = async () => {
+    if (!currentWorkspace) return
     try {
       const params = new URLSearchParams({
         page: currentPage,
         page_size: pageSize,
         date_range: dateRange,
+        workspace_id: currentWorkspace.id,
       })
-      if (selectedWorkspace !== 'all') {
-        params.append('workspace_id', selectedWorkspace)
+      if (selectedProvider !== 'all') {
+        params.append('provider_id', selectedProvider)
       }
 
       const response = await fetch(`${getApiUrl()}/api/v1/feedback?${params}`, {
@@ -220,17 +235,37 @@ function FeedbackStats() {
             </select>
 
             <select
-              value={selectedWorkspace}
+              value={currentWorkspace?.id || ''}
               onChange={(e) => {
-                setSelectedWorkspace(e.target.value)
+                const ws = workspaces.find(w => w.id === e.target.value)
+                if (ws) selectWorkspace(ws)
+                setSelectedProvider('all')
+                setCurrentPage(1)
+              }}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              disabled={wsLoading || workspaces.length === 0}
+            >
+              {wsLoading || workspaces.length === 0 ? (
+                <option value="">Loading workspaces...</option>
+              ) : (
+                workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>{ws.name}</option>
+                ))
+              )}
+            </select>
+
+            <select
+              value={selectedProvider}
+              onChange={(e) => {
+                setSelectedProvider(e.target.value)
                 setCurrentPage(1)
               }}
               className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <option value="all">All Workspaces</option>
-              {workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
+              <option value="all">All Providers</option>
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.name}
                 </option>
               ))}
             </select>
