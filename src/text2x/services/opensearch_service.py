@@ -95,42 +95,71 @@ class OpenSearchService:
         logger.info(f"Created OpenSearch client for {host}:{port}")
         return client
 
-    async def create_index_if_not_exists(self) -> bool:
+    async def create_index_if_not_exists(self, index_name: str = None) -> bool:
         """
-        Create OpenSearch index with k-NN settings if it doesn't exist.
+        Create OpenSearch index with k-NN settings and custom analyzers.
 
-        The index is configured for:
-        - k-NN vector search on embedding field
-        - Full-text search on nl_query field
-        - Filtering on provider_id, status, intent, etc.
+        Uses the multi-provider schema from opensearch-index-mapping.json design:
+        - k-NN HNSW vector search (1024-dim, cosine similarity)
+        - Custom analyzers for natural language and DSL queries
+        - Provider-specific filtering fields
+        - Quality tracking and usage analytics fields
+
+        Args:
+            index_name: Optional index name override (defaults to self.index_name)
 
         Returns:
             True if index was created, False if it already existed
-
-        Raises:
-            Exception: If index creation fails
         """
-        try:
-            # Check if index exists
-            exists = await self.client.indices.exists(index=self.index_name)
+        target_index = index_name or self.index_name
 
+        try:
+            exists = await self.client.indices.exists(index=target_index)
             if exists:
-                logger.info(f"Index '{self.index_name}' already exists")
+                logger.info(f"Index '{target_index}' already exists")
                 return False
 
-            # Define index mapping
             index_body = {
                 "settings": {
                     "index": {
-                        "knn": True,  # Enable k-NN
-                        "knn.algo_param.ef_search": 512,
                         "number_of_shards": 2,
                         "number_of_replicas": 1,
-                    }
+                        "refresh_interval": "5s",
+                        "max_result_window": 10000,
+                        "knn": True,
+                        "knn.algo_param.ef_search": 512,
+                    },
+                    "analysis": {
+                        "analyzer": {
+                            "natural_language_analyzer": {
+                                "type": "standard",
+                                "stopwords": "_english_",
+                            },
+                            "dsl_query_analyzer": {
+                                "type": "custom",
+                                "tokenizer": "whitespace",
+                                "filter": ["lowercase"],
+                            },
+                        },
+                    },
                 },
                 "mappings": {
                     "properties": {
                         "id": {"type": "keyword"},
+                        "provider_type": {"type": "keyword"},
+                        "provider_id": {"type": "keyword"},
+                        "natural_language_query": {
+                            "type": "text",
+                            "analyzer": "natural_language_analyzer",
+                            "fields": {
+                                "keyword": {"type": "keyword", "ignore_above": 256},
+                            },
+                        },
+                        "dsl_query": {"type": "text", "index": False},
+                        "dsl_query_analyzed": {
+                            "type": "text",
+                            "analyzer": "dsl_query_analyzer",
+                        },
                         "embedding": {
                             "type": "knn_vector",
                             "dimension": self.embedding_dimension,
@@ -144,48 +173,52 @@ class OpenSearchService:
                                 },
                             },
                         },
-                        "nl_query": {
-                            "type": "text",
-                            "analyzer": "standard",
-                        },
-                        "generated_query": {
-                            "type": "text",
-                            "index": False,
-                        },
-                        "provider_id": {"type": "keyword"},
-                        "status": {"type": "keyword"},
-                        "is_good_example": {"type": "boolean"},
-                        "involved_tables": {"type": "keyword"},
+                        "embedding_model": {"type": "keyword"},
                         "query_intent": {"type": "keyword"},
                         "complexity_level": {"type": "keyword"},
+                        "difficulty": {"type": "keyword"},
+                        "involved_tables": {"type": "keyword"},
+                        "involved_fields": {"type": "keyword"},
+                        "is_good_example": {"type": "boolean"},
+                        "status": {"type": "keyword"},
                         "reviewed_by": {"type": "keyword"},
                         "reviewed_at": {"type": "date"},
-                        "expert_corrected_query": {
-                            "type": "text",
-                            "index": False,
+                        "expert_corrected_query": {"type": "text", "index": False},
+                        "source": {"type": "keyword"},
+                        "source_conversation_id": {"type": "keyword"},
+                        "source_metadata": {
+                            "type": "object",
+                            "enabled": True,
+                            "dynamic": True,
                         },
-                        "metadata": {"type": "object", "enabled": False},
+                        "usage_count": {"type": "integer"},
+                        "success_rate": {"type": "float"},
+                        "avg_similarity_score": {"type": "float"},
                         "created_at": {"type": "date"},
                         "updated_at": {"type": "date"},
+                        "indexed_at": {"type": "date"},
+                        # Legacy field aliases for backward compatibility
+                        "nl_query": {
+                            "type": "text",
+                            "analyzer": "natural_language_analyzer",
+                        },
+                        "generated_query": {"type": "text", "index": False},
+                        "metadata": {"type": "object", "enabled": False},
                     }
                 },
             }
 
-            # Create index
-            await self.client.indices.create(
-                index=self.index_name,
-                body=index_body,
-            )
+            await self.client.indices.create(index=target_index, body=index_body)
 
             logger.info(
-                f"Created index '{self.index_name}' with k-NN configuration "
+                f"Created index '{target_index}' with k-NN + custom analyzers "
                 f"(dimension={self.embedding_dimension})"
             )
             return True
 
         except RequestError as e:
             if "resource_already_exists_exception" in str(e):
-                logger.info(f"Index '{self.index_name}' already exists")
+                logger.info(f"Index '{target_index}' already exists")
                 return False
             else:
                 logger.error(f"Failed to create index: {e}")
@@ -193,6 +226,21 @@ class OpenSearchService:
         except Exception as e:
             logger.error(f"Unexpected error creating index: {e}")
             raise
+
+    async def create_provider_index(self, provider_type: str) -> bool:
+        """
+        Create a provider-specific index using the naming convention from the design.
+
+        Index names: text2dsl-samples-{sql,mongodb,splunk,custom-*}
+
+        Args:
+            provider_type: Provider type (sql, mongodb, splunk, or custom name)
+
+        Returns:
+            True if index was created, False if it already existed
+        """
+        index_name = f"text2dsl-samples-{provider_type.lower()}"
+        return await self.create_index_if_not_exists(index_name=index_name)
 
     async def index_document(
         self,
@@ -203,67 +251,80 @@ class OpenSearchService:
         """
         Index a document with its vector embedding and metadata.
 
-        If vector is not provided, it will be generated from nl_query in metadata.
+        Supports both legacy field names (nl_query, generated_query) and
+        new field names (natural_language_query, dsl_query) from the design.
 
         Args:
             doc_id: Document ID (usually RAGExample UUID)
             vector: Pre-computed embedding vector (optional)
-            metadata: Document metadata including:
-                - nl_query: Natural language query (required)
-                - generated_query: Generated DSL query
-                - provider_id: Provider ID
-                - status: Example status
-                - is_good_example: Whether this is a good example
-                - involved_tables: List of table names
-                - query_intent: Query intent
-                - complexity_level: Complexity level
-                - reviewed_by: Reviewer username
-                - reviewed_at: Review timestamp
-                - expert_corrected_query: Expert correction
-                - metadata: Additional metadata dict
+            metadata: Document metadata
 
         Returns:
             True if successful
-
-        Raises:
-            ValueError: If required fields are missing
-            Exception: If indexing fails
         """
-        if "nl_query" not in metadata:
-            raise ValueError("nl_query is required in metadata")
+        # Support both old and new field names
+        nl_query = (
+            metadata.get("natural_language_query")
+            or metadata.get("nl_query")
+        )
+        if not nl_query:
+            raise ValueError("natural_language_query or nl_query is required in metadata")
+
+        dsl_query = (
+            metadata.get("dsl_query")
+            or metadata.get("generated_query")
+        )
 
         # Generate embedding if not provided
         if vector is None:
             logger.debug(f"Generating embedding for document {doc_id}")
-            vector = await self._generate_embedding(metadata["nl_query"])
+            vector = await self._generate_embedding(nl_query)
 
-        # Prepare document
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+
         document = {
             "id": doc_id,
             "embedding": vector,
-            "nl_query": metadata.get("nl_query"),
-            "generated_query": metadata.get("generated_query"),
+            "embedding_model": "titan-v2",
+            # New schema fields
+            "natural_language_query": nl_query,
+            "dsl_query": dsl_query,
+            "dsl_query_analyzed": dsl_query,
+            "provider_type": metadata.get("provider_type", "sql"),
             "provider_id": metadata.get("provider_id"),
             "status": metadata.get("status", "approved"),
             "is_good_example": metadata.get("is_good_example", True),
             "involved_tables": metadata.get("involved_tables", []),
+            "involved_fields": metadata.get("involved_fields", []),
             "query_intent": metadata.get("query_intent", "unknown"),
             "complexity_level": metadata.get("complexity_level", "medium"),
+            "difficulty": metadata.get("difficulty", metadata.get("complexity_level", "medium")),
+            "source": metadata.get("source", "user_generated"),
+            "source_conversation_id": metadata.get("source_conversation_id"),
+            "source_metadata": metadata.get("source_metadata", metadata.get("metadata", {})),
             "reviewed_by": metadata.get("reviewed_by"),
             "reviewed_at": metadata.get("reviewed_at"),
             "expert_corrected_query": metadata.get("expert_corrected_query"),
+            "usage_count": metadata.get("usage_count", 0),
+            "success_rate": metadata.get("success_rate"),
+            "avg_similarity_score": metadata.get("avg_similarity_score"),
+            "created_at": metadata.get("created_at", now),
+            "updated_at": metadata.get("updated_at", now),
+            "indexed_at": now,
+            # Legacy aliases for backward compatibility
+            "nl_query": nl_query,
+            "generated_query": dsl_query,
             "metadata": metadata.get("metadata", {}),
-            "created_at": metadata.get("created_at"),
-            "updated_at": metadata.get("updated_at"),
         }
 
         try:
-            # Index document
             response = await self.client.index(
                 index=self.index_name,
                 id=doc_id,
                 body=document,
-                refresh=True,  # Make immediately searchable
+                refresh=True,
             )
 
             logger.info(
@@ -285,6 +346,8 @@ class OpenSearchService:
         query_intent: Optional[str] = None,
         min_score: float = 0.0,
         hybrid: bool = True,
+        vector_weight: float = 0.7,
+        keyword_weight: float = 0.3,
     ) -> List[Dict[str, Any]]:
         """
         Search for similar documents using k-NN vector search.
@@ -292,7 +355,7 @@ class OpenSearchService:
         Supports:
         - Pure vector search (using query_vector)
         - Pure text search (using query_text with BM25)
-        - Hybrid search (combining both with weights)
+        - Hybrid search (combining both with configurable weights)
 
         Args:
             query_vector: Query embedding vector (optional if query_text provided)
@@ -302,6 +365,8 @@ class OpenSearchService:
             query_intent: Filter by query intent
             min_score: Minimum similarity score threshold
             hybrid: If True, use hybrid search combining vector + keyword
+            vector_weight: Weight for semantic/embedding similarity (0.0-1.0)
+            keyword_weight: Weight for BM25 keyword matching (0.0-1.0)
 
         Returns:
             List of matching documents with scores and metadata
@@ -328,6 +393,8 @@ class OpenSearchService:
                     k=k,
                     provider_id=provider_id,
                     query_intent=query_intent,
+                    vector_weight=vector_weight,
+                    keyword_weight=keyword_weight,
                 )
             else:
                 # Pure vector search
@@ -504,11 +571,29 @@ class OpenSearchService:
         """
         Build hybrid search query combining vector and keyword search.
 
-        Uses weighted combination of:
-        - k-NN vector similarity
-        - BM25 keyword matching
+        Uses the script_score pattern (#6) from search-query-templates.json:
+        - Weighted combination of cosine similarity + BM25
+        - Searches across both natural_language_query and dsl_query_analyzed fields
+        - Intent-based dynamic weighting per embedding-strategy.md:
+          - aggregation: 0.8 vector / 0.2 keyword
+          - filter/exact: 0.5 vector / 0.5 keyword
+          - join/complex: 0.7 vector / 0.3 keyword
+          - Default: 0.7 vector / 0.3 keyword
         """
-        # Build filters
+        # Intent-based dynamic weighting from embedding-strategy.md
+        # Only apply intent defaults when caller uses default weights (0.7/0.3)
+        intent_weights = {
+            "aggregation": (0.8, 0.2),
+            "filter": (0.5, 0.5),
+            "exact": (0.5, 0.5),
+            "join": (0.7, 0.3),
+            "complex": (0.7, 0.3),
+        }
+
+        caller_used_defaults = (vector_weight == 0.7 and keyword_weight == 0.3)
+        if query_intent and query_intent in intent_weights and caller_used_defaults:
+            vector_weight, keyword_weight = intent_weights[query_intent]
+
         filters = [
             {"term": {"status": "approved"}},
         ]
@@ -519,7 +604,6 @@ class OpenSearchService:
         if query_intent:
             filters.append({"term": {"query_intent": query_intent}})
 
-        # Hybrid query with script_score for weighted combination
         query = {
             "size": k,
             "query": {
@@ -529,9 +613,25 @@ class OpenSearchService:
                             "should": [
                                 {
                                     "match": {
+                                        "natural_language_query": {
+                                            "query": query_text,
+                                            "boost": 0.3,
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": {
                                         "nl_query": {
                                             "query": query_text,
-                                            "boost": keyword_weight,
+                                            "boost": 0.2,
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": {
+                                        "dsl_query_analyzed": {
+                                            "query": query_text,
+                                            "boost": 0.1,
                                         }
                                     }
                                 },

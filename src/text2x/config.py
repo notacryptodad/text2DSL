@@ -124,6 +124,15 @@ class Settings(BaseSettings):
     confidence_threshold: float = Field(default=0.8, validation_alias="CONFIDENCE_THRESHOLD")
     rag_top_k: int = Field(default=5, validation_alias="RAG_TOP_K")
 
+    # RAG Configuration
+    rag_mode: str = Field(
+        default="agent",
+        validation_alias="RAG_MODE",
+        description="RAG retrieval mode: 'agent' (agent decides via tool, default), 'always' (auto-inject examples), 'never' (disabled)",
+    )
+    rag_min_similarity: float = Field(default=0.6, validation_alias="RAG_MIN_SIMILARITY")
+    rag_examples_limit: int = Field(default=5, validation_alias="RAG_EXAMPLES_LIMIT")
+
     # Query Processing
     query_timeout: int = Field(default=300, validation_alias="QUERY_TIMEOUT")
     enable_execution: bool = Field(default=False, validation_alias="ENABLE_EXECUTION")

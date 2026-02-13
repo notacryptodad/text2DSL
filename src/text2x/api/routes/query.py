@@ -177,12 +177,107 @@ async def process_query(
             except Exception as e:
                 logger.warning(f"Failed to get schema: {e}")
 
+            # Determine RAG mode
+            rag_mode = settings.rag_mode
+            rag_examples = []
+            opensearch_service = None
+            rag_service = None
+
+            logger.info(f"RAG mode: {rag_mode}")
+
+            # Initialize RAG services based on mode
+            if rag_mode != "never" and app_state.opensearch_client:
+                try:
+                    from text2x.services.opensearch_service import OpenSearchService
+
+                    # Initialize services
+                    opensearch_service = OpenSearchService(
+                        settings=settings,
+                        opensearch_client=app_state.opensearch_client,
+                    )
+                    rag_service = RAGService(
+                        opensearch_service=opensearch_service,
+                    )
+
+                    # For 'always' mode, fetch examples upfront and inject into prompt
+                    if rag_mode == "always":
+                        rag_start_time = time.time()
+
+                        # Search for similar examples (only approved good examples)
+                        raw_examples = await rag_service.search_examples(
+                            query=request.query,
+                            provider_id=request.provider_id,
+                            limit=settings.rag_examples_limit,
+                            min_similarity=settings.rag_min_similarity,
+                            include_sample_queries=True,
+                        )
+
+                        # Filter for good examples with approved status
+                        from text2x.models.rag import ExampleStatus
+
+                        filtered_examples = [
+                            ex
+                            for ex in raw_examples
+                            if ex.is_good_example and ex.status == ExampleStatus.APPROVED
+                        ]
+
+                        # Convert to dict format for agent
+                        rag_examples = [
+                            {
+                                "natural_language_query": ex.natural_language_query,
+                                "generated_query": (
+                                    ex.get_query_for_rag()
+                                    if hasattr(ex, "get_query_for_rag")
+                                    else ex.generated_query
+                                ),
+                                "similarity_score": getattr(ex, "similarity_score", 0.0),
+                            }
+                            for ex in filtered_examples
+                        ]
+
+                        rag_duration = time.time() - rag_start_time
+                        logger.info(
+                            f"RAG mode 'always': Retrieved {len(rag_examples)} examples "
+                            f"(filtered from {len(raw_examples)} results, {rag_duration:.2f}s)"
+                        )
+
+                        # Record RAG retrieval metrics
+                        from text2x.utils.observability import (
+                            record_rag_retrieval_latency,
+                            record_rag_cache_hit,
+                            record_rag_cache_miss,
+                        )
+
+                        record_rag_retrieval_latency(provider_type, rag_duration)
+                        if rag_examples:
+                            record_rag_retrieval(provider_type)
+
+                    # For 'agent' mode, services will be passed to agent context
+                    # Agent will call search_similar_queries tool when needed
+                    elif rag_mode == "agent":
+                        logger.info("RAG mode 'agent': Tool available, no upfront search")
+
+                    # Record cache stats
+                    cache_stats = RAGService.get_cache_stats()
+                    if cache_stats["cache_hits"] > 0:
+                        record_rag_cache_hit()
+                    else:
+                        record_rag_cache_miss()
+
+                except Exception as e:
+                    logger.warning(f"Failed to initialize RAG: {e}", exc_info=True)
+                    # Continue without RAG - graceful degradation
+
             # Process query through QueryAgent
             agent_result = await agent.process(
                 {
                     "user_message": request.query,
                     "provider_id": request.provider_id,
                     "schema_context": schema_context,
+                    "rag_examples": rag_examples,  # Empty in 'agent' mode, populated in 'always' mode
+                    "rag_mode": rag_mode,
+                    "opensearch_service": opensearch_service,  # For RAG tool in 'agent' mode
+                    "rag_service": rag_service,  # For RAG tool in 'agent' mode
                     "enable_execution": enable_execution,
                     "reset_conversation": not request.conversation_id,
                 }
@@ -412,12 +507,82 @@ async def generate_query_sse(request: QueryRequest, user_id: str = "anonymous"):
 
             event_queue = asyncio.Queue()
 
+            # Determine RAG mode and initialize services
+            rag_mode = settings.rag_mode
+            rag_examples = []
+            opensearch_service = None
+            rag_service = None
+
+            logger.info(f"RAG mode: {rag_mode}")
+
+            # Initialize RAG services based on mode
+            if rag_mode != "never" and app_state.opensearch_client:
+                try:
+                    from text2x.services.opensearch_service import OpenSearchService
+
+                    # Initialize services
+                    opensearch_service = OpenSearchService(
+                        settings=settings,
+                        opensearch_client=app_state.opensearch_client,
+                    )
+                    rag_service = RAGService(
+                        opensearch_service=opensearch_service,
+                    )
+
+                    # For 'always' mode, fetch examples upfront
+                    if rag_mode == "always":
+                        rag_start_time = time.time()
+
+                        raw_examples = await rag_service.search_examples(
+                            query=request.query,
+                            provider_id=request.provider_id,
+                            limit=settings.rag_examples_limit,
+                            min_similarity=settings.rag_min_similarity,
+                            include_sample_queries=True,
+                        )
+
+                        from text2x.models.rag import ExampleStatus
+
+                        filtered_examples = [
+                            ex
+                            for ex in raw_examples
+                            if ex.is_good_example and ex.status == ExampleStatus.APPROVED
+                        ]
+
+                        rag_examples = [
+                            {
+                                "natural_language_query": ex.natural_language_query,
+                                "generated_query": (
+                                    ex.get_query_for_rag()
+                                    if hasattr(ex, "get_query_for_rag")
+                                    else ex.generated_query
+                                ),
+                                "similarity_score": getattr(ex, "similarity_score", 0.0),
+                            }
+                            for ex in filtered_examples
+                        ]
+
+                        rag_duration = time.time() - rag_start_time
+                        logger.info(
+                            f"RAG mode 'always': Retrieved {len(rag_examples)} examples ({rag_duration:.2f}s)"
+                        )
+
+                    elif rag_mode == "agent":
+                        logger.info("RAG mode 'agent': Tool available, no upfront search")
+
+                except Exception as e:
+                    logger.warning(f"Failed to initialize RAG: {e}", exc_info=True)
+
             async def run_agent():
                 return await agent.process(
                     {
                         "user_message": request.query,
                         "provider_id": request.provider_id,
                         "schema_context": schema_context,
+                        "rag_examples": rag_examples,
+                        "rag_mode": rag_mode,
+                        "opensearch_service": opensearch_service,
+                        "rag_service": rag_service,
                         "enable_execution": enable_execution,
                         "reset_conversation": not request.conversation_id,
                         "event_queue": event_queue,

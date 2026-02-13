@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from strands import Agent
 from strands.tools import tool
+from strands.tools.executors import ConcurrentToolExecutor
 
 from text2x.providers.base import QueryProvider
 from text2x.repositories.annotation import SchemaAnnotationRepository
@@ -374,6 +375,7 @@ class AutoAnnotationAgent:
             model=model,
             system_prompt=AUTO_ANNOTATION_SYSTEM_PROMPT,
             tools=[sample_data, column_stats, save_annotation],
+            tool_executor=ConcurrentToolExecutor(),
             name=name,
             description="Auto-annotation agent for schema understanding and annotation",
         )
@@ -423,6 +425,7 @@ class AutoAnnotationAgent:
                 model=self.agent.model,
                 system_prompt=AUTO_ANNOTATION_SYSTEM_PROMPT,
                 tools=[sample_data, column_stats, save_annotation],
+                tool_executor=ConcurrentToolExecutor(),
                 name=self.name,
                 description="Auto-annotation agent for schema understanding and annotation",
             )

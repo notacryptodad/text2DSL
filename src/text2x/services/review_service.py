@@ -222,6 +222,13 @@ class ReviewService:
                 f"Item {item_id} approved - ready for RAG indexing "
                 f"(corrected: {corrected_query is not None})"
             )
+            # Invalidate RAG search cache so new examples are picked up
+            try:
+                from text2x.services.rag_service import RAGService
+                RAGService.invalidate_cache()
+                logger.info("RAG search cache invalidated after example approval")
+            except Exception as e:
+                logger.warning(f"Failed to invalidate RAG cache: {e}")
         else:
             logger.info(f"Item {item_id} rejected - marked as bad example")
 

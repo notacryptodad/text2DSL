@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from strands import Agent
 from strands.tools import tool
+from strands.tools.executors import ConcurrentToolExecutor
 
 from text2x.providers.base import QueryProvider
 from text2x.repositories.annotation import SchemaAnnotationRepository
@@ -494,6 +495,7 @@ class AnnotationAssistantAgent:
                 assistant_save_annotation,
                 list_annotations,
             ],
+            tool_executor=ConcurrentToolExecutor(),
             name=name,
             description="Interactive annotation assistant for schema exploration",
         )
