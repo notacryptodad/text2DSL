@@ -568,8 +568,24 @@ class OpenSearchService:
         Uses the script_score pattern (#6) from search-query-templates.json:
         - Weighted combination of cosine similarity + BM25
         - Searches across both natural_language_query and dsl_query_analyzed fields
-        - Default: 70% vector + 30% keyword
+        - Intent-based dynamic weighting per embedding-strategy.md:
+          - aggregation: 0.8 vector / 0.2 keyword
+          - filter/exact: 0.5 vector / 0.5 keyword
+          - join/complex: 0.7 vector / 0.3 keyword
+          - Default: 0.7 vector / 0.3 keyword
         """
+        # Intent-based dynamic weighting from embedding-strategy.md
+        intent_weights = {
+            "aggregation": (0.8, 0.2),
+            "filter": (0.5, 0.5),
+            "exact": (0.5, 0.5),
+            "join": (0.7, 0.3),
+            "complex": (0.7, 0.3),
+        }
+
+        if query_intent and query_intent in intent_weights:
+            vector_weight, keyword_weight = intent_weights[query_intent]
+
         filters = [
             {"term": {"status": "approved"}},
         ]
