@@ -132,8 +132,8 @@ function Chat() {
   const handleSSEMessage = (event) => {
     const { event: type, data } = event
     switch (type) {
-      case 'started': setConversationId(data.conversation_id); addMessage({ type: 'progress', content: 'Query processing started...', stage: 'started', progress: 0, timestamp: new Date() }); break
-      case 'progress': if (data.stage !== 'started') addMessage({ type: 'progress', content: data.message, stage: data.stage, progress: data.progress, timestamp: new Date() }); break
+      case 'started': setConversationId(data.conversation_id); break
+      case 'progress': break // Progress is shown via ProgressIndicator, no need to add messages
       case 'completed': {
         const content = data.response || data.generated_query || ''
         const isPlainText = !data.generated_query || data.generated_query.trim() === ''
