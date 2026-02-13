@@ -125,7 +125,11 @@ class Settings(BaseSettings):
     rag_top_k: int = Field(default=5, validation_alias="RAG_TOP_K")
 
     # RAG Configuration
-    enable_rag: bool = Field(default=True, validation_alias="ENABLE_RAG")
+    rag_mode: str = Field(
+        default="agent",
+        validation_alias="RAG_MODE",
+        description="RAG retrieval mode: 'agent' (agent decides via tool, default), 'always' (auto-inject examples), 'never' (disabled)",
+    )
     rag_min_similarity: float = Field(default=0.6, validation_alias="RAG_MIN_SIMILARITY")
     rag_examples_limit: int = Field(default=5, validation_alias="RAG_EXAMPLES_LIMIT")
 
