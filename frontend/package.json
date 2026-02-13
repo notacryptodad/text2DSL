@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
+    "@tanstack/react-table": "^8.21.3",
     "diff": "^8.0.3",
     "lucide-react": "^0.294.0",
     "prismjs": "^1.30.0",
@@ -23,6 +24,7 @@
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.13.0",
+    "recharts": "^3.7.0",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
