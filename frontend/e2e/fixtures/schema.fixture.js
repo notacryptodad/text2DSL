@@ -131,8 +131,22 @@ export async function setupSchemaMocks(page) {
     });
   });
 
-  // Mock connections endpoint
-  await page.route('**/api/v1/workspaces/*/connections', async (route) => {
+  // Mock providers endpoint
+  await page.route('**/api/v1/workspaces/*/providers', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        id: 'test-provider-1',
+        name: 'Test Provider',
+        type: 'postgresql',
+        workspace_id: 'test-workspace-1',
+      }]),
+    });
+  });
+
+  // Mock connections endpoint (for providers)
+  await page.route('**/api/v1/workspaces/*/providers/*/connections', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -140,19 +154,19 @@ export async function setupSchemaMocks(page) {
     });
   });
 
-  // Mock schema endpoint
-  await page.route('**/api/v1/workspaces/*/connections/*/schema', async (route) => {
+  // Mock schema endpoint - CORRECT PATH with /annotations/
+  await page.route('**/api/v1/annotations/workspaces/*/providers/*/connections/*/schema', async (route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(MOCK_SCHEMA),
+        body: JSON.stringify({ tables: MOCK_SCHEMA }),
       });
     }
   });
 
-  // Mock annotations endpoint
-  await page.route('**/api/v1/workspaces/*/connections/*/schema/annotations', async (route) => {
+  // Mock annotations endpoint - CORRECT PATH
+  await page.route('**/api/v1/annotations/workspaces/*/providers/*/connections/*/schema/annotations', async (route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({
         status: 200,
@@ -168,8 +182,8 @@ export async function setupSchemaMocks(page) {
     }
   });
 
-  // Mock auto-annotate endpoint
-  await page.route('**/api/v1/workspaces/*/connections/*/schema/auto-annotate', async (route) => {
+  // Mock auto-annotate endpoint - CORRECT PATH
+  await page.route('**/api/v1/annotations/workspaces/*/providers/*/connections/*/schema/auto-annotate/stream', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',

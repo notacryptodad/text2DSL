@@ -26,8 +26,8 @@ export class ChatPage {
    * Navigate to chat page
    */
   async goto() {
-    await this.page.goto('/app');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.goto('/app', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await this.page.waitForTimeout(500);
   }
 
   /**

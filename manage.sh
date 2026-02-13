@@ -192,7 +192,7 @@ start_frontend() {
     fi
 
     echo "Checking frontend dependencies..."
-    if [ ! -d "frontend/node_modules" ] || [ ! -f "frontend/node_modules/.package-lock.json" ]; then
+    if [ ! -d "frontend/node_modules" ]; then
         echo "Installing frontend dependencies..."
         cd frontend
         npm install
@@ -203,7 +203,15 @@ start_frontend() {
         fi
         echo "✓ Dependencies installed"
     else
-        echo "✓ Dependencies already installed"
+        # Verify critical dependencies exist
+        if [ ! -d "frontend/node_modules/recharts" ]; then
+            echo "Missing dependencies detected, running npm install..."
+            cd frontend
+            npm install
+            cd ..
+        else
+            echo "✓ Dependencies already installed"
+        fi
     fi
 
     echo "Starting frontend..."
@@ -239,6 +247,30 @@ stop_backend() {
     else
         echo "Backend not running"
     fi
+}
+
+reinstall_infra() {
+    echo "Reinstalling backend infrastructure..."
+    echo "This will STOP and REMOVE all containers and volumes."
+    read -p "Are you sure? [y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        return 1
+    fi
+
+    stop_backend
+
+    echo "Stopping and removing containers and volumes..."
+    docker compose -f docker/docker-compose.yml down -v
+
+    echo "Starting fresh infrastructure..."
+    check_docker "docker/docker-compose.yml" "Backend infrastructure"
+
+    echo "Waiting for services to be ready..."
+    sleep 5
+
+    echo "✅ Infrastructure reinstalled successfully"
 }
 
 stop_frontend() {
@@ -332,6 +364,8 @@ case $1 in
             infra) start_infra ;;
             test-infra) start_test_infra ;;
             *)
+                start_infra
+                start_test_infra
                 start_backend
                 start_frontend
                 ;;
@@ -378,6 +412,9 @@ case $1 in
                 ;;
         esac
         ;;
+    reinstall-infra)
+        reinstall_infra
+        ;;
     status)
         status
         ;;
@@ -388,7 +425,7 @@ case $1 in
         logs $2
         ;;
     *)
-        echo "Usage: $0 {start|stop|force-stop|restart|status|logs|seed-cache} [backend|frontend|infra|test-infra] [options]"
+        echo "Usage: $0 {start|stop|force-stop|restart|status|logs|seed-cache|reinstall-infra} [backend|frontend|infra|test-infra] [options]"
         echo ""
         echo "Commands:"
         echo "  start [backend|frontend|infra|test-infra]        - Start servers/infrastructure"
@@ -397,6 +434,7 @@ case $1 in
         echo "  stop [backend|frontend]                           - Stop servers gracefully"
         echo "  force-stop [backend|frontend]                     - Force kill by port (8000/5173)"
         echo "  restart [backend|frontend]                        - Restart servers"
+        echo "  reinstall-infra                                  - Reinstall infrastructure (WARNING: deletes all data)"
         echo "  status                                            - Show server status"
         echo "  logs [backend|frontend]                           - Tail server logs"
         echo "  seed-cache                                         - Pre-populate Redis schema cache"

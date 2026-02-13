@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Save, X, AlertCircle, Link2, Plus, ChevronUp, ChevronDown } from 'lucide-react'
 
-function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel, focusColumn }) {
+function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onCancel, focusColumn }) {
   const [description, setDescription] = useState('')
   const [businessTerms, setBusinessTerms] = useState([])
   const [newBusinessTerm, setNewBusinessTerm] = useState('')
@@ -83,22 +83,26 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel, foc
     if (newBusinessTerm.trim()) {
       setBusinessTerms([...businessTerms, newBusinessTerm.trim()])
       setNewBusinessTerm('')
+      onChange?.()
     }
   }
 
   const handleRemoveBusinessTerm = (index) => {
     setBusinessTerms(businessTerms.filter((_, i) => i !== index))
+    onChange?.()
   }
 
   const handleAddRelationship = () => {
     if (newRelationship.target_table.trim()) {
       setRelationships([...relationships, { ...newRelationship, is_discovered: false }])
       setNewRelationship({ target_table: '', type: 'many_to_one', description: '', source_column: '' })
+      onChange?.()
     }
   }
 
   const handleRemoveRelationship = (index) => {
     setRelationships(relationships.filter((_, i) => i !== index))
+    onChange?.()
   }
 
   const handleColumnAnnotationChange = (columnName, field, value) => {
@@ -109,6 +113,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel, foc
         [field]: value,
       },
     })
+    onChange?.()
   }
 
   const handleSave = async () => {
@@ -210,7 +215,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onCancel, foc
           </label>
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => { setDescription(e.target.value); onChange?.() }}
             rows={3}
             placeholder="Describe what this table represents and its business purpose..."
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"

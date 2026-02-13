@@ -182,11 +182,13 @@ class ConnectionService:
                         status=ConnectionStatus.CONNECTED,
                     )
                 else:
+                    error_msg = test_result.error if test_result else "Unknown error"
+                    logger.error(f"Connection test query failed: {error_msg}")
                     return ConnectionTestResult(
                         success=False,
                         message="Query execution failed",
                         status=ConnectionStatus.ERROR,
-                        error_details=test_result.error if test_result else "Unknown error",
+                        error_details=error_msg,
                     )
 
             finally:

@@ -661,6 +661,21 @@ class AutoAnnotateRequest(BaseModel):
     )
 
 
+class BatchAutoAnnotateRequest(BaseModel):
+    """Request model for batch auto-annotation of all tables in a connection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    skip_annotated: bool = Field(
+        default=True,
+        description="Skip tables that already have annotations (True) or replace them (False)",
+    )
+    table_names: Optional[List[str]] = Field(
+        default=None,
+        description="Specific tables to annotate. If None, annotate all tables.",
+    )
+
+
 class AutoAnnotateResponse(BaseModel):
     """Response model for auto-annotation endpoint."""
 
@@ -1498,6 +1513,121 @@ async def auto_annotate_table_stream(
 
     return StreamingResponse(
         generate_sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/providers/{provider_id}/connections/{connection_id}/schema/batch-auto-annotate/stream",
+    summary="Batch auto-annotate all tables (streaming)",
+    description="Auto-annotate all (or selected) tables in a connection with SSE streaming. Supports skipping already-annotated tables.",
+)
+async def batch_auto_annotate_stream(
+    workspace_id: UUID,
+    provider_id: UUID,
+    connection_id: UUID,
+    request: BatchAutoAnnotateRequest,
+):
+    """
+    Batch auto-annotate tables in a connection via SSE streaming.
+
+    Streams per-table progress events so the frontend can show real-time updates.
+    When skip_annotated=True (default), tables with existing annotations are skipped.
+    When skip_annotated=False, existing annotations are replaced.
+    """
+
+    async def generate_batch_sse():
+        try:
+            # Get schema to discover all tables
+            schema_service = SchemaService()
+            schema = await schema_service.get_schema(connection_id)
+
+            if not schema or not schema.tables:
+                yield f"data: {json.dumps({'event': 'error', 'error': 'No schema found for this connection'})}\n\n"
+                return
+
+            all_table_names = [t.name for t in schema.tables]
+
+            # Filter to requested tables if specified
+            if request.table_names:
+                table_names = [t for t in request.table_names if t in all_table_names]
+            else:
+                table_names = all_table_names
+
+            # Get existing annotations to decide which to skip
+            annotated_tables = set()
+            if request.skip_annotated:
+                try:
+                    repo = SchemaAnnotationRepository()
+                    existing = await repo.list_by_provider(str(connection_id))
+                    annotated_tables = {
+                        a.table_name for a in existing if a.table_name and not a.column_name
+                    }
+                except Exception as e:
+                    logger.warning(f"Failed to fetch existing annotations: {e}")
+
+            tables_to_annotate = []
+            skipped_tables = []
+            for t in table_names:
+                if request.skip_annotated and t in annotated_tables:
+                    skipped_tables.append(t)
+                else:
+                    tables_to_annotate.append(t)
+
+            total = len(tables_to_annotate)
+            skipped = len(skipped_tables)
+
+            yield f"data: {json.dumps({'event': 'batch_started', 'total_tables': total + skipped, 'tables_to_annotate': total, 'skipped_tables': skipped, 'skipped_table_names': skipped_tables})}\n\n"
+
+            completed = 0
+            failed = 0
+
+            for i, table_name in enumerate(tables_to_annotate):
+                yield f"data: {json.dumps({'event': 'table_started', 'table_name': table_name, 'index': i + 1, 'total': total})}\n\n"
+
+                try:
+                    # Collect all events from the single-table auto_annotate_stream
+                    table_suggestions = None
+                    async for event_json in auto_annotate_stream(
+                        workspace_id=workspace_id,
+                        connection_id=connection_id,
+                        table_name=table_name,
+                    ):
+                        event = json.loads(event_json)
+                        # Forward progress events with table context
+                        event["_batch_table"] = table_name
+                        event["_batch_index"] = i + 1
+                        event["_batch_total"] = total
+
+                        if event.get("event") == "completed":
+                            table_suggestions = event.get("suggestions")
+                            completed += 1
+
+                        if event.get("event") == "error":
+                            failed += 1
+
+                        yield f"data: {json.dumps(event)}\n\n"
+
+                    yield f"data: {json.dumps({'event': 'table_done', 'table_name': table_name, 'index': i + 1, 'total': total, 'has_suggestions': table_suggestions is not None})}\n\n"
+
+                except Exception as e:
+                    failed += 1
+                    logger.error(f"Batch auto-annotate failed for {table_name}: {e}")
+                    yield f"data: {json.dumps({'event': 'table_error', 'table_name': table_name, 'error': str(e), 'index': i + 1, 'total': total})}\n\n"
+
+            yield f"data: {json.dumps({'event': 'batch_completed', 'completed': completed, 'failed': failed, 'skipped': skipped, 'total': total + skipped})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Batch SSE generation error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'event': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_batch_sse(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

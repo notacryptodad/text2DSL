@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   Database,
   Sparkles,
@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Table,
   GripVertical,
+  Layers,
 } from 'lucide-react'
 import SchemaTree from '../components/SchemaTree'
 import AnnotationEditor from '../components/AnnotationEditor'
@@ -76,6 +77,7 @@ function ResizablePanel({ children, minWidth = 200, maxWidth = 500, defaultWidth
 function SchemaAnnotation() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { currentWorkspace, workspaces, selectWorkspace, loading: wsLoading } = useWorkspace()
   const [connections, setConnections] = useState([])
   const [connLoading, setConnLoading] = useState(false)
@@ -97,11 +99,16 @@ function SchemaAnnotation() {
   const [chatLoading, setChatLoading] = useState(false)
   const [conversationId, setConversationId] = useState(null)
   const [autoAnnotationSuggestions, setAutoAnnotationSuggestions] = useState(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [batchModalOpen, setBatchModalOpen] = useState(false)
+  const [batchProgress, setBatchProgress] = useState(null) // { current, total, tableName, completed, failed, skipped }
 
   const apiUrl = ''
 
   const wsParam = searchParams.get('workspace')
   const connParam = searchParams.get('connection')
+
+  const isAdminRoute = location.pathname.includes('/admin/')
 
   useEffect(() => {
     // Fetch workspaces on mount
@@ -133,6 +140,18 @@ function SchemaAnnotation() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault()
+        e.returnValue = ''
+        return ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
 
   const fetchConnections = async (workspaceId) => {
     if (!workspaceId) return
@@ -275,7 +294,8 @@ function SchemaAnnotation() {
       selectWorkspace(ws)
       const params = new URLSearchParams(searchParams)
       params.set('workspace', wsId)
-      navigate(`/app/admin/schema-annotation?${params.toString()}`, { replace: true })
+      const route = isAdminRoute ? '/app/admin/schema-annotation' : '/app/schema-annotation'
+      navigate(`${route}?${params.toString()}`, { replace: true })
     }
   }
 
@@ -286,7 +306,8 @@ function SchemaAnnotation() {
       setSelectedProviderId(conn.provider_id)
       const params = new URLSearchParams(searchParams)
       params.set('connection', connId)
-      navigate(`/app/admin/schema-annotation?${params.toString()}`, { replace: true })
+      const route = isAdminRoute ? '/app/admin/schema-annotation' : '/app/schema-annotation'
+      navigate(`${route}?${params.toString()}`, { replace: true })
     }
   }
 
@@ -382,6 +403,94 @@ function SchemaAnnotation() {
     }
   }
 
+  const handleBatchAutoAnnotate = async (skipAnnotated) => {
+    setBatchModalOpen(false)
+    chatSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setChatLoading(true)
+    setBatchProgress({ current: 0, total: 0, tableName: '', completed: 0, failed: 0, skipped: 0 })
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch(
+        `${apiUrl}/api/v1/annotations/workspaces/${wsParam || currentWorkspace?.id}/providers/${selectedProviderId}/connections/${selectedConnection}/schema/batch-auto-annotate/stream`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ skip_annotated: skipAnnotated }),
+        }
+      )
+
+      if (!response.ok) throw new Error('Failed to start batch auto-annotate')
+
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6))
+
+              if (event.event === 'batch_started') {
+                const msg = `Batch auto-annotation started: ${event.tables_to_annotate} tables to annotate` +
+                  (event.skipped_tables > 0 ? `, ${event.skipped_tables} skipped (already annotated)` : '')
+                setChatMessages(prev => [...prev, { type: 'assistant', content: msg, timestamp: new Date() }])
+                setBatchProgress(prev => ({ ...prev, total: event.tables_to_annotate, skipped: event.skipped_tables }))
+              }
+
+              if (event.event === 'table_started') {
+                setBatchProgress(prev => ({ ...prev, current: event.index, tableName: event.table_name }))
+              }
+
+              if (event.event === 'table_done' && event.has_suggestions) {
+                setBatchProgress(prev => ({ ...prev, completed: prev.completed + 1 }))
+              }
+
+              if (event.event === 'table_error') {
+                setBatchProgress(prev => ({ ...prev, failed: prev.failed + 1 }))
+                setChatMessages(prev => [...prev, {
+                  type: 'error',
+                  content: `Failed to annotate "${event.table_name}": ${event.error}`,
+                  timestamp: new Date()
+                }])
+              }
+
+              if (event.event === 'batch_completed') {
+                const msg = `Batch complete: ${event.completed} annotated, ${event.failed} failed, ${event.skipped} skipped.`
+                setChatMessages(prev => [...prev, { type: 'assistant', content: msg, timestamp: new Date() }])
+                await fetchAnnotations()
+                setBatchProgress(null)
+              }
+
+              if (event.event === 'error') {
+                throw new Error(event.error)
+              }
+            } catch (e) {
+              if (e.message && !e.message.includes('JSON')) throw e
+              console.error('Error parsing batch SSE event:', e)
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error in batch auto-annotate:', err)
+      setChatMessages(prev => [...prev, { type: 'error', content: `Batch auto-annotate failed: ${err.message}`, timestamp: new Date() }])
+      setBatchProgress(null)
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
   const handleSendMessage = async () => {
     if (!chatInput.trim() || !selectedConnection) return
     const userMessage = { type: 'user', content: chatInput.trim(), timestamp: new Date() }
@@ -433,11 +542,16 @@ function SchemaAnnotation() {
       if (!response.ok) throw new Error('Failed to save annotation')
       await fetchAnnotations()
       setAutoAnnotationSuggestions(null)
+      setHasUnsavedChanges(false)
       setChatMessages([...chatMessages, { type: 'assistant', content: `Annotation for table "${annotationData.table_name}" saved successfully!`, timestamp: new Date() }])
     } catch (err) {
       console.error('Error saving annotation:', err)
       alert('Failed to save annotation. Please try again.')
     }
+  }
+
+  const handleAnnotationChange = () => {
+    setHasUnsavedChanges(true)
   }
 
   const formatTimestamp = (timestamp) => new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -506,6 +620,15 @@ function SchemaAnnotation() {
               <Sparkles className="w-4 h-4" />
               <span>Auto-Annotate</span>
             </button>
+
+            <button
+              onClick={() => setBatchModalOpen(true)}
+              disabled={!selectedConnection || chatLoading}
+              className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-md hover:from-amber-600 hover:to-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Layers className="w-4 h-4" />
+              <span>Batch Auto-Annotate</span>
+            </button>
           </div>
         </div>
 
@@ -548,7 +671,8 @@ function SchemaAnnotation() {
                 schema={schema}
                 annotation={autoAnnotationSuggestions || annotations[selectedTable]}
                 onSave={handleSaveAnnotation}
-                onCancel={() => { setShowEditor(false); setSelectedTable(null); setAutoAnnotationSuggestions(null); setFocusColumn(null) }}
+                onChange={handleAnnotationChange}
+                onCancel={() => { setShowEditor(false); setSelectedTable(null); setAutoAnnotationSuggestions(null); setFocusColumn(null); setHasUnsavedChanges(false) }}
                 focusColumn={focusColumn}
               />
             ) : (
@@ -684,6 +808,70 @@ function SchemaAnnotation() {
           </div>
         </div>
       </div>
+
+      {/* Batch progress bar */}
+      {batchProgress && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 shadow-lg z-50">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {batchProgress.tableName
+                  ? `Annotating: ${batchProgress.tableName} (${batchProgress.current}/${batchProgress.total})`
+                  : 'Starting batch annotation...'}
+              </span>
+              <span className="text-xs text-gray-500">
+                {batchProgress.completed} done · {batchProgress.failed} failed · {batchProgress.skipped} skipped
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-primary-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: batchProgress.total > 0 ? `${(batchProgress.current / batchProgress.total) * 100}%` : '0%' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch auto-annotate confirmation modal */}
+      {batchModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Batch Auto-Annotate
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+              This will auto-annotate all tables in this connection using AI.
+              This may take a while for large schemas.
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              How should already-annotated tables be handled?
+            </p>
+            <div className="flex flex-col space-y-3">
+              <button
+                onClick={() => handleBatchAutoAnnotate(true)}
+                className="w-full px-4 py-3 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors text-sm font-medium text-left"
+              >
+                <span className="block font-semibold">Skip annotated tables</span>
+                <span className="block text-primary-100 text-xs mt-0.5">Only annotate tables without existing annotations</span>
+              </button>
+              <button
+                onClick={() => handleBatchAutoAnnotate(false)}
+                className="w-full px-4 py-3 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors text-sm font-medium text-left"
+              >
+                <span className="block font-semibold">Re-annotate all tables</span>
+                <span className="block text-amber-100 text-xs mt-0.5">Replace existing annotations with fresh AI-generated ones</span>
+              </button>
+              <button
+                onClick={() => setBatchModalOpen(false)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,8 +1,10 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { useAuth } from '../hooks/useAuth'
 
 const WorkspaceContext = createContext(null)
 
 export function WorkspaceProvider({ children }) {
+  const { isAuthenticated } = useAuth()
   const [currentWorkspace, setCurrentWorkspace] = useState(() => {
     const saved = localStorage.getItem('currentWorkspace')
     return saved ? JSON.parse(saved) : null
@@ -17,27 +19,16 @@ export function WorkspaceProvider({ children }) {
   // Use relative URLs to leverage Vite's proxy configuration
   const apiUrl = ''
 
+  // Fetch workspaces whenever auth state changes to authenticated
   useEffect(() => {
-    // Fetch workspaces on mount
-    fetchWorkspaces()
-    
-    // Poll for token changes (handles login in same tab)
-    const checkToken = setInterval(() => {
-      const token = localStorage.getItem('access_token')
-      const hasWorkspaces = localStorage.getItem('currentWorkspace')
-      if (token && !hasWorkspaces) {
-        fetchWorkspaces()
-      }
-    }, 1000)
-    
-    // Stop polling after 30 seconds
-    const cleanup = setTimeout(() => clearInterval(checkToken), 30000)
-    
-    return () => {
-      clearInterval(checkToken)
-      clearTimeout(cleanup)
+    if (isAuthenticated) {
+      fetchWorkspaces()
+    } else {
+      // Clear workspace state on logout
+      setWorkspaces([])
+      setLoading(false)
     }
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
     // Save current workspace to localStorage

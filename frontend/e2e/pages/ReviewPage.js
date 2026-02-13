@@ -22,8 +22,8 @@ export class ReviewPage {
    * Navigate to review queue page
    */
   async goto() {
-    await this.page.goto('/app/review');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.goto('/app/review', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await this.page.waitForTimeout(500);
   }
 
   /**
@@ -32,7 +32,7 @@ export class ReviewPage {
    * @returns {Promise<Array>} Array of queue item elements
    */
   async getQueueItems() {
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForTimeout(500);
     return await this.page.locator(this.queueItem).all();
   }
 
@@ -164,7 +164,7 @@ export class ReviewPage {
     // The status filter is the second select on the page
     const statusSelect = this.page.locator('select').nth(1);
     await statusSelect.selectOption(status);
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForTimeout(500);
     await this.page.waitForTimeout(500);
   }
 
@@ -197,7 +197,7 @@ export class ReviewPage {
    * Wait for queue to load
    */
   async waitForQueueLoad() {
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForTimeout(500);
     // Wait a bit for any animations
     await this.page.waitForTimeout(500);
   }
