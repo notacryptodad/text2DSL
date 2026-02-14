@@ -41,8 +41,8 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
   }
 
   const handleKeyDown = (e) => {
-    // Regular Enter (without Shift) to send
-    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+    // Regular Enter (without Shift) or Ctrl/Cmd+Enter to send
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit(e)
       return
@@ -80,8 +80,9 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
             e.target.style.height = 'auto'
             e.target.style.height = e.target.scrollHeight + 'px'
           }}
+          aria-describedby="query-input-help"
         />
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p id="query-input-help" className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Press Enter to send • {modKey}+Enter also works • ↑ for last query
         </p>
       </div>
