@@ -362,6 +362,26 @@ test.describe('Login Page', () => {
     // Should redirect to app
     await expect(page).toHaveURL(/\/app/, { timeout: 15000 });
   });
+
+  test('should toggle password visibility', async ({ page }) => {
+    await page.goto('http://localhost:5173/login');
+    await page.waitForLoadState('networkidle');
+
+    const passwordInput = page.locator('input[name="password"]');
+    // Look for button with aria-label containing "password" (Show password / Hide password)
+    const toggleButton = page.locator('button[aria-label*="password"]');
+
+    // Initial state should be password
+    await expect(passwordInput).toHaveAttribute('type', 'password');
+
+    // Click toggle to show password
+    await toggleButton.click();
+    await expect(passwordInput).toHaveAttribute('type', 'text');
+
+    // Click toggle to hide password
+    await toggleButton.click();
+    await expect(passwordInput).toHaveAttribute('type', 'password');
+  });
 });
 
 // Component file existence tests (don't need browser)
