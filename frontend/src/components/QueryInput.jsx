@@ -48,6 +48,13 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
       return
     }
 
+    // Ctrl+Enter or Cmd+Enter to send
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleSubmit(e)
+      return
+    }
+
     // Up Arrow to recall last query when input is empty
     if (e.key === 'ArrowUp' && query.trim() === '' && lastQuery) {
       e.preventDefault()
@@ -88,7 +95,7 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
       <button
         type="submit"
         disabled={disabled || isLoading || !query.trim()}
-        className="group relative flex-shrink-0 p-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white rounded-lg transition-colors disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+        className="group relative flex-shrink-0 p-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white rounded-lg transition-colors disabled:cursor-not-allowed shadow-sm hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
         aria-label="Send query"
         title={`Send query (${modKey}+Enter)`}
       >
