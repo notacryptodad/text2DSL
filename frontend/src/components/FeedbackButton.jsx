@@ -83,6 +83,13 @@ function FeedbackButton({ conversationId, turnId, onFeedbackSubmit }) {
     setComments('')
   }
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleSubmitNegative(e)
+    }
+  }
+
   return (
     <>
       <div className="flex items-center space-x-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
@@ -145,6 +152,7 @@ function FeedbackButton({ conversationId, turnId, onFeedbackSubmit }) {
                 <textarea
                   value={comments}
                   onChange={(e) => setComments(e.target.value)}
+                  onKeyDown={handleKeyDown}
                   placeholder="Please describe the issue with this query..."
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
                   rows="4"
@@ -159,6 +167,7 @@ function FeedbackButton({ conversationId, turnId, onFeedbackSubmit }) {
                 <textarea
                   value={correctedQuery}
                   onChange={(e) => setCorrectedQuery(e.target.value)}
+                  onKeyDown={handleKeyDown}
                   placeholder="If you know the correct query, paste it here..."
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
                   rows="6"
