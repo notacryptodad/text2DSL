@@ -48,6 +48,13 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
       return
     }
 
+    // Cmd+Enter or Ctrl+Enter to send
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleSubmit(e)
+      return
+    }
+
     // Up Arrow to recall last query when input is empty
     if (e.key === 'ArrowUp' && query.trim() === '' && lastQuery) {
       e.preventDefault()
