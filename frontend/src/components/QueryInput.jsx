@@ -41,9 +41,10 @@ const QueryInput = forwardRef(function QueryInput({ onSend, disabled, placeholde
   }
 
   const handleKeyDown = (e) => {
-    // Regular Enter (without Shift) to send
-    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+    // Regular Enter (without Shift) OR Ctrl/Cmd+Enter to send
+    if (e.key === 'Enter' && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
       e.preventDefault()
+      e.stopPropagation()
       handleSubmit(e)
       return
     }
