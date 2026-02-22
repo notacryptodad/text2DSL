@@ -202,8 +202,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
         <button
           onClick={onCancel}
           className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          aria-label="Close editor"
         >
-          <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <X className="w-5 h-5 text-gray-500 dark:text-gray-400" aria-hidden="true" />
         </button>
       </div>
 
@@ -253,8 +254,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 <button
                   onClick={() => handleRemoveBusinessTerm(index)}
                   className="ml-2 hover:text-primary-900 dark:hover:text-primary-200"
+                  aria-label={`Remove term ${term}`}
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3 h-3" aria-hidden="true" />
                 </button>
               </span>
             ))}
@@ -319,8 +321,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                   <button
                     onClick={() => handleRemoveRelationship(index)}
                     className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                    aria-label={`Remove relationship to ${rel.target_table}`}
                   >
-                    <X className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <X className="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
                   </button>
                 </div>
               ))}
@@ -432,6 +435,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                             value={columnAnnotations[columnName]?.description || ''}
                             onChange={(e) => handleColumnAnnotationChange(columnName, 'description', e.target.value)}
                             placeholder="Describe this column..."
+                            aria-label={`Description for ${columnName}`}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
                           />
                         </td>
@@ -441,6 +445,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                             value={columnAnnotations[columnName]?.sample_values || ''}
                             onChange={(e) => handleColumnAnnotationChange(columnName, 'sample_values', e.target.value)}
                             placeholder="e.g., active, pending, closed"
+                            aria-label={`Sample values for ${columnName}`}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
                           />
                         </td>
