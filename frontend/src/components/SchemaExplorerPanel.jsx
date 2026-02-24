@@ -237,6 +237,7 @@ function SchemaExplorerPanel({ isOpen, onClose, onInsertText, providerId }) {
             <button
               onClick={() => setSearchQuery('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+              aria-label="Clear search"
             >
               <X className="w-3 h-3 text-gray-400" />
             </button>
@@ -278,6 +279,7 @@ function SchemaExplorerPanel({ isOpen, onClose, onInsertText, providerId }) {
                         toggleTable(item.name)
                       }}
                       className="flex-shrink-0 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                      aria-label={isExpanded ? `Collapse ${item.name}` : `Expand ${item.name}`}
                     >
                       {isExpanded ? (
                         <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
