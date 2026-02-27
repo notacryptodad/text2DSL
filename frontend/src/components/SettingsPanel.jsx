@@ -8,6 +8,19 @@ function SettingsPanel({ settings, onChange }) {
     onChange({ ...settings, [key]: value })
   }
 
+  const getIterationsDescription = (value) => {
+    if (value <= 2) return { text: 'Quick', color: 'text-green-600 dark:text-green-400' }
+    if (value <= 5) return { text: 'Balanced', color: 'text-blue-600 dark:text-blue-400' }
+    return { text: 'Thorough', color: 'text-amber-600 dark:text-amber-400' }
+  }
+
+  const getConfidenceDescription = (value) => {
+    if (value < 0.5) return { text: 'Low', color: 'text-red-600 dark:text-red-400' }
+    if (value < 0.8) return { text: 'Medium', color: 'text-yellow-600 dark:text-yellow-400' }
+    if (value < 0.95) return { text: 'High', color: 'text-green-600 dark:text-green-400' }
+    return { text: 'Strict', color: 'text-blue-600 dark:text-blue-400' }
+  }
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
       <button
@@ -75,7 +88,12 @@ function SettingsPanel({ settings, onChange }) {
           <div>
             <label className="flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <span>Max Iterations</span>
-              <span className="text-primary-500 font-mono">{settings.max_iterations}</span>
+              <div className="flex items-center space-x-2">
+                <span className={`text-xs ${getIterationsDescription(settings.max_iterations).color}`}>
+                  {getIterationsDescription(settings.max_iterations).text}
+                </span>
+                <span className="text-primary-500 font-mono">{settings.max_iterations}</span>
+              </div>
             </label>
             <input
               type="range"
@@ -94,9 +112,14 @@ function SettingsPanel({ settings, onChange }) {
           <div>
             <label className="flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <span>Confidence Threshold</span>
-              <span className="text-primary-500 font-mono">
-                {(settings.confidence_threshold * 100).toFixed(0)}%
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className={`text-xs ${getConfidenceDescription(settings.confidence_threshold).color}`}>
+                  {getConfidenceDescription(settings.confidence_threshold).text}
+                </span>
+                <span className="text-primary-500 font-mono">
+                  {(settings.confidence_threshold * 100).toFixed(0)}%
+                </span>
+              </div>
             </label>
             <input
               type="range"
