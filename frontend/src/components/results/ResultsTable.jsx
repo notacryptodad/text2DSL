@@ -122,7 +122,7 @@ function ResultsTable({ data, columns }) {
 
       {/* Pagination Controls */}
       <div className="flex items-center justify-between text-sm">
-        <div className="text-gray-600 dark:text-gray-400">
+        <div className="text-gray-600 dark:text-gray-400" aria-live="polite">
           Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
           {Math.min(
             (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
@@ -139,6 +139,7 @@ function ResultsTable({ data, columns }) {
               table.setPageSize(Number(e.target.value))
             }}
             className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm"
+            aria-label="Rows per page"
           >
             {[10, 20, 50, 100].map((pageSize) => (
               <option key={pageSize} value={pageSize}>
@@ -152,9 +153,11 @@ function ResultsTable({ data, columns }) {
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="p-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="p-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              aria-label="Previous page"
+              title="Previous page"
             >
-              <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" aria-hidden="true" />
             </button>
             <span className="px-3 py-1 text-gray-700 dark:text-gray-300">
               Page {table.getState().pagination.pageIndex + 1} of{' '}
@@ -163,9 +166,11 @@ function ResultsTable({ data, columns }) {
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="p-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="p-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              aria-label="Next page"
+              title="Next page"
             >
-              <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" aria-hidden="true" />
             </button>
           </div>
         </div>
