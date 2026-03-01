@@ -37,8 +37,9 @@ function ConversationHistory({ conversations, currentId, onSelect, onNew, onDele
             onClick={onNew}
             className="p-1.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors"
             title="New conversation"
+            aria-label="New conversation"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -80,8 +81,9 @@ function ConversationHistory({ conversations, currentId, onSelect, onNew, onDele
                       }}
                       className="ml-2 p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                       title="Delete conversation"
+                      aria-label="Delete conversation"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
                     </button>
                   )}
                 </div>
