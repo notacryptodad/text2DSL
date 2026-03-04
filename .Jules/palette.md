@@ -1,0 +1,3 @@
+## 2024-05-18 - Client-Side Pagination Accessibility
+**Learning:** For client-side pagination components (like `ResultsTable`), visual icon-only navigation buttons must have `aria-label` text (e.g., "Next page") and hide the decorative icons (`aria-hidden="true"`). Crucially, the text indicating the current page state must have `aria-live="polite"` so screen readers proactively announce the page change when navigating, preventing users from needing to manually refocus to understand the list has updated.
+**Action:** When implementing new data tables or lists with client-side pagination, always ensure `aria-live="polite"` is applied to the page indicator or counter text element, and ensure icon buttons have descriptive `aria-label` attributes and focus ring utilities.
