@@ -333,6 +333,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
               <select
                 value={newRelationship.source_column}
                 onChange={(e) => setNewRelationship({ ...newRelationship, source_column: e.target.value })}
+                aria-label="Source column for new relationship"
                 className="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="">Source column</option>
@@ -344,6 +345,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
               <select
                 value={newRelationship.target_table}
                 onChange={(e) => setNewRelationship({ ...newRelationship, target_table: e.target.value })}
+                aria-label="Target table for new relationship"
                 className="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="">Target table</option>
@@ -352,6 +354,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
               <select
                 value={newRelationship.type}
                 onChange={(e) => setNewRelationship({ ...newRelationship, type: e.target.value })}
+                aria-label="Relationship type"
                 className="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="one_to_one">1:1</option>
@@ -432,6 +435,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                             value={columnAnnotations[columnName]?.description || ''}
                             onChange={(e) => handleColumnAnnotationChange(columnName, 'description', e.target.value)}
                             placeholder="Describe this column..."
+                            aria-label={`Description for column ${columnName}`}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
                           />
                         </td>
@@ -441,6 +445,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                             value={columnAnnotations[columnName]?.sample_values || ''}
                             onChange={(e) => handleColumnAnnotationChange(columnName, 'sample_values', e.target.value)}
                             placeholder="e.g., active, pending, closed"
+                            aria-label={`Sample values for column ${columnName}`}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
                           />
                         </td>
