@@ -187,11 +187,11 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
 
   const SortIcon = ({ columnKey }) => {
     if (sortConfig.key !== columnKey) {
-      return <ChevronUp className="w-3 h-3 text-gray-300" />
+      return <ChevronUp aria-hidden="true" className="w-3 h-3 text-gray-300" />
     }
     return sortConfig.direction === 'asc' 
-      ? <ChevronUp className="w-3 h-3 text-primary-500" />
-      : <ChevronDown className="w-3 h-3 text-primary-500" />
+      ? <ChevronUp aria-hidden="true" className="w-3 h-3 text-primary-500" />
+      : <ChevronDown aria-hidden="true" className="w-3 h-3 text-primary-500" />
   }
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
@@ -202,8 +202,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
         <button
           onClick={onCancel}
           className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          aria-label="Close annotation editor"
         >
-          <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <X aria-hidden="true" className="w-5 h-5 text-gray-500 dark:text-gray-400" />
         </button>
       </div>
 
@@ -253,8 +254,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 <button
                   onClick={() => handleRemoveBusinessTerm(index)}
                   className="ml-2 hover:text-primary-900 dark:hover:text-primary-200"
+                  aria-label={`Remove business term ${term}`}
                 >
-                  <X className="w-3 h-3" />
+                  <X aria-hidden="true" className="w-3 h-3" />
                 </button>
               </span>
             ))}
@@ -279,8 +281,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                     key={index}
                     onClick={() => handleAddDiscoveredFK(fk)}
                     className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-700 transition-colors"
+                    aria-label={`Add discovered foreign key from ${fk.column} to ${fk.references_table}`}
                   >
-                    <Plus className="w-3 h-3 mr-1" />
+                    <Plus aria-hidden="true" className="w-3 h-3 mr-1" />
                     {fk.column} → {fk.references_table}
                   </button>
                 ))}
@@ -301,7 +304,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                   }`}
                 >
                   <div className="flex items-center space-x-2 flex-1">
-                    <Link2 className={`w-4 h-4 ${rel.is_discovered ? 'text-green-500' : 'text-gray-400'}`} />
+                    <Link2 aria-hidden="true" className={`w-4 h-4 ${rel.is_discovered ? 'text-green-500' : 'text-gray-400'}`} />
                     <span className="text-sm text-gray-900 dark:text-white">
                       {rel.source_column && <span className="font-mono text-xs">{rel.source_column} → </span>}
                       <span className="font-medium">{rel.target_table}</span>
@@ -319,8 +322,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                   <button
                     onClick={() => handleRemoveRelationship(index)}
                     className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                    aria-label={`Remove relationship from ${rel.source_column} to ${rel.target_table}`}
                   >
-                    <X className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <X aria-hidden="true" className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                   </button>
                 </div>
               ))}
@@ -334,6 +338,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 value={newRelationship.source_column}
                 onChange={(e) => setNewRelationship({ ...newRelationship, source_column: e.target.value })}
                 className="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="New relationship source column"
               >
                 <option value="">Source column</option>
                 {tableSchema?.columns?.map(col => {
@@ -345,6 +350,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 value={newRelationship.target_table}
                 onChange={(e) => setNewRelationship({ ...newRelationship, target_table: e.target.value })}
                 className="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="New relationship target table"
               >
                 <option value="">Target table</option>
                 {allTables.map(t => <option key={t} value={t}>{t}</option>)}
@@ -353,6 +359,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 value={newRelationship.type}
                 onChange={(e) => setNewRelationship({ ...newRelationship, type: e.target.value })}
                 className="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="New relationship type"
               >
                 <option value="one_to_one">1:1</option>
                 <option value="one_to_many">1:N</option>
@@ -364,7 +371,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 disabled={!newRelationship.target_table}
                 className="flex items-center justify-center space-x-1 px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Plus className="w-3 h-3" />
+                <Plus aria-hidden="true" className="w-3 h-3" />
                 <span>Add</span>
               </button>
             </div>
@@ -433,6 +440,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                             onChange={(e) => handleColumnAnnotationChange(columnName, 'description', e.target.value)}
                             placeholder="Describe this column..."
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
+                            aria-label={`Description for ${columnName}`}
                           />
                         </td>
                         <td className="px-3 py-2">
@@ -442,6 +450,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                             onChange={(e) => handleColumnAnnotationChange(columnName, 'sample_values', e.target.value)}
                             placeholder="e.g., active, pending, closed"
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
+                            aria-label={`Sample values for ${columnName}`}
                           />
                         </td>
                       </tr>
@@ -452,7 +461,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
             </div>
           ) : (
             <div className="flex items-center space-x-2 text-sm text-yellow-600 dark:text-yellow-400">
-              <AlertCircle className="w-4 h-4" />
+              <AlertCircle aria-hidden="true" className="w-4 h-4" />
               <span>No columns found for this table</span>
             </div>
           )}
@@ -472,7 +481,7 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
             disabled={saving}
             className="flex items-center space-x-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Save className="w-4 h-4" />
+            <Save aria-hidden="true" className="w-4 h-4" />
             <span>{saving ? 'Saving...' : 'Save Annotations'}</span>
           </button>
         </div>
