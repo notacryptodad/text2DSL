@@ -83,38 +83,5 @@ export default defineConfig({
   ],
 
   // Web servers to start before running tests
-  webServer: [
-    // Backend server (FastAPI)
-    {
-      command: 'cd .. && uvicorn src.text2x.api.app:app --host 0.0.0.0 --port 8000',
-      port: 8000,
-      timeout: 120 * 1000,
-      reuseExistingServer: !process.env.CI,
-      env: {
-        // Use test database
-        DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgresql+asyncpg://text2x:text2x@localhost:5433/text2x',
 
-        // Authentication settings
-        ENABLE_AUTH: 'true',
-        ALLOW_SELF_REGISTRATION: 'true',
-
-        // JWT settings (use consistent values for testing)
-        JWT_SECRET_KEY: 'test-secret-key-for-e2e-tests-only',
-        JWT_ALGORITHM: 'HS256',
-        JWT_ACCESS_TOKEN_EXPIRE_MINUTES: '120',
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    },
-
-    // Frontend server (Vite)
-    {
-      command: 'npm run dev -- --port 5173 --host',
-      port: 5173,
-      timeout: 120 * 1000,
-      reuseExistingServer: !process.env.CI,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    },
-  ],
 });

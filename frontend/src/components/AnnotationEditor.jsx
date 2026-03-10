@@ -202,8 +202,10 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
         <button
           onClick={onCancel}
           className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          aria-label="Close annotation editor"
+          title="Close annotation editor"
         >
-          <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <X className="w-5 h-5 text-gray-500 dark:text-gray-400" aria-hidden="true" />
         </button>
       </div>
 
@@ -253,8 +255,10 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 <button
                   onClick={() => handleRemoveBusinessTerm(index)}
                   className="ml-2 hover:text-primary-900 dark:hover:text-primary-200"
+                  aria-label="Remove business term"
+                  title="Remove business term"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3 h-3" aria-hidden="true" />
                 </button>
               </span>
             ))}
@@ -319,8 +323,10 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                   <button
                     onClick={() => handleRemoveRelationship(index)}
                     className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                    aria-label="Remove relationship"
+                    title="Remove relationship"
                   >
-                    <X className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <X className="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
                   </button>
                 </div>
               ))}
