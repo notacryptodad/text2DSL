@@ -202,8 +202,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
         <button
           onClick={onCancel}
           className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          aria-label="Close annotation editor"
         >
-          <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <X className="w-5 h-5 text-gray-500 dark:text-gray-400" aria-hidden="true" />
         </button>
       </div>
 
@@ -253,8 +254,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 <button
                   onClick={() => handleRemoveBusinessTerm(index)}
                   className="ml-2 hover:text-primary-900 dark:hover:text-primary-200"
+                  aria-label={`Remove business term: ${term}`}
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3 h-3" aria-hidden="true" />
                 </button>
               </span>
             ))}
@@ -279,8 +281,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                     key={index}
                     onClick={() => handleAddDiscoveredFK(fk)}
                     className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-700 transition-colors"
+                    aria-label={`Add discovered foreign key: ${fk.column} to ${fk.references_table}`}
                   >
-                    <Plus className="w-3 h-3 mr-1" />
+                    <Plus className="w-3 h-3 mr-1" aria-hidden="true" />
                     {fk.column} → {fk.references_table}
                   </button>
                 ))}
@@ -319,8 +322,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                   <button
                     onClick={() => handleRemoveRelationship(index)}
                     className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                    aria-label={`Remove relationship to ${rel.target_table}`}
                   >
-                    <X className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <X className="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
                   </button>
                 </div>
               ))}
@@ -363,8 +367,9 @@ function AnnotationEditor({ tableName, schema, annotation, onSave, onChange, onC
                 onClick={handleAddRelationship}
                 disabled={!newRelationship.target_table}
                 className="flex items-center justify-center space-x-1 px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Add new relationship"
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-3 h-3" aria-hidden="true" />
                 <span>Add</span>
               </button>
             </div>
