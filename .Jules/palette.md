@@ -1,0 +1,3 @@
+## 2024-03-14 - [Adding ARIA labels to icon-only buttons]
+**Learning:** Icon-only buttons using `lucide-react` need an explicit `aria-label` for screen reader accessibility, and the inner icon itself should be marked with `aria-hidden="true"` so it isn't redundantly announced. When using buttons that combine an icon and text (like a `+ Add` button), an `aria-label` can also be added to provide more descriptive context (e.g., "Add new relationship") than the visual text alone.
+**Action:** Always add `aria-label` to buttons missing visible text and `aria-hidden="true"` to `lucide-react` icons. When evaluating button accessibility, prefer descriptive `aria-label`s when the visual text is too brief for context.
