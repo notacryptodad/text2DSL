@@ -26,19 +26,21 @@ function QueryBlock({
             onClick={onCopy}
             className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
             title="Copy query"
+            aria-label="Copy query"
           >
             {copied ? (
-              <Check className="w-4 h-4 text-green-500" />
+              <Check className="w-4 h-4 text-green-500" aria-hidden="true" />
             ) : (
-              <Copy className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+              <Copy className="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
             )}
           </button>
           <button
             onClick={onDownload}
             className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
             title="Download query"
+            aria-label="Download query"
           >
-            <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            <Download className="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" />
           </button>
         </div>
       </div>
