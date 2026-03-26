@@ -122,7 +122,7 @@ function ResultsTable({ data, columns }) {
 
       {/* Pagination Controls */}
       <div className="flex items-center justify-between text-sm">
-        <div className="text-gray-600 dark:text-gray-400">
+        <div className="text-gray-600 dark:text-gray-400" aria-live="polite">
           Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{' '}
           {Math.min(
             (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
@@ -152,17 +152,19 @@ function ResultsTable({ data, columns }) {
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
+              aria-label="Previous page"
               className="p-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             </button>
-            <span className="px-3 py-1 text-gray-700 dark:text-gray-300">
+            <span className="px-3 py-1 text-gray-700 dark:text-gray-300" aria-live="polite">
               Page {table.getState().pagination.pageIndex + 1} of{' '}
               {table.getPageCount()}
             </span>
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
+              aria-label="Next page"
               className="p-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
