@@ -103,7 +103,8 @@ function ProviderSwitchModal({ isOpen, onClose, providers, selectedProvider, onS
                     key={provider.id}
                     onClick={() => onSelect(provider)}
                     onMouseEnter={() => setHighlightedIndex(index)}
-                    className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${
+                    aria-pressed={selectedProvider?.id === provider.id}
+                    className={`w-full flex items-center justify-between px-4 py-3 transition-colors focus:outline-none focus-visible:bg-gray-100 dark:focus-visible:bg-gray-700 ${
                       index === highlightedIndex
                         ? 'bg-primary-50 dark:bg-primary-900/20'
                         : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
