@@ -1,0 +1,3 @@
+## 2024-05-18 - Improve accessibility of selectable cards
+**Learning:** Interactive elements functioning as selectable cards or toggle buttons (e.g., in lists like `ProviderSelect`) need an `aria-pressed` attribute based on their selection state to ensure proper screen reader accessibility, and must have `focus-visible` styles for keyboard navigation.
+**Action:** Always verify if elements behaving as toggles or selectable items reflect their state properly to screen readers through `aria-pressed` or `aria-expanded` attributes, and apply appropriate focus visibility CSS classes.
