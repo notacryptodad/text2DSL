@@ -1,0 +1,3 @@
+## 2024-05-18 - Improve Selection Accessibility
+**Learning:** For interactive elements functioning as selectable cards or toggle buttons (e.g., in lists like `ProviderSelect`), explicitly setting the `aria-pressed` attribute based on their selection state is necessary to ensure proper screen reader accessibility. Also, keyboard navigation requires visible focus states.
+**Action:** Use `aria-pressed` for selectable buttons and apply standard Tailwind `focus-visible` utility classes (`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500`) for clear keyboard focus feedback.
