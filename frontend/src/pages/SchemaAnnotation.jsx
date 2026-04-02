@@ -741,7 +741,7 @@ function SchemaAnnotation() {
                 <div className="p-4 border-t border-gray-200 dark:border-gray-700">
                   <div className="flex space-x-2">
                     <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && !chatLoading && handleSendMessage()} placeholder="Ask about schema annotations..." disabled={chatLoading || !selectedConnection} className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50" />
-                    <button onClick={handleSendMessage} disabled={!chatInput.trim() || chatLoading || !selectedConnection} className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50">{chatLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
+                    <button onClick={handleSendMessage} disabled={!chatInput.trim() || chatLoading || !selectedConnection} aria-label="Send message" className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50">{chatLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
                   </div>
                 </div>
               </div>
@@ -801,7 +801,7 @@ function SchemaAnnotation() {
               <div className="p-3 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex space-x-2">
                   <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && !chatLoading && handleSendMessage()} placeholder="Ask about annotations..." className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500" disabled={chatLoading || !selectedConnection} />
-                  <button onClick={handleSendMessage} disabled={!chatInput.trim() || chatLoading || !selectedConnection} className="px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50">{chatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</button>
+                  <button onClick={handleSendMessage} disabled={!chatInput.trim() || chatLoading || !selectedConnection} aria-label="Send message" className="px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50">{chatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}</button>
                 </div>
               </div>
             </div>
