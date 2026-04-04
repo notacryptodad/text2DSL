@@ -1,0 +1,3 @@
+## 2024-05-24 - Accessible Selectable Cards
+**Learning:** Selectable cards and lists functioning as toggle buttons (e.g., ProviderSelect) lack explicit state communication for screen readers in this application's design system when only relying on visual cues or active CSS classes.
+**Action:** Always add the `aria-pressed` attribute, set to true/false based on selection state, to explicitly convey the active status to screen readers when buttons are used for multi-select or single-select options.
