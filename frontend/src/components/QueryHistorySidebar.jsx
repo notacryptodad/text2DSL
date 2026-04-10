@@ -151,6 +151,7 @@ function QueryHistorySidebar({ isOpen, onClose, onRunQuery, providers = [], curr
           <button
             onClick={onClose}
             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+            aria-label="Close query history"
           >
             <X className="w-5 h-5 text-gray-500" />
           </button>
@@ -224,12 +225,14 @@ function QueryHistorySidebar({ isOpen, onClose, onRunQuery, providers = [], curr
                         onClick={(e) => handleDelete(query.id, e)}
                         className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-red-500"
                         title="Delete"
+                        aria-label="Delete query"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                       <button
                         className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 rounded text-indigo-500"
                         title="Run query"
+                        aria-label="Run query"
                       >
                         <Play className="w-4 h-4" />
                       </button>
