@@ -16,8 +16,10 @@ function WelcomeScreen({ onGetStarted }) {
         {/* Collapse Toggle */}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="mb-4 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="mb-4 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors"
           title={isCollapsed ? 'Expand' : 'Collapse'}
+          aria-expanded={!isCollapsed}
+          aria-label={isCollapsed ? 'Expand welcome screen' : 'Collapse welcome screen'}
         >
           {isCollapsed ? <ChevronDown className="w-5 h-5 text-gray-500" /> : <ChevronUp className="w-5 h-5 text-gray-500" />}
         </button>
@@ -87,14 +89,15 @@ function WelcomeScreen({ onGetStarted }) {
               </p>
               <div className="space-y-2">
                 {exampleQueries.map((query, idx) => (
-                  <div
+                  <button
                     key={idx}
-                    className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:border-primary-300 dark:hover:border-primary-700 transition-colors cursor-pointer"
+                    type="button"
+                    className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:border-primary-300 dark:hover:border-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors cursor-pointer"
                     onClick={() => onGetStarted && onGetStarted(query)}
                   >
                     <span className="text-primary-500 mr-2">→</span>
                     {query}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -102,7 +105,7 @@ function WelcomeScreen({ onGetStarted }) {
             {/* CTA Button */}
             <button
               onClick={() => onGetStarted && onGetStarted()}
-              className="inline-flex items-center space-x-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
+              className="inline-flex items-center space-x-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all"
             >
               <span>Get Started</span>
               <ArrowRight className="w-5 h-5" />

@@ -1,0 +1,3 @@
+## 2024-04-14 - Semantic interactive elements in lists
+**Learning:** When displaying clickable lists (like example queries), using generic tags like `<div onClick={...}>` instead of semantic `<button>` elements breaks keyboard navigation and screen reader support. This app often uses clickable divs for lists because they naturally block out content, but this is an accessibility anti-pattern.
+**Action:** Always use `<button type="button">` with the `w-full` class (to emulate block behavior if needed) for clickable list items. Ensure they have appropriate `focus-visible` styles (`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500`) to support keyboard navigation.
