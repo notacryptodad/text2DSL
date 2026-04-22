@@ -17,9 +17,11 @@ function ProviderSelect({ providers, selected, onChange, disabled = false }) {
       {providers.map((provider) => (
         <button
           key={provider.id}
+          type="button"
+          aria-pressed={selected?.id === provider.id}
           onClick={() => !disabled && onChange(provider)}
           disabled={disabled}
-          className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all ${
+          className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
             disabled
               ? 'opacity-50 cursor-not-allowed'
               : selected?.id === provider.id
