@@ -73,7 +73,13 @@ function AgentNode({ agent, data, isExpanded, onToggle, isLast, progress }) {
   return (
     <div className="relative">
       {!isLast && <div className="absolute left-4 top-8 w-0.5 h-full bg-gray-200 dark:bg-gray-700" />}
-      <div className={`relative flex items-start space-x-3 p-3 rounded-lg transition-colors ${status === 'running' ? 'bg-blue-50 dark:bg-blue-900/10' : ''} ${status === 'error' ? 'bg-red-50 dark:bg-red-900/10' : ''} ${hasDetails ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50' : ''}`} onClick={hasDetails ? onToggle : undefined}>
+      <button
+        type="button"
+        className={`w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 relative flex items-start space-x-3 p-3 rounded-lg transition-colors ${status === 'running' ? 'bg-blue-50 dark:bg-blue-900/10' : ''} ${status === 'error' ? 'bg-red-50 dark:bg-red-900/10' : ''} ${hasDetails ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50' : ''}`}
+        onClick={hasDetails ? onToggle : undefined}
+        disabled={!hasDetails}
+        aria-expanded={isExpanded ? 'true' : 'false'}
+      >
         <div className={`relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${status === 'complete' ? 'bg-green-100 dark:bg-green-900/30' : ''} ${status === 'running' ? 'bg-blue-100 dark:bg-blue-900/30' : ''} ${status === 'error' ? 'bg-red-100 dark:bg-red-900/30' : ''} ${status === 'pending' ? 'bg-gray-100 dark:bg-gray-700' : ''}`}>
           {status === 'running' ? <Loader2 className="w-4 h-4 text-blue-500 animate-spin" /> : status === 'complete' ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : status === 'error' ? <XCircle className="w-4 h-4 text-red-500" /> : <Icon className="w-4 h-4 text-gray-400" />}
         </div>
@@ -101,7 +107,7 @@ function AgentNode({ agent, data, isExpanded, onToggle, isLast, progress }) {
             </div>
           )}
         </div>
-      </div>
+      </button>
     </div>
   )
 }
