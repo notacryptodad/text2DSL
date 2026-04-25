@@ -34,6 +34,7 @@ function ConversationHistory({ conversations, currentId, onSelect, onNew, onDele
             <span>History</span>
           </h2>
           <button
+            aria-label="New conversation"
             onClick={onNew}
             className="p-1.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white transition-colors"
             title="New conversation"
@@ -74,6 +75,7 @@ function ConversationHistory({ conversations, currentId, onSelect, onNew, onDele
                   </div>
                   {conv.id !== currentId && (
                     <button
+                      aria-label="Delete conversation"
                       onClick={(e) => {
                         e.stopPropagation()
                         onDelete(conv.id)

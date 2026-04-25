@@ -149,6 +149,7 @@ function QueryHistorySidebar({ isOpen, onClose, onRunQuery, providers = [], curr
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Query History</h2>
           </div>
           <button
+            aria-label="Close query history"
             onClick={onClose}
             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
           >
@@ -221,6 +222,7 @@ function QueryHistorySidebar({ isOpen, onClose, onRunQuery, providers = [], curr
                     </div>
                     <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
+                        aria-label="Delete query"
                         onClick={(e) => handleDelete(query.id, e)}
                         className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-red-500"
                         title="Delete"
@@ -228,6 +230,7 @@ function QueryHistorySidebar({ isOpen, onClose, onRunQuery, providers = [], curr
                         <Trash2 className="w-4 h-4" />
                       </button>
                       <button
+                        aria-label="Run query"
                         className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 rounded text-indigo-500"
                         title="Run query"
                       >
