@@ -135,7 +135,7 @@ function QueryDiffView({ iterations, providerId }) {
       </div>
       {showDiff && diffPairs.length > 1 && (
         <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded px-3 py-2">
-          <button onClick={() => setCurrentPairIndex(Math.max(0, currentPairIndex - 1))} disabled={currentPairIndex === 0} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+          <button aria-label="Previous diff" onClick={() => setCurrentPairIndex(Math.max(0, currentPairIndex - 1))} disabled={currentPairIndex === 0} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
             <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-400" />
           </button>
           <div className="text-xs text-gray-600 dark:text-gray-400">
@@ -143,7 +143,7 @@ function QueryDiffView({ iterations, providerId }) {
             <span className="mx-2">|</span>
             <span>{currentPairIndex + 1} of {diffPairs.length} changes</span>
           </div>
-          <button onClick={() => setCurrentPairIndex(Math.min(diffPairs.length - 1, currentPairIndex + 1))} disabled={currentPairIndex === diffPairs.length - 1} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+          <button aria-label="Next diff" onClick={() => setCurrentPairIndex(Math.min(diffPairs.length - 1, currentPairIndex + 1))} disabled={currentPairIndex === diffPairs.length - 1} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
             <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
           </button>
         </div>
