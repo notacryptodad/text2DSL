@@ -1,0 +1,3 @@
+## 2024-04-26 - TanStack Table Interactive Header Accessibility
+**Learning:** By default, generic `<th>` elements used with TanStack Table sorting handlers are not accessible to keyboard users or screen readers. They require manual addition of `tabIndex`, `onKeyDown` handlers (specifically for Enter and Space), and dynamic `aria-sort` attributes to function identically to native interactive elements.
+**Action:** When implementing custom sorting in React Table, ensure interactive column headers include these three accessibility primitives and visual focus indicators (`focus-visible` utility classes) to support keyboard navigation.
