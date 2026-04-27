@@ -71,32 +71,51 @@ function ResultsTable({ data, columns }) {
           <thead className="bg-gray-50 dark:bg-gray-800">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    <div className="flex items-center space-x-1">
-                      <span>
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
+                {headerGroup.headers.map((header) => {
+                  const sortHandler = header.column.getToggleSortingHandler()
+                  const isSorted = header.column.getIsSorted()
+
+                  return (
+                    <th
+                      key={header.id}
+                      className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:bg-gray-100 dark:focus-visible:bg-gray-700 focus-visible:z-10 relative"
+                      onClick={sortHandler}
+                      tabIndex={header.column.getCanSort() ? 0 : undefined}
+                      onKeyDown={(e) => {
+                        if (header.column.getCanSort() && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault()
+                          sortHandler?.(e)
+                        }
+                      }}
+                      aria-sort={
+                        isSorted === 'asc' ? 'ascending' :
+                        isSorted === 'desc' ? 'descending' :
+                        header.column.getCanSort() ? 'none' : undefined
+                      }
+                    >
+                      <div className="flex items-center space-x-1">
+                        <span>
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                        </span>
+                        {/* Sort indicator */}
+                        {header.column.getCanSort() && (
+                          <span className="text-gray-400 dark:text-gray-500">
+                            {isSorted === 'asc' ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : isSorted === 'desc' ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronsUpDown className="w-4 h-4 opacity-50" />
+                            )}
+                          </span>
                         )}
-                      </span>
-                      {/* Sort indicator */}
-                      <span className="text-gray-400 dark:text-gray-500">
-                        {header.column.getIsSorted() === 'asc' ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : header.column.getIsSorted() === 'desc' ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronsUpDown className="w-4 h-4 opacity-50" />
-                        )}
-                      </span>
-                    </div>
-                  </th>
-                ))}
+                      </div>
+                    </th>
+                  )
+                })}
               </tr>
             ))}
           </thead>
