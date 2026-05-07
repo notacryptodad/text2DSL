@@ -14,10 +14,13 @@ function ThemeToggle({ darkMode, toggleDarkMode, className = '' }) {
         hover:bg-gray-200 dark:hover:bg-gray-600 
         transition-colors duration-200
         overflow-hidden
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500
         group
         ${className}
       `}
-      aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+      role="switch"
+      aria-checked={darkMode}
+      aria-label="Dark mode"
       title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
     >
       {/* Container for icons with animation */}
