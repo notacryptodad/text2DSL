@@ -8,16 +8,19 @@ function ThemeToggle({ darkMode, toggleDarkMode, className = '' }) {
   return (
     <button
       onClick={toggleDarkMode}
+      role="switch"
+      aria-checked={darkMode}
       className={`
         relative p-2 rounded-lg 
         bg-gray-100 dark:bg-gray-700 
         hover:bg-gray-200 dark:hover:bg-gray-600 
+        focus-visible:ring-2
         transition-colors duration-200
         overflow-hidden
         group
         ${className}
       `}
-      aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label="Dark mode"
       title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
     >
       {/* Container for icons with animation */}
