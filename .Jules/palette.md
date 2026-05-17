@@ -1,0 +1,3 @@
+## 2024-05-17 - Accessible State Toggles
+**Learning:** For components that act as state switches (like the `ThemeToggle`), just providing a static label and click handler is insufficient for screen readers. Screen readers need to know that the button is specifically a switch and what its current state is.
+**Action:** When building a toggle button, always include `role="switch"` and `aria-checked={currentState}`. Additionally, the `aria-label` should simply name the setting itself (e.g., "Dark mode") rather than what the action *does* (e.g., "Switch to dark mode"), so that the screen reader correctly announces "Dark mode, switch, checked/unchecked".
