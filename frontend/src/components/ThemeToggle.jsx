@@ -17,7 +17,9 @@ function ThemeToggle({ darkMode, toggleDarkMode, className = '' }) {
         group
         ${className}
       `}
-      aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+      role="switch"
+      aria-checked={darkMode}
+      aria-label="Dark mode"
       title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
     >
       {/* Container for icons with animation */}
