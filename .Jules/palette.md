@@ -1,0 +1,3 @@
+## 2024-05-24 - ThemeToggle component switch accessibility
+**Learning:** The ThemeToggle relied heavily on its dynamic aria-label reading either 'Switch to dark mode' or 'Switch to light mode'. A toggle represents a true/false state. For accessibility, it should ideally have the `role="switch"` and present an `aria-checked` attribute, leaving the `aria-label` as the simple name of the control, 'Dark mode'.
+**Action:** Whenever building toggle buttons for preferences, ensure they act semantically as switches, providing state context through `aria-checked` rather than solely changing the action label.
