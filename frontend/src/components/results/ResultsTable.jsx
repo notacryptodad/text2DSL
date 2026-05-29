@@ -153,6 +153,7 @@ function ResultsTable({ data, columns }) {
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
               className="p-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label="Previous page"
             >
               <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             </button>
@@ -164,6 +165,7 @@ function ResultsTable({ data, columns }) {
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
               className="p-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label="Next page"
             >
               <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             </button>
