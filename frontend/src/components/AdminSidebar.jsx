@@ -40,6 +40,7 @@ function AdminSidebar() {
           onClick={toggleCollapsed}
           className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
           title={collapsed ? 'Expand' : 'Collapse'}
+          aria-label={collapsed ? 'Expand' : 'Collapse'}
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
