@@ -1,0 +1,3 @@
+## 2024-06-07 - Theme Toggle Accessibility Update
+**Learning:** For state switch components like a theme toggle, applying `role="switch"` and `aria-checked` communicates the exact on/off state to screen readers correctly. Additionally, it is a best practice to set the `aria-label` to the name of the setting itself (e.g., "Dark mode") rather than describing the action (e.g., "Switch to dark mode") so it reads properly ("Dark mode, switch, checked/unchecked").
+**Action:** Always check toggle buttons functioning as state switches for proper role and aria attributes, prioritizing the setting name over the action for the label.
