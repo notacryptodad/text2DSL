@@ -1,0 +1,3 @@
+## 2026-06-08 - Theme Toggle Role and State Accessibility
+**Learning:** Toggle buttons that function as state switches must include `role="switch"` and `aria-checked` attributes to provide accurate semantic feedback for screen readers. The `aria-label` should name the setting itself (e.g., "Dark mode") rather than the action (e.g., "Switch to dark mode") so screen readers announce the state correctly (e.g., "Dark mode, switch, checked/unchecked").
+**Action:** Always verify that state toggle buttons implement the `switch` role with synchronized `aria-checked` state and noun-based `aria-label`s instead of action-based descriptions.
