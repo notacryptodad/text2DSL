@@ -1,0 +1,3 @@
+## 2024-05-18 - Semantic State Switch for Theme Toggle
+**Learning:** When using toggle buttons for state switches (like theme mode), simply changing `aria-label` dynamically (e.g., "Switch to light mode") makes screen readers announce it as an action button. It is much better UX for screen reader users to use `role="switch"`, dynamically set `aria-checked`, and use a static `aria-label` (e.g., "Dark mode"). This allows screen readers to natively announce "Dark mode, switch, checked/unchecked".
+**Action:** Always use `role="switch"` alongside `aria-checked` and a static descriptive `aria-label` when implementing components that toggle binary states (like settings or themes) instead of action-oriented labels.
